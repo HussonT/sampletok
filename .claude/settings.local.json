@@ -1,0 +1,34 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install)",
+      "Bash(chmod:*)",
+      "Bash(./fix-imports.sh)",
+      "Bash(find:*)",
+      "Bash(npm run dev:*)",
+      "Bash(curl:*)",
+      "Bash(npm config:*)",
+      "WebFetch(domain:linear.app)",
+      "mcp__linear-server__get_project",
+      "mcp__linear-server__list_projects",
+      "mcp__linear-server__list_issues",
+      "mcp__linear-server__update_issue",
+      "Bash(mkdir:*)",
+      "Bash(lsof:*)",
+      "Bash(xargs kill:*)",
+      "Bash(source:*)",
+      "Bash(pip install:*)",
+      "Bash(./start_simple.sh:*)",
+      "Bash(docker-compose:*)",
+      "Bash(python:*)",
+      "Bash(uvicorn:*)",
+      "WebSearch",
+      "WebFetch(domain:www.inngest.com)",
+      "Bash(awk:*)",
+      "Bash(kill:*)",
+      "mcp__linear-server__create_comment"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
