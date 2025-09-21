@@ -1,7 +1,7 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Play, Pause, ExternalLink, Users, Download } from 'lucide-react';
-import { Sample } from '@/data/mock-samples';
+import { Sample } from '@/types/api';
 
 interface SoundsTableProps {
   samples: Sample[];
@@ -35,7 +35,7 @@ export function SoundsTable({
     const keys = ['C#', 'D', 'D#', 'F', 'F#', 'G', 'G#', 'A'];
     const modes = ['maj', 'min'];
     const keyIndex = sample.id.charCodeAt(0) % keys.length;
-    const modeIndex = sample.creatorUsername.charCodeAt(0) % modes.length;
+    const modeIndex = (sample.creator_username || 'A').charCodeAt(0) % modes.length;
     return `${keys[keyIndex]} ${modes[modeIndex]}`;
   };
 
@@ -60,8 +60,8 @@ export function SoundsTable({
 
   const handleDownload = (sample: Sample) => {
     const link = document.createElement('a');
-    link.href = sample.audioUrl;
-    link.download = `${sample.creatorUsername}_${sample.id}.mp3`;
+    link.href = sample.audio_url_mp3 || sample.audio_url_wav || '#';
+    link.download = `${sample.creator_username || 'unknown'}_${sample.id}.mp3`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -113,7 +113,7 @@ export function SoundsTable({
                 <td className="py-3 px-4">
                   <div className="space-y-1">
                     <div className="text-sm font-medium text-foreground">
-                      {sample.description.slice(0, 30)}...
+                      {sample.description ? `${sample.description.slice(0, 30)}...` : 'No description'}
                     </div>
                     <div className="flex gap-2">
                       {getCategories(sample).map((cat) => (
@@ -126,10 +126,10 @@ export function SoundsTable({
                 </td>
                 <td className="py-3 px-4">
                   <div className="space-y-1">
-                    <div className="text-sm font-medium">@{sample.creatorUsername}</div>
+                    <div className="text-sm font-medium">@{sample.creator_username || 'unknown'}</div>
                     <div className="flex items-center gap-1 text-xs text-muted-foreground">
                       <Users className="w-3 h-3" />
-                      <span>{formatFollowers(sample.followerCount)}</span>
+                      <span>{sample.view_count ? `${(sample.view_count / 1000).toFixed(0)}k views` : 'No views'}</span>
                     </div>
                   </div>
                 </td>
@@ -167,7 +167,7 @@ export function SoundsTable({
                 </td>
                 <td className="py-3 px-4">
                   <a
-                    href={sample.tiktokUrl}
+                    href={sample.tiktok_url || '#'}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-primary hover:text-primary/80 underline text-sm flex items-center gap-1"

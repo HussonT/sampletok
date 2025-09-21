@@ -33,7 +33,13 @@
       "Bash(yt-dlp:*)",
       "Read(//private/tmp/**)",
       "Read(//Users/tomhusson/Library/**)",
-      "Bash(alembic:*)"
+      "Bash(alembic:*)",
+      "Bash(ls:*)",
+      "Bash(npm install:*)",
+      "Read(//Users/tomhusson/**)",
+      "Bash(python3:*)",
+      "Bash(brew services start:*)",
+      "Bash(psql:*)"
     ],
     "deny": [],
     "ask": []

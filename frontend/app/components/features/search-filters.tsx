@@ -2,7 +2,7 @@ import React from 'react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { 
+import {
   Search
 } from 'lucide-react';
 import {
@@ -12,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { AddSampleDialog } from '@/components/features/add-sample-dialog';
 
 interface SearchFiltersProps {
   searchQuery: string;
@@ -119,6 +120,8 @@ export function SearchFilters({
               <SelectItem value="name">Name A-Z</SelectItem>
             </SelectContent>
           </Select>
+
+          <AddSampleDialog />
         </div>
 
         {/* Popular Genres */}

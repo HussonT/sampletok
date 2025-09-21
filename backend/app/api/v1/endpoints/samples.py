@@ -28,6 +28,14 @@ async def get_samples(
     """Get all samples with optional filtering"""
     query = select(Sample)
 
+    # Filter out samples without essential data
+    query = query.where(
+        Sample.creator_username.isnot(None),
+        Sample.creator_username != '',
+        Sample.title.isnot(None),
+        Sample.title != ''
+    )
+
     # Apply filters
     if status:
         try:

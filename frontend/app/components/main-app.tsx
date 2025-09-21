@@ -1,21 +1,31 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useTransition, useOptimistic } from 'react';
+import { useRouter } from 'next/navigation';
 import { SimpleSidebar } from '@/components/features/simple-sidebar';
 import { SearchFilters } from '@/components/features/search-filters';
 import { SoundsTable } from '@/components/features/sounds-table';
 import { BottomPlayer } from '@/components/features/bottom-player';
 import { Download, Music } from 'lucide-react';
-import { Sample } from '@/data/mock-samples';
+import { Sample, SampleFilters } from '@/types/api';
+import { processTikTokUrl, deleteSample } from '@/actions/samples';
 import { toast } from 'sonner';
 import { Toaster } from '@/components/ui/sonner';
 
 interface MainAppProps {
   initialSamples: Sample[];
+  totalSamples: number;
+  currentFilters: SampleFilters;
 }
 
-export default function MainApp({ initialSamples }: MainAppProps) {
-  const [samples] = useState<Sample[]>(initialSamples);
+export default function MainApp({ initialSamples, totalSamples, currentFilters }: MainAppProps) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  const [optimisticSamples, addOptimisticSample] = useOptimistic(
+    initialSamples,
+    (state, newSample: Sample) => [newSample, ...state]
+  );
+  const [samples, setSamples] = useState<Sample[]>(initialSamples);
   const [currentSample, setCurrentSample] = useState<Sample | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -32,8 +42,8 @@ export default function MainApp({ initialSamples }: MainAppProps) {
 
     if (searchQuery) {
       filtered = filtered.filter(sample =>
-        sample.creatorUsername.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        sample.description.toLowerCase().includes(searchQuery.toLowerCase())
+        sample.creator_username?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        sample.description?.toLowerCase().includes(searchQuery.toLowerCase())
       );
     }
 
@@ -71,11 +81,11 @@ export default function MainApp({ initialSamples }: MainAppProps) {
         filtered.sort((a, b) => b.id.length - a.id.length);
         break;
       case 'name':
-        filtered.sort((a, b) => a.creatorUsername.localeCompare(b.creatorUsername));
+        filtered.sort((a, b) => (a.creator_username || '').localeCompare(b.creator_username || ''));
         break;
       case 'recent':
       default:
-        filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        filtered.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
         break;
     }
 
