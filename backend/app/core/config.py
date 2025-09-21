@@ -57,8 +57,9 @@ class Settings(BaseSettings):
     WAVEFORM_WIDTH: int = 800
     WAVEFORM_HEIGHT: int = 140
 
-    # Proxy Settings
-    PROXY_URL: Optional[str] = None
+    # RapidAPI Settings
+    RAPIDAPI_KEY: str = "36d89111a2msh4ba98e6cc64bc41p1b0c41jsn27ddea8cadd7"
+    RAPIDAPI_HOST: str = "tiktok-video-no-watermark2.p.rapidapi.com"
 
     class Config:
         env_file = ".env"

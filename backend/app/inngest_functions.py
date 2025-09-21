@@ -148,21 +148,10 @@ def download_tiktok_video_sync(url: str, sample_id: str) -> Dict[str, Any]:
         temp_dir.mkdir(parents=True, exist_ok=True)
 
         try:
-            # Extract expected video ID from URL
-            expected_video_id = url.split('/')[-1]
-
             downloader = TikTokDownloader()
             metadata = await downloader.download_video(url, str(temp_dir))
 
-            # Validate we got the correct video
-            actual_video_id = str(metadata.get('tiktok_id'))
-            if actual_video_id != expected_video_id:
-                raise ValueError(
-                    f"Downloaded wrong video! Expected {expected_video_id} but got {actual_video_id}. "
-                    f"This may be due to proxy issues or caching."
-                )
-
-            logger.info(f"Downloaded correct video: {metadata.get('tiktok_id')} to {temp_dir}")
+            logger.info(f"Downloaded video: {metadata.get('aweme_id')} to {temp_dir}")
             metadata['temp_dir'] = str(temp_dir)  # Pass temp_dir to next steps
             return metadata
         except Exception as e:
@@ -263,10 +252,14 @@ def update_sample_complete_sync(data: Dict[str, Any]) -> None:
             result = db.execute(query)
             sample = result.scalar_one()
 
-            # Update metadata
+            # Update metadata - now with RapidAPI fields
             sample.tiktok_id = metadata.get("tiktok_id")
+            sample.aweme_id = metadata.get("aweme_id")
+            sample.title = metadata.get("title")
+            sample.region = metadata.get("region")
             sample.creator_username = metadata.get("creator_username")
             sample.creator_name = metadata.get("creator_name")
+            sample.creator_avatar_url = metadata.get("creator_avatar_url")
             sample.description = metadata.get("description")
             sample.view_count = metadata.get("view_count", 0)
             sample.like_count = metadata.get("like_count", 0)
@@ -274,6 +267,11 @@ def update_sample_complete_sync(data: Dict[str, Any]) -> None:
             sample.share_count = metadata.get("share_count", 0)
             sample.duration_seconds = metadata.get("duration")
             sample.thumbnail_url = metadata.get("thumbnail_url")
+            sample.origin_cover_url = metadata.get("origin_cover_url")
+            sample.music_url = metadata.get("music_url")
+            sample.video_url = metadata.get("video_url")
+            sample.video_url_watermark = metadata.get("video_url_watermark")
+            sample.upload_timestamp = metadata.get("upload_timestamp")
 
             # Update file URLs
             sample.audio_url_wav = urls["wav"]

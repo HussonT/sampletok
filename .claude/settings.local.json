@@ -32,7 +32,8 @@
       "Bash(ffmpeg:*)",
       "Bash(yt-dlp:*)",
       "Read(//private/tmp/**)",
-      "Read(//Users/tomhusson/Library/**)"
+      "Read(//Users/tomhusson/Library/**)",
+      "Bash(alembic:*)"
     ],
     "deny": [],
     "ask": []
