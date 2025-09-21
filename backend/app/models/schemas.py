@@ -98,20 +98,28 @@ class SampleInDB(BaseModel):
 
 class SampleResponse(BaseModel):
     id: UUID
-    creator_username: Optional[str]
-    creator_name: Optional[str]
-    description: Optional[str]
-    view_count: int
-    duration_seconds: Optional[float]
-    bpm: Optional[int]
-    key: Optional[str]
-    genre: Optional[str]
-    tags: List[str]
-    audio_url_mp3: Optional[str]
-    waveform_url: Optional[str]
-    thumbnail_url: Optional[str]
+    tiktok_url: Optional[str] = None
+    tiktok_id: Optional[str] = None
+    creator_username: Optional[str] = None
+    creator_name: Optional[str] = None
+    description: Optional[str] = None
+    view_count: Optional[int] = 0
+    like_count: Optional[int] = 0
+    share_count: Optional[int] = 0
+    comment_count: Optional[int] = 0
+    duration_seconds: Optional[float] = None
+    bpm: Optional[int] = None
+    key: Optional[str] = None
+    genre: Optional[str] = None
+    tags: Optional[List[str]] = Field(default_factory=list)
+    audio_url_wav: Optional[str] = None
+    audio_url_mp3: Optional[str] = None
+    waveform_url: Optional[str] = None
+    thumbnail_url: Optional[str] = None
     status: str
+    error_message: Optional[str] = None
     created_at: datetime
+    processed_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -147,6 +155,14 @@ class PaginationParams(BaseModel):
 
 class PaginatedResponse(BaseModel):
     items: List[Any]
+    total: int
+    skip: int
+    limit: int
+    has_more: bool
+
+
+class SamplesListResponse(BaseModel):
+    items: List[SampleResponse]
     total: int
     skip: int
     limit: int

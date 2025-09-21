@@ -57,6 +57,9 @@ class Settings(BaseSettings):
     WAVEFORM_WIDTH: int = 800
     WAVEFORM_HEIGHT: int = 140
 
+    # Proxy Settings
+    PROXY_URL: Optional[str] = None
+
     class Config:
         env_file = ".env"
         case_sensitive = True

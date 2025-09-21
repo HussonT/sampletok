@@ -58,5 +58,8 @@ class TikTokURLValidator:
         """Normalize TikTok URL to a standard format"""
         video_id = cls._extract_video_id(url)
         if video_id and video_id.isdigit():
-            return f"https://www.tiktok.com/@sampletok/video/{video_id}"
+            # Extract username if present, otherwise use a placeholder
+            username_match = re.search(r'/@([\w.-]+)/', url)
+            username = username_match.group(1) if username_match else 'video'
+            return f"https://www.tiktok.com/@{username}/video/{video_id}"
         return url
