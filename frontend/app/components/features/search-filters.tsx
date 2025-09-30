@@ -2,7 +2,7 @@ import React from 'react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { 
+import {
   Search
 } from 'lucide-react';
 import {
@@ -12,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { AddSampleDialog } from '@/components/features/add-sample-dialog';
 
 interface SearchFiltersProps {
   searchQuery: string;
@@ -25,6 +26,7 @@ interface SearchFiltersProps {
   sortBy: string;
   onSortChange: (sort: string) => void;
   resultCount: number;
+  onProcessingStarted?: (taskId: string, url: string) => void;
 }
 
 export function SearchFilters({
@@ -38,7 +40,8 @@ export function SearchFilters({
   onVideoTypeChange,
   sortBy,
   onSortChange,
-  resultCount
+  resultCount,
+  onProcessingStarted
 }: SearchFiltersProps) {
   const popularGenres = [
     'house', 'hip hop', 'drill', 'pop', 'rnb', 'techno', 'trap'
@@ -119,6 +122,8 @@ export function SearchFilters({
               <SelectItem value="name">Name A-Z</SelectItem>
             </SelectContent>
           </Select>
+
+          <AddSampleDialog onProcessingStarted={onProcessingStarted} />
         </div>
 
         {/* Popular Genres */}

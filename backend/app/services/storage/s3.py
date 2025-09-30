@@ -69,14 +69,20 @@ class S3Storage:
             raise
 
     def _upload_to_s3(self, file_data: bytes, object_key: str, content_type: str):
-        """Synchronous S3 upload"""
-        self.s3_client.put_object(
-            Bucket=self.bucket_name,
-            Key=object_key,
-            Body=file_data,
-            ContentType=content_type,
-            ACL='public-read'  # Make file publicly accessible
-        )
+        """Synchronous S3/R2 upload"""
+        # R2 doesn't support ACL parameter - use bucket-level public access instead
+        upload_params = {
+            'Bucket': self.bucket_name,
+            'Key': object_key,
+            'Body': file_data,
+            'ContentType': content_type
+        }
+
+        # Only add ACL for S3, not for R2
+        if settings.STORAGE_TYPE != "r2":
+            upload_params['ACL'] = 'public-read'
+
+        self.s3_client.put_object(**upload_params)
 
     async def download_file(self, object_key: str, destination_path: str) -> str:
         """
@@ -105,35 +111,51 @@ class S3Storage:
 
     async def delete_file(self, object_key: str) -> bool:
         """
-        Delete file from S3
+        Delete file from S3/R2
         """
         try:
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(
                 None,
-                self.s3_client.delete_object,
-                Bucket=self.bucket_name,
-                Key=object_key
+                lambda: self.s3_client.delete_object(
+                    Bucket=self.bucket_name,
+                    Key=object_key
+                )
             )
 
-            logger.info(f"Successfully deleted {object_key} from S3")
+            logger.info(f"Successfully deleted {object_key} from storage")
             return True
 
         except ClientError as e:
-            logger.error(f"S3 delete failed: {str(e)}")
+            logger.error(f"Storage delete failed: {str(e)}")
             return False
 
     def get_public_url(self, object_key: str) -> str:
         """
-        Generate public URL for an S3 object
+        Generate public URL for an S3/R2 object
         """
+        # Check if using Cloudflare R2
+        if settings.STORAGE_TYPE == "r2":
+            # Option 1: Use custom domain if configured
+            if settings.R2_PUBLIC_DOMAIN:
+                return f"https://{settings.R2_PUBLIC_DOMAIN}/{object_key}"
+            # Option 2: Use R2 dev subdomain (requires bucket-level public access)
+            # Format: https://pub-{hash}.r2.dev/{object_key}
+            # Note: You need to enable R2.dev subdomain in Cloudflare dashboard
+            # For now, return the direct endpoint URL (works if bucket is public)
+            elif settings.S3_ENDPOINT_URL:
+                # Extract account ID from endpoint
+                # https://817fde014b86ba18d60b1820218aece1.r2.cloudflarestorage.com
+                base_url = settings.S3_ENDPOINT_URL.rstrip('/')
+                return f"{base_url}/{self.bucket_name}/{object_key}"
+
+        # For MinIO or custom endpoints
         if settings.S3_ENDPOINT_URL:
-            # For MinIO or custom endpoints
             base_url = settings.S3_ENDPOINT_URL.rstrip('/')
             return f"{base_url}/{self.bucket_name}/{object_key}"
-        else:
-            # For AWS S3
-            return f"https://{self.bucket_name}.s3.{settings.AWS_REGION}.amazonaws.com/{object_key}"
+
+        # For AWS S3
+        return f"https://{self.bucket_name}.s3.{settings.AWS_REGION}.amazonaws.com/{object_key}"
 
     def generate_presigned_url(self, object_key: str, expiration: int = 3600) -> str:
         """
@@ -152,15 +174,16 @@ class S3Storage:
 
     async def list_files(self, prefix: str = '') -> list:
         """
-        List files in S3 bucket with optional prefix
+        List files in S3/R2 bucket with optional prefix
         """
         try:
             loop = asyncio.get_event_loop()
             response = await loop.run_in_executor(
                 None,
-                self.s3_client.list_objects_v2,
-                self.bucket_name,
-                prefix
+                lambda: self.s3_client.list_objects_v2(
+                    Bucket=self.bucket_name,
+                    Prefix=prefix
+                )
             )
 
             files = []
@@ -175,5 +198,5 @@ class S3Storage:
             return files
 
         except ClientError as e:
-            logger.error(f"S3 list failed: {str(e)}")
+            logger.error(f"Storage list failed: {str(e)}")
             return []

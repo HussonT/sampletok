@@ -26,7 +26,20 @@
       "WebFetch(domain:www.inngest.com)",
       "Bash(awk:*)",
       "Bash(kill:*)",
-      "mcp__linear-server__create_comment"
+      "mcp__linear-server__create_comment",
+      "Bash(alembic revision:*)",
+      "Bash(alembic upgrade:*)",
+      "Bash(ffmpeg:*)",
+      "Bash(yt-dlp:*)",
+      "Read(//private/tmp/**)",
+      "Read(//Users/tomhusson/Library/**)",
+      "Bash(alembic:*)",
+      "Bash(ls:*)",
+      "Bash(npm install:*)",
+      "Read(//Users/tomhusson/**)",
+      "Bash(python3:*)",
+      "Bash(brew services start:*)",
+      "Bash(psql:*)"
     ],
     "deny": [],
     "ask": []

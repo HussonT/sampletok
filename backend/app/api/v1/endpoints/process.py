@@ -41,9 +41,12 @@ async def process_tiktok_url(
     normalized_url = TikTokURLValidator.normalize_url(url_str)
 
     # Check if URL already exists in database
-    query = select(Sample).where(Sample.tiktok_url == normalized_url)
+    # Use first() to handle multiple results and get the most recent one
+    query = select(Sample).where(
+        Sample.tiktok_url == normalized_url
+    ).order_by(Sample.created_at.desc())
     result = await db.execute(query)
-    existing_sample = result.scalar_one_or_none()
+    existing_sample = result.scalars().first()
 
     if existing_sample:
         if existing_sample.status == ProcessingStatus.COMPLETED:
