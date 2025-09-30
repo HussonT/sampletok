@@ -1,14 +1,15 @@
 'use client';
 
-import React, { useState, useMemo, useTransition, useOptimistic } from 'react';
+import React, { useState, useMemo, useTransition, useOptimistic, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { SimpleSidebar } from '@/components/features/simple-sidebar';
 import { SearchFilters } from '@/components/features/search-filters';
 import { SoundsTable } from '@/components/features/sounds-table';
+import { ProcessingQueue, ProcessingTask } from '@/components/features/processing-queue';
 import { BottomPlayer } from '@/components/features/bottom-player';
 import { Download, Music } from 'lucide-react';
-import { Sample, SampleFilters } from '@/types/api';
-import { processTikTokUrl, deleteSample } from '@/actions/samples';
+import { Sample, SampleFilters, ProcessingStatus } from '@/types/api';
+import { processTikTokUrl, deleteSample, getProcessingStatus } from '@/actions/samples';
 import { toast } from 'sonner';
 import { Toaster } from '@/components/ui/sonner';
 
@@ -21,10 +22,6 @@ interface MainAppProps {
 export default function MainApp({ initialSamples, totalSamples, currentFilters }: MainAppProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
-  const [optimisticSamples, addOptimisticSample] = useOptimistic(
-    initialSamples,
-    (state, newSample: Sample) => [newSample, ...state]
-  );
   const [samples, setSamples] = useState<Sample[]>(initialSamples);
   const [currentSample, setCurrentSample] = useState<Sample | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -36,6 +33,102 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
   const [sortBy, setSortBy] = useState('recent');
   const [downloadedSamples, setDownloadedSamples] = useState<Set<string>>(new Set());
   const [credits, setCredits] = useState(10);
+  const [processingTasks, setProcessingTasks] = useState<Map<string, ProcessingTask>>(new Map());
+
+  // Update samples when initialSamples changes (from server refresh)
+  useEffect(() => {
+    setSamples(initialSamples);
+  }, [initialSamples]);
+
+  // Add a new processing task
+  const addProcessingTask = useCallback((taskId: string, url: string) => {
+    const newTask: ProcessingTask = {
+      taskId,
+      url,
+      status: ProcessingStatus.PENDING,
+      message: 'Queued for processing...',
+      progress: 0
+    };
+    setProcessingTasks(prev => new Map(prev).set(taskId, newTask));
+  }, []);
+
+  // Update processing task status
+  const updateProcessingTask = useCallback((taskId: string, updates: Partial<ProcessingTask>) => {
+    setProcessingTasks(prev => {
+      const newMap = new Map(prev);
+      const existing = newMap.get(taskId);
+      if (existing) {
+        newMap.set(taskId, { ...existing, ...updates });
+      }
+      return newMap;
+    });
+  }, []);
+
+  // Remove processing task
+  const removeProcessingTask = useCallback((taskId: string) => {
+    setProcessingTasks(prev => {
+      const newMap = new Map(prev);
+      newMap.delete(taskId);
+      return newMap;
+    });
+  }, []);
+
+  // Poll for processing status
+  useEffect(() => {
+    if (processingTasks.size === 0) return;
+
+    const pollStatus = async () => {
+      const currentTasks = Array.from(processingTasks.entries());
+
+      for (const [taskId, task] of currentTasks) {
+        // Only poll if still processing
+        if (task.status === ProcessingStatus.PENDING || task.status === ProcessingStatus.PROCESSING) {
+          try {
+            const statusData = await getProcessingStatus(taskId);
+
+            if (statusData) {
+              updateProcessingTask(taskId, {
+                status: statusData.status,
+                message: statusData.message,
+                progress: statusData.progress
+              });
+
+              // If completed, immediately refresh to show the new sample
+              if (statusData.status === ProcessingStatus.COMPLETED) {
+                // Aggressive refresh: Call router.refresh multiple times if needed
+                router.refresh();
+
+                // Also manually trigger a re-fetch after a short delay
+                setTimeout(() => {
+                  router.refresh();
+                }, 500);
+
+                // Remove task after showing success
+                setTimeout(() => {
+                  removeProcessingTask(taskId);
+                }, 3000); // Show success for 3 seconds
+              } else if (statusData.status === ProcessingStatus.FAILED) {
+                // Show error for longer
+                setTimeout(() => {
+                  removeProcessingTask(taskId);
+                }, 5000);
+              }
+            }
+          } catch (error) {
+            console.error('Failed to poll status for task', taskId, error);
+          }
+        }
+      }
+    };
+
+    // Initial poll
+    pollStatus();
+
+    // Set up interval
+    const interval = setInterval(pollStatus, 2000); // Poll every 2 seconds
+
+    return () => clearInterval(interval);
+  }, [processingTasks.size]); // Only recreate when the SIZE changes, not the map itself
 
   const filteredSamples = useMemo(() => {
     let filtered = [...samples];
@@ -71,7 +164,7 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
     if (selectedVideoType !== 'all') {
       filtered = filtered.filter(sample => {
         const videoTypes = ['viral', 'inspirational', 'funny', 'dance', 'trending', 'motivational', 'lifestyle', 'educational'];
-        const sampleVideoType = videoTypes[sample.creatorUsername.charCodeAt(0) % videoTypes.length];
+        const sampleVideoType = videoTypes[(sample.creator_username || 'a').charCodeAt(0) % videoTypes.length];
         return sampleVideoType === selectedVideoType;
       });
     }
@@ -104,7 +197,7 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
   const handleSampleDownload = (sample: Sample) => {
     if (downloadedSamples.has(sample.id)) {
       toast.success('Download started!', {
-        description: `Downloading ${sample.creatorUsername} sample as WAV`,
+        description: `Downloading ${sample.creator_username} sample as WAV`,
       });
     } else {
       if (credits <= 0) {
@@ -179,6 +272,12 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
           </div>
         </div>
 
+        {/* Processing Queue */}
+        <ProcessingQueue
+          tasks={Array.from(processingTasks.values())}
+          onRemoveTask={removeProcessingTask}
+        />
+
         {/* Filters */}
         {activeSection === 'browse' && (
           <SearchFilters
@@ -193,6 +292,7 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
             sortBy={sortBy}
             onSortChange={setSortBy}
             resultCount={filteredSamples.length}
+            onProcessingStarted={addProcessingTask}
           />
         )}
 

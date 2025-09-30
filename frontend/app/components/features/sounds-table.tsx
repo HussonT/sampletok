@@ -157,7 +157,7 @@ export function SoundsTable({
                   </div>
                 </td>
                 <td className="py-3 px-4 text-sm text-muted-foreground">
-                  {formatDuration(sample.duration)}
+                  {formatDuration(sample.duration_seconds || 0)}
                 </td>
                 <td className="py-3 px-4 text-sm">
                   {getKey(sample)}

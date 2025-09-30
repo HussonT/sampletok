@@ -18,7 +18,11 @@ import { toast } from 'sonner';
 import { Loader2, Plus, Link2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
-export function AddSampleDialog() {
+interface AddSampleDialogProps {
+  onProcessingStarted?: (taskId: string, url: string) => void;
+}
+
+export function AddSampleDialog({ onProcessingStarted }: AddSampleDialogProps) {
   const [open, setOpen] = useState(false);
   const [url, setUrl] = useState('');
   const [isPending, startTransition] = useTransition();
@@ -35,14 +39,17 @@ export function AddSampleDialog() {
     startTransition(async () => {
       const result = await processTikTokUrl(url);
 
-      if (result.success) {
+      if (result.success && result.data) {
+        // Immediately add to processing tasks for optimistic UI
+        if (onProcessingStarted && result.data.task_id) {
+          onProcessingStarted(result.data.task_id, url);
+        }
+
         toast.success('Processing started!', {
-          description: 'Your TikTok video is being processed. It will appear in your library soon.',
+          description: 'Watch the progress in real-time below.',
         });
         setUrl('');
         setOpen(false);
-        // The page will automatically refresh due to revalidatePath in the server action
-        router.refresh();
       } else {
         toast.error('Failed to process URL', {
           description: result.error,

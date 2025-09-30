@@ -26,6 +26,7 @@ interface SearchFiltersProps {
   sortBy: string;
   onSortChange: (sort: string) => void;
   resultCount: number;
+  onProcessingStarted?: (taskId: string, url: string) => void;
 }
 
 export function SearchFilters({
@@ -39,7 +40,8 @@ export function SearchFilters({
   onVideoTypeChange,
   sortBy,
   onSortChange,
-  resultCount
+  resultCount,
+  onProcessingStarted
 }: SearchFiltersProps) {
   const popularGenres = [
     'house', 'hip hop', 'drill', 'pop', 'rnb', 'techno', 'trap'
@@ -121,7 +123,7 @@ export function SearchFilters({
             </SelectContent>
           </Select>
 
-          <AddSampleDialog />
+          <AddSampleDialog onProcessingStarted={onProcessingStarted} />
         </div>
 
         {/* Popular Genres */}

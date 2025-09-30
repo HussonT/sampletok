@@ -18,7 +18,7 @@ export const getSamples = unstable_cache(
 
     const response = await fetch(url, {
       next: {
-        revalidate: 30, // Revalidate every 30 seconds
+        revalidate: 5, // Revalidate every 5 seconds for fresh data
         tags: ['samples']
       }
     });
@@ -31,7 +31,7 @@ export const getSamples = unstable_cache(
   },
   ['samples'], // Cache key
   {
-    revalidate: 30,
+    revalidate: 5,
     tags: ['samples']
   }
 );
