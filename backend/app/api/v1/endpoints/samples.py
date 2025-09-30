@@ -28,21 +28,31 @@ async def get_samples(
     """Get all samples with optional filtering"""
     query = select(Sample)
 
-    # Filter out samples without essential data
+    # Filter out samples without essential data - only show completed, playable samples
     query = query.where(
+        # Must have essential metadata
         Sample.creator_username.isnot(None),
         Sample.creator_username != '',
         Sample.title.isnot(None),
-        Sample.title != ''
+        Sample.title != '',
+        # Must have playable audio file
+        Sample.audio_url_mp3.isnot(None),
+        Sample.audio_url_mp3 != '',
+        # Must have waveform for UI display
+        Sample.waveform_url.isnot(None),
+        Sample.waveform_url != ''
     )
 
-    # Apply filters
+    # Apply status filter - default to COMPLETED only
     if status:
         try:
             status_enum = ProcessingStatus[status.upper()]
             query = query.where(Sample.status == status_enum)
         except KeyError:
             raise HTTPException(status_code=400, detail=f"Invalid status: {status}")
+    else:
+        # By default, only show completed samples
+        query = query.where(Sample.status == ProcessingStatus.COMPLETED)
 
     if genre:
         query = query.where(Sample.genre == genre)

@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     S3_BUCKET_NAME: str = "sampletok-samples"
     S3_ENDPOINT_URL: Optional[str] = None
 
+    # R2-specific (Cloudflare)
+    R2_PUBLIC_DOMAIN: Optional[str] = None  # Custom domain for R2 public access
+    CLOUDFLARE_TOKEN: Optional[str] = None
+
     # JWT
     JWT_SECRET_KEY: str
     JWT_ALGORITHM: str = "HS256"
