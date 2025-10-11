@@ -33,13 +33,18 @@ class Sample(Base):
     # TikTok metadata
     tiktok_url = Column(String, nullable=False, index=True)
     tiktok_id = Column(String, unique=True, index=True)
+    aweme_id = Column(String, unique=True, index=True)  # TikTok's internal ID
+    title = Column(String)  # Separate title field
+    region = Column(String)  # Country/region code
     creator_username = Column(String, index=True)
     creator_name = Column(String)
+    creator_avatar_url = Column(String)  # Creator's profile picture (keeping for backward compatibility)
     description = Column(Text)
     view_count = Column(Integer, default=0)
     like_count = Column(Integer, default=0)
     share_count = Column(Integer, default=0)
     comment_count = Column(Integer, default=0)
+    upload_timestamp = Column(Integer)  # Unix timestamp from TikTok
 
     # Audio metadata
     duration_seconds = Column(Float)
@@ -53,6 +58,10 @@ class Sample(Base):
     audio_url_mp3 = Column(String)
     waveform_url = Column(String)
     thumbnail_url = Column(String)
+    origin_cover_url = Column(String)  # Original cover image
+    music_url = Column(String)  # Original audio track URL
+    video_url = Column(String)  # No-watermark video URL
+    video_url_watermark = Column(String)  # Watermarked video URL
     file_size_wav = Column(Integer)
     file_size_mp3 = Column(Integer)
 
@@ -64,13 +73,18 @@ class Sample(Base):
     # User who added the sample
     creator_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=True)
 
+    # TikTok creator relationship
+    tiktok_creator_id = Column(UUID(as_uuid=True), ForeignKey('tiktok_creators.id'), nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
     creator = relationship("User", back_populates="samples", foreign_keys=[creator_id])
+    tiktok_creator = relationship("TikTokCreator", back_populates="samples")
     downloaded_by = relationship(
         "User",
         secondary=user_samples,
         back_populates="downloaded_samples"
     )
+    

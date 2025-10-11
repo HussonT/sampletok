@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
+from sqlalchemy.orm import selectinload
 from typing import List, Optional
 from uuid import UUID
 
@@ -28,13 +29,31 @@ async def get_samples(
     """Get all samples with optional filtering"""
     query = select(Sample)
 
-    # Apply filters
+    # Filter out samples without essential data - only show completed, playable samples
+    query = query.where(
+        # Must have essential metadata
+        Sample.creator_username.isnot(None),
+        Sample.creator_username != '',
+        Sample.title.isnot(None),
+        Sample.title != '',
+        # Must have playable audio file
+        Sample.audio_url_mp3.isnot(None),
+        Sample.audio_url_mp3 != '',
+        # Must have waveform for UI display
+        Sample.waveform_url.isnot(None),
+        Sample.waveform_url != ''
+    )
+
+    # Apply status filter - default to COMPLETED only
     if status:
         try:
             status_enum = ProcessingStatus[status.upper()]
             query = query.where(Sample.status == status_enum)
         except KeyError:
             raise HTTPException(status_code=400, detail=f"Invalid status: {status}")
+    else:
+        # By default, only show completed samples
+        query = query.where(Sample.status == ProcessingStatus.COMPLETED)
 
     if genre:
         query = query.where(Sample.genre == genre)
@@ -50,8 +69,8 @@ async def get_samples(
     result = await db.execute(count_query)
     total = result.scalar_one()
 
-    # Apply pagination
-    query = query.offset(skip).limit(limit).order_by(Sample.created_at.desc())
+    # Apply pagination and eager load creator
+    query = query.options(selectinload(Sample.tiktok_creator)).offset(skip).limit(limit).order_by(Sample.created_at.desc())
 
     # Execute query
     result = await db.execute(query)
@@ -75,7 +94,7 @@ async def get_sample(
     db: AsyncSession = Depends(get_db)
 ):
     """Get a specific sample by ID"""
-    query = select(Sample).where(Sample.id == sample_id)
+    query = select(Sample).options(selectinload(Sample.tiktok_creator)).where(Sample.id == sample_id)
     result = await db.execute(query)
     sample = result.scalar_one_or_none()
 

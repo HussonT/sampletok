@@ -1,7 +1,8 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Play, Pause, ExternalLink, Users, Download } from 'lucide-react';
-import { Sample } from '@/data/mock-samples';
+import { Sample } from '@/types/api';
+import { CreatorHoverCard } from '@/components/features/creator-hover-card';
 
 interface SoundsTableProps {
   samples: Sample[];
@@ -35,7 +36,7 @@ export function SoundsTable({
     const keys = ['C#', 'D', 'D#', 'F', 'F#', 'G', 'G#', 'A'];
     const modes = ['maj', 'min'];
     const keyIndex = sample.id.charCodeAt(0) % keys.length;
-    const modeIndex = sample.creatorUsername.charCodeAt(0) % modes.length;
+    const modeIndex = (sample.creator_username || 'A').charCodeAt(0) % modes.length;
     return `${keys[keyIndex]} ${modes[modeIndex]}`;
   };
 
@@ -43,7 +44,7 @@ export function SoundsTable({
     if (count >= 1000000) {
       return `${(count / 1000000).toFixed(1)}M followers`;
     } else if (count >= 1000) {
-      return `${(count / 1000).toFixed(1)}K followers`;
+      return `${(count / 1000).toFixed(0)}k followers`;
     }
     return `${count} followers`;
   };
@@ -60,8 +61,8 @@ export function SoundsTable({
 
   const handleDownload = (sample: Sample) => {
     const link = document.createElement('a');
-    link.href = sample.audioUrl;
-    link.download = `${sample.creatorUsername}_${sample.id}.mp3`;
+    link.href = sample.audio_url_mp3 || sample.audio_url_wav || '#';
+    link.download = `${sample.creator_username || 'unknown'}_${sample.id}.mp3`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -113,25 +114,45 @@ export function SoundsTable({
                 <td className="py-3 px-4">
                   <div className="space-y-1">
                     <div className="text-sm font-medium text-foreground">
-                      {sample.description.slice(0, 30)}...
+                      {sample.description ? `${sample.description.slice(0, 30)}...` : 'No description'}
                     </div>
-                    <div className="flex gap-2">
-                      {getCategories(sample).map((cat) => (
-                        <span key={cat} className="bg-secondary text-secondary-foreground px-2 py-0.5 rounded text-xs">
-                          {cat}
-                        </span>
-                      ))}
+                    <div className="flex items-center gap-3">
+                      <div className="flex gap-2">
+                        {getCategories(sample).map((cat) => (
+                          <span key={cat} className="bg-secondary text-secondary-foreground px-2 py-0.5 rounded text-xs">
+                            {cat}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <Users className="w-3 h-3" />
+                        <span>{sample.view_count ? `${(sample.view_count / 1000).toFixed(0)}k views` : '0 views'}</span>
+                      </div>
                     </div>
                   </div>
                 </td>
                 <td className="py-3 px-4">
-                  <div className="space-y-1">
-                    <div className="text-sm font-medium">@{sample.creatorUsername}</div>
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                      <Users className="w-3 h-3" />
-                      <span>{formatFollowers(sample.followerCount)}</span>
+                  {sample.tiktok_creator ? (
+                    <CreatorHoverCard creator={sample.tiktok_creator}>
+                      <div className="space-y-1 cursor-pointer">
+                        <div className="text-sm font-medium hover:text-primary transition-colors">
+                          @{sample.tiktok_creator.username}
+                        </div>
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <Users className="w-3 h-3" />
+                          <span>{formatFollowers(sample.tiktok_creator.follower_count)}</span>
+                        </div>
+                      </div>
+                    </CreatorHoverCard>
+                  ) : (
+                    <div className="space-y-1">
+                      <div className="text-sm font-medium">@{sample.creator_username || 'unknown'}</div>
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <Users className="w-3 h-3" />
+                        <span>0 followers</span>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </td>
                 <td className="py-3 px-4">
                   <div className="w-24 h-8">
@@ -157,7 +178,7 @@ export function SoundsTable({
                   </div>
                 </td>
                 <td className="py-3 px-4 text-sm text-muted-foreground">
-                  {formatDuration(sample.duration)}
+                  {formatDuration(sample.duration_seconds || 0)}
                 </td>
                 <td className="py-3 px-4 text-sm">
                   {getKey(sample)}
@@ -167,7 +188,7 @@ export function SoundsTable({
                 </td>
                 <td className="py-3 px-4">
                   <a
-                    href={sample.tiktokUrl}
+                    href={sample.tiktok_url || '#'}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-primary hover:text-primary/80 underline text-sm flex items-center gap-1"
