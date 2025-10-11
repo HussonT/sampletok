@@ -1,6 +1,6 @@
 # Utility Scripts
 
-This folder contains utility scripts for managing and testing the SampleTok backend.
+This folder contains production utility scripts for managing the SampleTok backend.
 
 ## Quick Usage
 
@@ -14,7 +14,19 @@ python scripts/script_name.py [args]
 scripts/run.sh script_name [args]
 ```
 
-## Cleanup Scripts
+## Available Scripts
+
+### `backfill_creators.py`
+Backfill creator information for existing samples that don't have linked TikTok creator records.
+
+```bash
+python scripts/backfill_creators.py
+```
+
+This script will:
+- Find samples with creator usernames but no creator link
+- Fetch creator info from TikTok API (with caching)
+- Link samples to creator records
 
 ### `cleanup_orphaned_samples.py`
 Clean up incomplete/orphaned sample records from the database.
@@ -40,81 +52,31 @@ Clean up duplicate sample records.
 python scripts/cleanup_duplicates.py
 ```
 
-## Database Management
+## Testing
 
-### `check_db.py`
-Check database connection and status.
+All tests have been moved to the `tests/` directory and use pytest.
 
-```bash
-python scripts/check_db.py
-```
-
-### `check_sample_details.py`
-View detailed information about samples in the database.
+Run tests with:
 
 ```bash
-python scripts/check_sample_details.py
+# Run all tests
+pytest
+
+# Run specific test file
+pytest tests/test_api.py
+
+# Run with coverage
+pytest --cov=app tests/
+
+# Run with verbose output
+pytest -v
 ```
 
-### `add_sample.py`
-Manually add a sample to the database.
-
-```bash
-python scripts/add_sample.py
-```
-
-## Storage/R2 Management
-
-### `check_minio.py`
-Check MinIO/S3 connection and bucket status.
-
-```bash
-python scripts/check_minio.py
-```
-
-### `test_r2_connection.py`
-Test connection to Cloudflare R2.
-
-```bash
-python scripts/test_r2_connection.py
-```
-
-### `create_bucket.py`
-Create S3/R2 bucket if it doesn't exist.
-
-```bash
-python scripts/create_bucket.py
-```
-
-## Testing Scripts
-
-### `test_api.py`
-Test API endpoints.
-
-```bash
-python scripts/test_api.py
-```
-
-### `test_rapidapi.py`
-Test RapidAPI TikTok integration.
-
-```bash
-python scripts/test_rapidapi.py
-```
-
-### `test_full_pipeline.py`
-Test the complete TikTok processing pipeline.
-
-```bash
-python scripts/test_full_pipeline.py
-```
-
-### `test_function_direct.py`
-Test Inngest functions directly.
-
-```bash
-python scripts/test_function_direct.py
-```
+Available test suites:
+- `tests/test_api.py` - API endpoint tests
+- `tests/test_rapidapi.py` - TikTok downloader integration tests
+- `tests/test_storage.py` - S3/R2 storage tests
+- `tests/test_pipeline.py` - Full processing pipeline integration tests
 
 ## Notes
 
