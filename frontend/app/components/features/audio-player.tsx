@@ -3,21 +3,23 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
 import { Badge } from '@/components/ui/badge';
-import { 
-  Play, 
-  Pause, 
-  SkipBack, 
-  SkipForward, 
-  Volume2, 
+import {
+  Play,
+  Pause,
+  SkipBack,
+  SkipForward,
+  Volume2,
   VolumeX,
   Download,
-  ExternalLink 
+  ExternalLink
 } from 'lucide-react';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 
 interface Sample {
   id: string;
   tiktokUrl: string;
   creatorUsername: string;
+  creatorAvatarUrl?: string;
   viewCount: number;
   description: string;
   duration: number;
@@ -107,6 +109,12 @@ export function AudioPlayer({
         <div className="p-4">
           {/* Sample Info */}
           <div className="flex items-center gap-4 mb-3">
+            <Avatar className="w-12 h-12 shrink-0">
+              <AvatarImage src={sample.creatorAvatarUrl} alt={sample.creatorUsername} />
+              <AvatarFallback>
+                {sample.creatorUsername.substring(0, 2).toUpperCase()}
+              </AvatarFallback>
+            </Avatar>
             <div className="flex-1 min-w-0">
               <p className="truncate font-medium text-foreground">@{sample.creatorUsername}</p>
               <p className="text-xs text-muted-foreground truncate">
