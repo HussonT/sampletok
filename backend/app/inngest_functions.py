@@ -27,6 +27,30 @@ inngest_client = inngest.Inngest(
     is_production=settings.ENVIRONMENT == "production"
 )
 
+# Create a single sync database engine at module level to avoid connection pool exhaustion
+_sync_engine = None
+_sync_session_factory = None
+
+def get_sync_db():
+    """Get or create sync database engine and session factory"""
+    global _sync_engine, _sync_session_factory
+
+    if _sync_engine is None:
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+
+        # Use sync database connection - replace asyncpg with psycopg2
+        sync_db_url = settings.DATABASE_URL.replace("postgresql+asyncpg", "postgresql")
+        _sync_engine = create_engine(
+            sync_db_url,
+            pool_pre_ping=True,  # Verify connections before using
+            pool_size=5,         # Connection pool size
+            max_overflow=10      # Max connections beyond pool_size
+        )
+        _sync_session_factory = sessionmaker(autocommit=False, autoflush=False, bind=_sync_engine)
+
+    return _sync_session_factory
+
 
 @inngest_client.create_function(
     fn_id="process-tiktok-video",
@@ -121,13 +145,7 @@ def process_tiktok_video(ctx: inngest.Context) -> Dict[str, Any]:
 def update_sample_status_sync(sample_id: str, status: ProcessingStatus) -> None:
     """Update sample processing status in database (sync wrapper)"""
     try:
-        from sqlalchemy import create_engine
-        from sqlalchemy.orm import sessionmaker
-
-        # Use sync database connection - replace asyncpg with psycopg2
-        sync_db_url = settings.DATABASE_URL.replace("postgresql+asyncpg", "postgresql")
-        engine = create_engine(sync_db_url)
-        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        SessionLocal = get_sync_db()
 
         with SessionLocal() as db:
             query = select(Sample).where(Sample.id == uuid.UUID(sample_id))
@@ -137,12 +155,19 @@ def update_sample_status_sync(sample_id: str, status: ProcessingStatus) -> None:
             db.commit()
             logger.info(f"Updated sample {sample_id} status to {status.value}")
     except Exception as e:
-        logger.error(f"Error updating sample status: {e}")
+        logger.exception(f"Error updating sample {sample_id} status: {e}")
         raise
 
 
 def download_tiktok_video_sync(url: str, sample_id: str) -> Dict[str, Any]:
-    """Download TikTok video and extract metadata (sync wrapper)"""
+    """
+    Download TikTok video and extract metadata (sync wrapper)
+
+    Note: This function uses asyncio.run() to wrap async operations because Inngest
+    functions must be synchronous. Each call creates a new event loop, but this is
+    acceptable for background job processing. The module-level database engine
+    with connection pooling mitigates the overhead of multiple async runs.
+    """
     async def _download():
         # Use a persistent temp directory for this sample
         temp_dir = Path(tempfile.gettempdir()) / f"sampletok_{sample_id}"
@@ -168,7 +193,7 @@ def download_tiktok_video_sync(url: str, sample_id: str) -> Dict[str, Any]:
                         else:
                             logger.warning(f"Could not fetch creator info for @{creator_username}")
                 except Exception as e:
-                    logger.warning(f"Failed to get/fetch creator: {e}")
+                    logger.exception(f"Failed to get/fetch creator @{creator_username}: {e}")
                     # Continue without creator link
 
             logger.info(f"Downloaded video: {metadata.get('aweme_id')} to {temp_dir}")
@@ -255,13 +280,7 @@ def cleanup_temp_files_sync(temp_dir: str) -> None:
 def update_sample_complete_sync(data: Dict[str, Any]) -> None:
     """Update sample with processing results (sync wrapper)"""
     try:
-        from sqlalchemy import create_engine
-        from sqlalchemy.orm import sessionmaker
-
-        # Use sync database connection - replace asyncpg with psycopg2
-        sync_db_url = settings.DATABASE_URL.replace("postgresql+asyncpg", "postgresql")
-        engine = create_engine(sync_db_url)
-        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        SessionLocal = get_sync_db()
 
         with SessionLocal() as db:
             sample_id = data["sample_id"]
@@ -310,7 +329,7 @@ def update_sample_complete_sync(data: Dict[str, Any]) -> None:
             db.commit()
             logger.info(f"Sample {sample_id} processing completed successfully")
     except Exception as e:
-        logger.error(f"Error updating sample complete: {e}")
+        logger.exception(f"Error updating sample {sample_id} complete: {e}")
         raise
 
 
@@ -326,13 +345,7 @@ def handle_processing_error(ctx: inngest.Context) -> None:
     error_message = event_data.get("error", "Unknown error occurred")
 
     def update_failed_status():
-        from sqlalchemy import create_engine
-        from sqlalchemy.orm import sessionmaker
-
-        # Use sync database connection - replace asyncpg with psycopg2
-        sync_db_url = settings.DATABASE_URL.replace("postgresql+asyncpg", "postgresql")
-        engine = create_engine(sync_db_url)
-        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        SessionLocal = get_sync_db()
 
         with SessionLocal() as db:
             query = select(Sample).where(Sample.id == uuid.UUID(sample_id))
@@ -343,7 +356,7 @@ def handle_processing_error(ctx: inngest.Context) -> None:
             sample.error_message = error_message
 
             db.commit()
-            logger.error(f"Sample {sample_id} processing failed: {error_message}")
+            logger.exception(f"Sample {sample_id} processing failed: {error_message}")
 
     ctx.step.run("mark-as-failed", update_failed_status)
 
