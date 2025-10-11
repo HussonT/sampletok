@@ -23,21 +23,16 @@ export function SoundsTable({
 
   const formatDuration = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toFixed(1)}`;
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const formatBPM = (sample: Sample): number => {
-    const idCode = sample.id.charCodeAt(0) || 65;
-    return 100 + (idCode % 50);
+  const formatBPM = (sample: Sample): string => {
+    return sample.bpm ? sample.bpm.toString() : '--';
   };
 
   const getKey = (sample: Sample): string => {
-    const keys = ['C#', 'D', 'D#', 'F', 'F#', 'G', 'G#', 'A'];
-    const modes = ['maj', 'min'];
-    const keyIndex = sample.id.charCodeAt(0) % keys.length;
-    const modeIndex = (sample.creator_username || 'A').charCodeAt(0) % modes.length;
-    return `${keys[keyIndex]} ${modes[modeIndex]}`;
+    return sample.key || '--';
   };
 
   const formatFollowers = (count: number): string => {

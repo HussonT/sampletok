@@ -11,6 +11,7 @@ from typing import Dict, Any
 from app.core.config import settings
 from app.services.tiktok.downloader import TikTokDownloader
 from app.services.audio.processor import AudioProcessor
+from app.services.audio.analyzer import AudioAnalyzer
 from app.services.storage.s3 import S3Storage
 from app.models import Sample, ProcessingStatus, TikTokCreator
 from app.core.database import AsyncSessionLocal
@@ -37,8 +38,9 @@ async def process_tiktok_video(ctx: inngest.Context) -> Dict[str, Any]:
     1. Download video from TikTok
     2. Extract audio (WAV and MP3)
     3. Generate waveform visualization
-    4. Upload files to storage
-    5. Update database with results
+    4. Analyze audio features (BPM, key detection)
+    5. Upload files to storage
+    6. Update database with results
     """
     event_data = ctx.event.data
     sample_id = event_data.get("sample_id")
@@ -78,7 +80,14 @@ async def process_tiktok_video(ctx: inngest.Context) -> Dict[str, Any]:
         video_metadata["temp_dir"]
     )
 
-    # Step 5: Upload all files to storage
+    # Step 5: Analyze audio features (BPM, key detection)
+    audio_analysis = await ctx.step.run(
+        "analyze-audio-features",
+        analyze_audio_features,
+        audio_files["wav"]
+    )
+
+    # Step 6: Upload all files to storage
     uploaded_urls = await ctx.step.run(
         "upload-files",
         upload_to_storage,
@@ -90,18 +99,20 @@ async def process_tiktok_video(ctx: inngest.Context) -> Dict[str, Any]:
         }
     )
 
-    # Step 6: Update database with results
+    # Step 7: Update database with results
     await ctx.step.run(
         "update-database",
         update_sample_complete,
         {
             "sample_id": sample_id,
             "metadata": video_metadata,
-            "urls": uploaded_urls
+            "urls": uploaded_urls,
+            "analysis": audio_analysis,
+            "audio_metadata": audio_files.get("metadata", {})
         }
     )
 
-    # Step 7: Clean up temp files
+    # Step 8: Clean up temp files
     await ctx.step.run(
         "cleanup-temp-files",
         cleanup_temp_files,
@@ -171,13 +182,21 @@ async def download_tiktok_video(url: str, sample_id: str) -> Dict[str, Any]:
         raise
 
 
-async def extract_audio_from_video(video_path: str, temp_dir: str) -> Dict[str, str]:
-    """Extract audio from video file"""
+async def extract_audio_from_video(video_path: str, temp_dir: str) -> Dict[str, Any]:
+    """Extract audio from video file and get metadata"""
     # Use the same temp directory from download step
     processor = AudioProcessor()
     audio_paths = await processor.extract_audio(video_path, temp_dir)
-    logger.info(f"Extracted audio: WAV and MP3 created in {temp_dir}")
-    return audio_paths
+
+    # Get audio metadata (duration, sample rate, etc.)
+    audio_metadata = await processor.get_audio_metadata(audio_paths["wav"])
+
+    logger.info(f"Extracted audio: WAV and MP3 created in {temp_dir}, duration={audio_metadata.get('duration'):.1f}s")
+
+    return {
+        **audio_paths,
+        "metadata": audio_metadata
+    }
 
 
 async def generate_waveform(audio_path: str, temp_dir: str) -> str:
@@ -187,6 +206,27 @@ async def generate_waveform(audio_path: str, temp_dir: str) -> str:
     waveform_path = await processor.generate_waveform(audio_path, temp_dir)
     logger.info(f"Generated waveform visualization in {temp_dir}")
     return waveform_path
+
+
+async def analyze_audio_features(audio_path: str) -> Dict[str, Any]:
+    """
+    Analyze audio file to extract musical features
+    Returns dict with BPM, key, scale, and confidence scores
+    """
+    try:
+        analyzer = AudioAnalyzer()
+        analysis = await analyzer.analyze_audio(audio_path)
+        logger.info(f"Audio analysis complete: BPM={analysis.get('bpm')}, Key={analysis.get('key')} {analysis.get('scale')}")
+        return analysis
+    except Exception as e:
+        logger.error(f"Error during audio analysis: {str(e)}")
+        # Return empty analysis on failure - don't fail the entire pipeline
+        return {
+            'bpm': None,
+            'key': None,
+            'scale': None,
+            'key_confidence': None
+        }
 
 
 async def upload_to_storage(data: Dict[str, str]) -> Dict[str, str]:
@@ -237,6 +277,8 @@ async def update_sample_complete(data: Dict[str, Any]) -> None:
             sample_id = data["sample_id"]
             metadata = data["metadata"]
             urls = data["urls"]
+            analysis = data.get("analysis", {})
+            audio_metadata = data.get("audio_metadata", {})
 
             query = select(Sample).where(Sample.id == uuid.UUID(sample_id))
             result = await db.execute(query)
@@ -255,13 +297,23 @@ async def update_sample_complete(data: Dict[str, Any]) -> None:
             sample.like_count = metadata.get("like_count", 0)
             sample.comment_count = metadata.get("comment_count", 0)
             sample.share_count = metadata.get("share_count", 0)
-            sample.duration_seconds = metadata.get("duration")
+            # Use duration from audio metadata (extracted from actual audio file)
+            sample.duration_seconds = audio_metadata.get("duration", metadata.get("duration"))
             sample.thumbnail_url = metadata.get("thumbnail_url")
             sample.origin_cover_url = metadata.get("origin_cover_url")
             sample.music_url = metadata.get("music_url")
             sample.video_url = metadata.get("video_url")
             sample.video_url_watermark = metadata.get("video_url_watermark")
             sample.upload_timestamp = metadata.get("upload_timestamp")
+
+            # Update audio analysis results
+            if analysis.get("bpm"):
+                sample.bpm = analysis["bpm"]
+                logger.info(f"Set BPM: {analysis['bpm']}")
+
+            if analysis.get("key") and analysis.get("scale"):
+                sample.key = f"{analysis['key']} {analysis['scale']}"
+                logger.info(f"Set key: {sample.key}")
 
             # Update file URLs
             sample.audio_url_wav = urls["wav"]

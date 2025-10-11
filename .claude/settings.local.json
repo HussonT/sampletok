@@ -39,7 +39,8 @@
       "Read(//Users/tomhusson/**)",
       "Bash(python3:*)",
       "Bash(brew services start:*)",
-      "Bash(psql:*)"
+      "Bash(psql:*)",
+      "Bash(./venv/bin/python -c \"\n# Check octave relationships\ndetected = 130\ntarget = 90\n\nprint(f''Detected: {detected} BPM'')\nprint(f''Target: {target} BPM'')\nprint(f''Half: {detected/2:.1f} BPM'')\nprint(f''Double: {detected*2:.1f} BPM'')\nprint(f''Ratio: {detected/target:.2f}x'')\nprint()\nprint(''130 BPM is detecting a faster subdivision, not the main beat.'')\nprint(''90 BPM is likely the actual quarter-note pulse.'')\n\")"
     ],
     "deny": [],
     "ask": []

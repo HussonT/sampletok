@@ -15,6 +15,7 @@ import {
   Users
 } from 'lucide-react';
 import { Sample } from '@/types/api';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 
 interface BottomPlayerProps {
   sample?: Sample | null;
@@ -35,7 +36,17 @@ export function BottomPlayer({
 }: BottomPlayerProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(80);
+
+  // Reset current time when sample changes
+  useEffect(() => {
+    setCurrentTime(0);
+    setDuration(sample?.duration_seconds || 0);
+    if (audioRef.current) {
+      audioRef.current.currentTime = 0;
+    }
+  }, [sample?.id, sample?.duration_seconds]);
 
   useEffect(() => {
     if (audioRef.current && sample) {
@@ -58,11 +69,15 @@ export function BottomPlayer({
   const handleTimeUpdate = () => {
     if (audioRef.current) {
       setCurrentTime(audioRef.current.currentTime);
+      // If duration wasn't set from metadata, get it from the audio element
+      if (!duration && audioRef.current.duration) {
+        setDuration(audioRef.current.duration);
+      }
     }
   };
 
   const handleSeek = (value: number[]) => {
-    const time = (value[0] / 100) * (sample?.duration_seconds || 0);
+    const time = (value[0] / 100) * duration;
     if (audioRef.current) {
       audioRef.current.currentTime = time;
       setCurrentTime(time);
@@ -73,7 +88,7 @@ export function BottomPlayer({
 
   const formatDuration = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
+    const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
@@ -86,7 +101,7 @@ export function BottomPlayer({
     return count.toString();
   };
 
-  const progressPercentage = sample?.duration_seconds ? (currentTime / sample.duration_seconds) * 100 : 0;
+  const progressPercentage = duration ? (currentTime / duration) * 100 : 0;
 
   return (
     <>
@@ -103,11 +118,15 @@ export function BottomPlayer({
       <div className="flex items-center justify-between px-6 py-3">
         {/* Left - Song Info */}
         <div className="flex items-center gap-4 flex-1 min-w-0">
-          <div className="w-12 h-12 bg-gradient-to-br from-primary/20 to-primary/40 rounded flex items-center justify-center flex-shrink-0">
-            <span className="text-xs font-medium text-primary">
-              {sample.id?.slice(0, 2).toUpperCase() || 'NA'}
-            </span>
-          </div>
+          <Avatar className="w-12 h-12 flex-shrink-0 rounded-md">
+            <AvatarImage
+              src={sample.tiktok_creator?.avatar_thumb || sample.tiktok_creator?.avatar_medium || sample.creator_avatar_url}
+              alt={sample.creator_username || 'Creator'}
+            />
+            <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/40 text-primary rounded-md">
+              {sample.creator_username?.slice(0, 2).toUpperCase() || sample.id?.slice(0, 2).toUpperCase() || 'NA'}
+            </AvatarFallback>
+          </Avatar>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium text-foreground truncate">
               {sample.description}
@@ -192,12 +211,12 @@ export function BottomPlayer({
             <Slider
               value={[progressPercentage]}
               max={100}
-              step={1}
+              step={0.1}
               className="flex-1"
               onValueChange={handleSeek}
             />
             <span className="text-xs text-muted-foreground w-10">
-              {formatDuration(sample.duration_seconds || 0)}
+              {formatDuration(duration)}
             </span>
           </div>
         </div>
