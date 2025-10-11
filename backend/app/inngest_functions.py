@@ -7,7 +7,6 @@ import logging
 from pathlib import Path
 import uuid
 from typing import Dict, Any
-import asyncio
 
 from app.core.config import settings
 from app.services.tiktok.downloader import TikTokDownloader
@@ -27,37 +26,12 @@ inngest_client = inngest.Inngest(
     is_production=settings.ENVIRONMENT == "production"
 )
 
-# Create a single sync database engine at module level to avoid connection pool exhaustion
-_sync_engine = None
-_sync_session_factory = None
-
-def get_sync_db():
-    """Get or create sync database engine and session factory"""
-    global _sync_engine, _sync_session_factory
-
-    if _sync_engine is None:
-        from sqlalchemy import create_engine
-        from sqlalchemy.orm import sessionmaker
-
-        # Use sync database connection - replace asyncpg with psycopg2
-        sync_db_url = settings.DATABASE_URL.replace("postgresql+asyncpg", "postgresql")
-        _sync_engine = create_engine(
-            sync_db_url,
-            pool_pre_ping=True,  # Verify connections before using
-            pool_size=5,         # Connection pool size
-            max_overflow=10      # Max connections beyond pool_size
-        )
-        _sync_session_factory = sessionmaker(autocommit=False, autoflush=False, bind=_sync_engine)
-
-    return _sync_session_factory
-
-
 @inngest_client.create_function(
     fn_id="process-tiktok-video",
     trigger=inngest.TriggerEvent(event="tiktok/video.submitted"),
     retries=3
 )
-def process_tiktok_video(ctx: inngest.Context) -> Dict[str, Any]:
+async def process_tiktok_video(ctx: inngest.Context) -> Dict[str, Any]:
     """
     Process a TikTok video through multiple steps:
     1. Download video from TikTok
@@ -73,41 +47,41 @@ def process_tiktok_video(ctx: inngest.Context) -> Dict[str, Any]:
     logger.info(f"Processing TikTok video: {tiktok_url} for sample: {sample_id}")
 
     # Step 1: Update status to processing
-    ctx.step.run(
+    await ctx.step.run(
         "update-status-processing",
-        update_sample_status_sync,
+        update_sample_status,
         sample_id,
         ProcessingStatus.PROCESSING
     )
 
     # Step 2: Download video and get metadata
-    video_metadata = ctx.step.run(
+    video_metadata = await ctx.step.run(
         "download-video",
-        download_tiktok_video_sync,
+        download_tiktok_video,
         tiktok_url,
         sample_id
     )
 
     # Step 3: Extract audio (creates WAV and MP3)
-    audio_files = ctx.step.run(
+    audio_files = await ctx.step.run(
         "extract-audio",
-        extract_audio_from_video_sync,
+        extract_audio_from_video,
         video_metadata["video_path"],
         video_metadata["temp_dir"]
     )
 
     # Step 4: Generate waveform
-    waveform_path = ctx.step.run(
+    waveform_path = await ctx.step.run(
         "generate-waveform",
-        generate_waveform_sync,
+        generate_waveform,
         audio_files["wav"],
         video_metadata["temp_dir"]
     )
 
     # Step 5: Upload all files to storage
-    uploaded_urls = ctx.step.run(
+    uploaded_urls = await ctx.step.run(
         "upload-files",
-        upload_to_storage_sync,
+        upload_to_storage,
         {
             "sample_id": sample_id,
             "wav_path": audio_files["wav"],
@@ -117,9 +91,9 @@ def process_tiktok_video(ctx: inngest.Context) -> Dict[str, Any]:
     )
 
     # Step 6: Update database with results
-    ctx.step.run(
+    await ctx.step.run(
         "update-database",
-        update_sample_complete_sync,
+        update_sample_complete,
         {
             "sample_id": sample_id,
             "metadata": video_metadata,
@@ -128,9 +102,9 @@ def process_tiktok_video(ctx: inngest.Context) -> Dict[str, Any]:
     )
 
     # Step 7: Clean up temp files
-    ctx.step.run(
+    await ctx.step.run(
         "cleanup-temp-files",
-        cleanup_temp_files_sync,
+        cleanup_temp_files,
         video_metadata["temp_dir"]
     )
 
@@ -142,129 +116,108 @@ def process_tiktok_video(ctx: inngest.Context) -> Dict[str, Any]:
     }
 
 
-def update_sample_status_sync(sample_id: str, status: ProcessingStatus) -> None:
-    """Update sample processing status in database (sync wrapper)"""
+async def update_sample_status(sample_id: str, status: ProcessingStatus) -> None:
+    """Update sample processing status in database"""
     try:
-        SessionLocal = get_sync_db()
-
-        with SessionLocal() as db:
+        async with AsyncSessionLocal() as db:
             query = select(Sample).where(Sample.id == uuid.UUID(sample_id))
-            result = db.execute(query)
+            result = await db.execute(query)
             sample = result.scalar_one()
             sample.status = status
-            db.commit()
+            await db.commit()
             logger.info(f"Updated sample {sample_id} status to {status.value}")
     except Exception as e:
         logger.exception(f"Error updating sample {sample_id} status: {e}")
         raise
 
 
-def download_tiktok_video_sync(url: str, sample_id: str) -> Dict[str, Any]:
-    """
-    Download TikTok video and extract metadata (sync wrapper)
+async def download_tiktok_video(url: str, sample_id: str) -> Dict[str, Any]:
+    """Download TikTok video and extract metadata"""
+    # Use a persistent temp directory for this sample
+    temp_dir = Path(tempfile.gettempdir()) / f"sampletok_{sample_id}"
+    temp_dir.mkdir(parents=True, exist_ok=True)
 
-    Note: This function uses asyncio.run() to wrap async operations because Inngest
-    functions must be synchronous. Each call creates a new event loop, but this is
-    acceptable for background job processing. The module-level database engine
-    with connection pooling mitigates the overhead of multiple async runs.
-    """
-    async def _download():
-        # Use a persistent temp directory for this sample
-        temp_dir = Path(tempfile.gettempdir()) / f"sampletok_{sample_id}"
-        temp_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        downloader = TikTokDownloader()
+        metadata = await downloader.download_video(url, str(temp_dir))
 
-        try:
-            downloader = TikTokDownloader()
-            metadata = await downloader.download_video(url, str(temp_dir))
+        # Fetch/update creator using creator service (with smart caching)
+        creator_username = metadata.get('creator_username')
+        if creator_username:
+            try:
+                logger.info(f"Getting or fetching creator for @{creator_username}")
+                async with AsyncSessionLocal() as db:
+                    creator_service = CreatorService(db)
+                    creator = await creator_service.get_or_fetch_creator(creator_username)
 
-            # Fetch/update creator using creator service (with smart caching)
-            creator_username = metadata.get('creator_username')
-            if creator_username:
-                try:
-                    logger.info(f"Getting or fetching creator for @{creator_username}")
-                    async with AsyncSessionLocal() as db:
-                        creator_service = CreatorService(db)
-                        creator = await creator_service.get_or_fetch_creator(creator_username)
+                    if creator:
+                        # Store creator ID in metadata to link the sample
+                        metadata['tiktok_creator_id'] = str(creator.id)
+                        logger.info(f"Linked creator @{creator.username} ({creator.follower_count} followers)")
+                    else:
+                        logger.warning(f"Could not fetch creator info for @{creator_username}")
+            except Exception as e:
+                logger.exception(f"Failed to get/fetch creator @{creator_username}: {e}")
+                # Continue without creator link
 
-                        if creator:
-                            # Store creator ID in metadata to link the sample
-                            metadata['tiktok_creator_id'] = str(creator.id)
-                            logger.info(f"Linked creator @{creator.username} ({creator.follower_count} followers)")
-                        else:
-                            logger.warning(f"Could not fetch creator info for @{creator_username}")
-                except Exception as e:
-                    logger.exception(f"Failed to get/fetch creator @{creator_username}: {e}")
-                    # Continue without creator link
-
-            logger.info(f"Downloaded video: {metadata.get('aweme_id')} to {temp_dir}")
-            metadata['temp_dir'] = str(temp_dir)  # Pass temp_dir to next steps
-            return metadata
-        except Exception as e:
-            # Clean up on error
-            import shutil
-            if temp_dir.exists():
-                shutil.rmtree(temp_dir)
-            raise
-
-    return asyncio.run(_download())
+        logger.info(f"Downloaded video: {metadata.get('aweme_id')} to {temp_dir}")
+        metadata['temp_dir'] = str(temp_dir)  # Pass temp_dir to next steps
+        return metadata
+    except Exception as e:
+        # Clean up on error
+        import shutil
+        if temp_dir.exists():
+            shutil.rmtree(temp_dir)
+        raise
 
 
-def extract_audio_from_video_sync(video_path: str, temp_dir: str) -> Dict[str, str]:
-    """Extract audio from video file (sync wrapper)"""
-    async def _extract():
-        # Use the same temp directory from download step
-        processor = AudioProcessor()
-        audio_paths = await processor.extract_audio(video_path, temp_dir)
-        logger.info(f"Extracted audio: WAV and MP3 created in {temp_dir}")
-        return audio_paths
-
-    return asyncio.run(_extract())
+async def extract_audio_from_video(video_path: str, temp_dir: str) -> Dict[str, str]:
+    """Extract audio from video file"""
+    # Use the same temp directory from download step
+    processor = AudioProcessor()
+    audio_paths = await processor.extract_audio(video_path, temp_dir)
+    logger.info(f"Extracted audio: WAV and MP3 created in {temp_dir}")
+    return audio_paths
 
 
-def generate_waveform_sync(audio_path: str, temp_dir: str) -> str:
-    """Generate waveform visualization from audio (sync wrapper)"""
-    async def _generate():
-        # Use the same temp directory
-        processor = AudioProcessor()
-        waveform_path = await processor.generate_waveform(audio_path, temp_dir)
-        logger.info(f"Generated waveform visualization in {temp_dir}")
-        return waveform_path
-
-    return asyncio.run(_generate())
+async def generate_waveform(audio_path: str, temp_dir: str) -> str:
+    """Generate waveform visualization from audio"""
+    # Use the same temp directory
+    processor = AudioProcessor()
+    waveform_path = await processor.generate_waveform(audio_path, temp_dir)
+    logger.info(f"Generated waveform visualization in {temp_dir}")
+    return waveform_path
 
 
-def upload_to_storage_sync(data: Dict[str, str]) -> Dict[str, str]:
-    """Upload files to S3/storage (sync wrapper)"""
-    async def _upload():
-        storage = S3Storage()
-        sample_id = data["sample_id"]
+async def upload_to_storage(data: Dict[str, str]) -> Dict[str, str]:
+    """Upload files to S3/storage"""
+    storage = S3Storage()
+    sample_id = data["sample_id"]
 
-        # Upload all files
-        wav_url = await storage.upload_file(
-            data["wav_path"],
-            f"samples/{sample_id}/audio.wav"
-        )
-        mp3_url = await storage.upload_file(
-            data["mp3_path"],
-            f"samples/{sample_id}/audio.mp3"
-        )
-        waveform_url = await storage.upload_file(
-            data["waveform_path"],
-            f"samples/{sample_id}/waveform.png"
-        )
+    # Upload all files
+    wav_url = await storage.upload_file(
+        data["wav_path"],
+        f"samples/{sample_id}/audio.wav"
+    )
+    mp3_url = await storage.upload_file(
+        data["mp3_path"],
+        f"samples/{sample_id}/audio.mp3"
+    )
+    waveform_url = await storage.upload_file(
+        data["waveform_path"],
+        f"samples/{sample_id}/waveform.png"
+    )
 
-        logger.info(f"Uploaded files to storage for sample {sample_id}")
+    logger.info(f"Uploaded files to storage for sample {sample_id}")
 
-        return {
-            "wav": wav_url,
-            "mp3": mp3_url,
-            "waveform": waveform_url
-        }
-
-    return asyncio.run(_upload())
+    return {
+        "wav": wav_url,
+        "mp3": mp3_url,
+        "waveform": waveform_url
+    }
 
 
-def cleanup_temp_files_sync(temp_dir: str) -> None:
+def cleanup_temp_files(temp_dir: str) -> None:
     """Clean up temporary files after processing"""
     import shutil
     try:
@@ -277,18 +230,16 @@ def cleanup_temp_files_sync(temp_dir: str) -> None:
         # Don't fail the whole process if cleanup fails
 
 
-def update_sample_complete_sync(data: Dict[str, Any]) -> None:
-    """Update sample with processing results (sync wrapper)"""
+async def update_sample_complete(data: Dict[str, Any]) -> None:
+    """Update sample with processing results"""
     try:
-        SessionLocal = get_sync_db()
-
-        with SessionLocal() as db:
+        async with AsyncSessionLocal() as db:
             sample_id = data["sample_id"]
             metadata = data["metadata"]
             urls = data["urls"]
 
             query = select(Sample).where(Sample.id == uuid.UUID(sample_id))
-            result = db.execute(query)
+            result = await db.execute(query)
             sample = result.scalar_one()
 
             # Update metadata - now with RapidAPI fields
@@ -326,7 +277,7 @@ def update_sample_complete_sync(data: Dict[str, Any]) -> None:
             # Mark as completed
             sample.status = ProcessingStatus.COMPLETED
 
-            db.commit()
+            await db.commit()
             logger.info(f"Sample {sample_id} processing completed successfully")
     except Exception as e:
         logger.exception(f"Error updating sample {sample_id} complete: {e}")
@@ -338,27 +289,25 @@ def update_sample_complete_sync(data: Dict[str, Any]) -> None:
     fn_id="handle-processing-error",
     trigger=inngest.TriggerEvent(event="tiktok/processing.failed")
 )
-def handle_processing_error(ctx: inngest.Context) -> None:
+async def handle_processing_error(ctx: inngest.Context) -> None:
     """Handle processing failures"""
     event_data = ctx.event.data
     sample_id = event_data.get("sample_id")
     error_message = event_data.get("error", "Unknown error occurred")
 
-    def update_failed_status():
-        SessionLocal = get_sync_db()
-
-        with SessionLocal() as db:
+    async def update_failed_status():
+        async with AsyncSessionLocal() as db:
             query = select(Sample).where(Sample.id == uuid.UUID(sample_id))
-            result = db.execute(query)
+            result = await db.execute(query)
             sample = result.scalar_one()
 
             sample.status = ProcessingStatus.FAILED
             sample.error_message = error_message
 
-            db.commit()
+            await db.commit()
             logger.exception(f"Sample {sample_id} processing failed: {error_message}")
 
-    ctx.step.run("mark-as-failed", update_failed_status)
+    await ctx.step.run("mark-as-failed", update_failed_status)
 
 
 @inngest_client.create_function(
