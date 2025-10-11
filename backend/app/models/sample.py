@@ -39,15 +39,6 @@ class Sample(Base):
     creator_username = Column(String, index=True)
     creator_name = Column(String)
     creator_avatar_url = Column(String)  # Creator's profile picture (keeping for backward compatibility)
-    creator_avatar_thumb = Column(String)  # Small avatar
-    creator_avatar_medium = Column(String)  # Medium avatar
-    creator_avatar_large = Column(String)  # Large avatar
-    creator_signature = Column(Text)  # Creator's bio/signature
-    creator_verified = Column(Integer, default=0)  # Is creator verified
-    creator_follower_count = Column(Integer, default=0)  # Creator's follower count
-    creator_following_count = Column(Integer, default=0)  # How many they follow
-    creator_heart_count = Column(Integer, default=0)  # Total likes received
-    creator_video_count = Column(Integer, default=0)  # Total videos posted
     description = Column(Text)
     view_count = Column(Integer, default=0)
     like_count = Column(Integer, default=0)

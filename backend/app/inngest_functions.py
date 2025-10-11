@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 inngest_client = inngest.Inngest(
     app_id="sampletok",
     event_key=settings.INNGEST_EVENT_KEY if hasattr(settings, 'INNGEST_EVENT_KEY') else None,
-    is_production=False  # Always use development mode for now
+    is_production=settings.ENVIRONMENT == "production"
 )
 
 
