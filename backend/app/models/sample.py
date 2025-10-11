@@ -38,7 +38,16 @@ class Sample(Base):
     region = Column(String)  # Country/region code
     creator_username = Column(String, index=True)
     creator_name = Column(String)
-    creator_avatar_url = Column(String)  # Creator's profile picture
+    creator_avatar_url = Column(String)  # Creator's profile picture (keeping for backward compatibility)
+    creator_avatar_thumb = Column(String)  # Small avatar
+    creator_avatar_medium = Column(String)  # Medium avatar
+    creator_avatar_large = Column(String)  # Large avatar
+    creator_signature = Column(Text)  # Creator's bio/signature
+    creator_verified = Column(Integer, default=0)  # Is creator verified
+    creator_follower_count = Column(Integer, default=0)  # Creator's follower count
+    creator_following_count = Column(Integer, default=0)  # How many they follow
+    creator_heart_count = Column(Integer, default=0)  # Total likes received
+    creator_video_count = Column(Integer, default=0)  # Total videos posted
     description = Column(Text)
     view_count = Column(Integer, default=0)
     like_count = Column(Integer, default=0)
@@ -73,11 +82,15 @@ class Sample(Base):
     # User who added the sample
     creator_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=True)
 
+    # TikTok creator relationship
+    tiktok_creator_id = Column(UUID(as_uuid=True), ForeignKey('tiktok_creators.id'), nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
     creator = relationship("User", back_populates="samples", foreign_keys=[creator_id])
+    tiktok_creator = relationship("TikTokCreator", back_populates="samples")
     downloaded_by = relationship(
         "User",
         secondary=user_samples,

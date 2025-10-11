@@ -2,6 +2,7 @@ import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Play, Pause, ExternalLink, Users, Download } from 'lucide-react';
 import { Sample } from '@/types/api';
+import { CreatorHoverCard } from '@/components/features/creator-hover-card';
 
 interface SoundsTableProps {
   samples: Sample[];
@@ -43,7 +44,7 @@ export function SoundsTable({
     if (count >= 1000000) {
       return `${(count / 1000000).toFixed(1)}M followers`;
     } else if (count >= 1000) {
-      return `${(count / 1000).toFixed(1)}K followers`;
+      return `${(count / 1000).toFixed(0)}k followers`;
     }
     return `${count} followers`;
   };
@@ -115,23 +116,43 @@ export function SoundsTable({
                     <div className="text-sm font-medium text-foreground">
                       {sample.description ? `${sample.description.slice(0, 30)}...` : 'No description'}
                     </div>
-                    <div className="flex gap-2">
-                      {getCategories(sample).map((cat) => (
-                        <span key={cat} className="bg-secondary text-secondary-foreground px-2 py-0.5 rounded text-xs">
-                          {cat}
-                        </span>
-                      ))}
+                    <div className="flex items-center gap-3">
+                      <div className="flex gap-2">
+                        {getCategories(sample).map((cat) => (
+                          <span key={cat} className="bg-secondary text-secondary-foreground px-2 py-0.5 rounded text-xs">
+                            {cat}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <Users className="w-3 h-3" />
+                        <span>{sample.view_count ? `${(sample.view_count / 1000).toFixed(0)}k views` : '0 views'}</span>
+                      </div>
                     </div>
                   </div>
                 </td>
                 <td className="py-3 px-4">
-                  <div className="space-y-1">
-                    <div className="text-sm font-medium">@{sample.creator_username || 'unknown'}</div>
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                      <Users className="w-3 h-3" />
-                      <span>{sample.view_count ? `${(sample.view_count / 1000).toFixed(0)}k views` : 'No views'}</span>
+                  {sample.tiktok_creator ? (
+                    <CreatorHoverCard creator={sample.tiktok_creator}>
+                      <div className="space-y-1 cursor-pointer">
+                        <div className="text-sm font-medium hover:text-primary transition-colors">
+                          @{sample.tiktok_creator.username}
+                        </div>
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <Users className="w-3 h-3" />
+                          <span>{formatFollowers(sample.tiktok_creator.follower_count)}</span>
+                        </div>
+                      </div>
+                    </CreatorHoverCard>
+                  ) : (
+                    <div className="space-y-1">
+                      <div className="text-sm font-medium">@{sample.creator_username || 'unknown'}</div>
+                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <Users className="w-3 h-3" />
+                        <span>0 followers</span>
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </td>
                 <td className="py-3 px-4">
                   <div className="w-24 h-8">

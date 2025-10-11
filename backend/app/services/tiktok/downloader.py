@@ -141,6 +141,7 @@ class TikTokDownloader:
             'creator_username': author.get('unique_id', ''),
             'creator_name': author.get('nickname', ''),
             'creator_avatar_url': author.get('avatar', ''),
+            'creator_follower_count': author.get('follower_count', 0),
 
             # Engagement metrics
             'view_count': api_data.get('play_count', 0),
@@ -170,6 +171,49 @@ class TikTokDownloader:
         }
 
         return metadata
+
+    async def get_user_info(self, unique_id: str) -> Dict[str, Any]:
+        """Fetch user/creator information and stats from TikTok"""
+        api_url = f"https://{self.api_host}/user/info?unique_id={unique_id}"
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            try:
+                response = await client.get(api_url, headers=self.headers)
+                response.raise_for_status()
+
+                data = response.json()
+
+                # Check if the API returned success
+                if data.get('code') != 0:
+                    error_msg = data.get('msg', 'Unknown error')
+                    logger.warning(f"User info API error: {error_msg}")
+                    return {}
+
+                user_data = data.get('data', {})
+                user = user_data.get('user', {})
+                stats = user_data.get('stats', {})
+
+                return {
+                    'creator_id': user.get('id', ''),
+                    'creator_username': user.get('uniqueId', ''),
+                    'creator_name': user.get('nickname', ''),
+                    'creator_avatar_thumb': user.get('avatarThumb', ''),
+                    'creator_avatar_medium': user.get('avatarMedium', ''),
+                    'creator_avatar_large': user.get('avatarLarger', ''),
+                    'creator_signature': user.get('signature', ''),
+                    'creator_verified': user.get('verified', False),
+                    'creator_follower_count': stats.get('followerCount', 0),
+                    'creator_following_count': stats.get('followingCount', 0),
+                    'creator_heart_count': stats.get('heartCount', 0),
+                    'creator_video_count': stats.get('videoCount', 0),
+                }
+
+            except httpx.HTTPStatusError as e:
+                logger.error(f"HTTP error fetching user info: {e.response.status_code}")
+                return {}
+            except Exception as e:
+                logger.error(f"Error fetching user info: {str(e)}")
+                return {}
 
     async def get_video_info(self, url: str) -> Dict[str, Any]:
         """Get video metadata without downloading"""

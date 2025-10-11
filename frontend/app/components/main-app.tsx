@@ -243,6 +243,20 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
     setIsPlaying(true);
   };
 
+  // Spacebar play/pause
+  useEffect(() => {
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if (e.code === 'Space' && currentSample) {
+        // Prevent spacebar from scrolling the page
+        e.preventDefault();
+        setIsPlaying(prev => !prev);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [currentSample]);
+
   return (
     <div className="min-h-screen bg-background">
       {/* Sidebar */}

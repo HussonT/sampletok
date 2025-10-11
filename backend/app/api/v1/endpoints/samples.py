@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
+from sqlalchemy.orm import selectinload
 from typing import List, Optional
 from uuid import UUID
 
@@ -68,8 +69,8 @@ async def get_samples(
     result = await db.execute(count_query)
     total = result.scalar_one()
 
-    # Apply pagination
-    query = query.offset(skip).limit(limit).order_by(Sample.created_at.desc())
+    # Apply pagination and eager load creator
+    query = query.options(selectinload(Sample.tiktok_creator)).offset(skip).limit(limit).order_by(Sample.created_at.desc())
 
     # Execute query
     result = await db.execute(query)
@@ -93,7 +94,7 @@ async def get_sample(
     db: AsyncSession = Depends(get_db)
 ):
     """Get a specific sample by ID"""
-    query = select(Sample).where(Sample.id == sample_id)
+    query = select(Sample).options(selectinload(Sample.tiktok_creator)).where(Sample.id == sample_id)
     result = await db.execute(query)
     sample = result.scalar_one_or_none()
 

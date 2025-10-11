@@ -13,9 +13,10 @@ from app.core.config import settings
 from app.services.tiktok.downloader import TikTokDownloader
 from app.services.audio.processor import AudioProcessor
 from app.services.storage.s3 import S3Storage
-from app.models import Sample, ProcessingStatus
+from app.models import Sample, ProcessingStatus, TikTokCreator
 from app.core.database import AsyncSessionLocal
 from sqlalchemy import select
+from app.services.tiktok.creator_service import CreatorService
 
 logger = logging.getLogger(__name__)
 
@@ -151,6 +152,25 @@ def download_tiktok_video_sync(url: str, sample_id: str) -> Dict[str, Any]:
             downloader = TikTokDownloader()
             metadata = await downloader.download_video(url, str(temp_dir))
 
+            # Fetch/update creator using creator service (with smart caching)
+            creator_username = metadata.get('creator_username')
+            if creator_username:
+                try:
+                    logger.info(f"Getting or fetching creator for @{creator_username}")
+                    async with AsyncSessionLocal() as db:
+                        creator_service = CreatorService(db)
+                        creator = await creator_service.get_or_fetch_creator(creator_username)
+
+                        if creator:
+                            # Store creator ID in metadata to link the sample
+                            metadata['tiktok_creator_id'] = str(creator.id)
+                            logger.info(f"Linked creator @{creator.username} ({creator.follower_count} followers)")
+                        else:
+                            logger.warning(f"Could not fetch creator info for @{creator_username}")
+                except Exception as e:
+                    logger.warning(f"Failed to get/fetch creator: {e}")
+                    # Continue without creator link
+
             logger.info(f"Downloaded video: {metadata.get('aweme_id')} to {temp_dir}")
             metadata['temp_dir'] = str(temp_dir)  # Pass temp_dir to next steps
             return metadata
@@ -277,6 +297,12 @@ def update_sample_complete_sync(data: Dict[str, Any]) -> None:
             sample.audio_url_wav = urls["wav"]
             sample.audio_url_mp3 = urls["mp3"]
             sample.waveform_url = urls["waveform"]
+
+            # Link to TikTok creator if available
+            tiktok_creator_id = metadata.get("tiktok_creator_id")
+            if tiktok_creator_id:
+                sample.tiktok_creator_id = uuid.UUID(tiktok_creator_id)
+                logger.info(f"Linked sample to creator {tiktok_creator_id}")
 
             # Mark as completed
             sample.status = ProcessingStatus.COMPLETED

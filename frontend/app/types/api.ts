@@ -1,5 +1,21 @@
 // API Types matching backend schemas
 
+export interface TikTokCreator {
+  id: string;
+  tiktok_id: string;
+  username: string;
+  nickname?: string;
+  avatar_thumb?: string;
+  avatar_medium?: string;
+  avatar_large?: string;
+  signature?: string;
+  verified: boolean;
+  follower_count: number;
+  following_count: number;
+  heart_count: number;
+  video_count: number;
+}
+
 export interface Sample {
   id: string;
   tiktok_url?: string;
@@ -10,6 +26,7 @@ export interface Sample {
   creator_username?: string;
   creator_name?: string;
   creator_avatar_url?: string;
+  creator_follower_count?: number;
   description?: string;
   view_count: number;
   like_count: number;
@@ -33,6 +50,7 @@ export interface Sample {
   error_message?: string;
   created_at: string;
   processed_at?: string;
+  tiktok_creator?: TikTokCreator;
 }
 
 export enum ProcessingStatus {

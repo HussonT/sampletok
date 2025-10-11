@@ -80,6 +80,15 @@ class SampleInDB(BaseModel):
     creator_username: Optional[str]
     creator_name: Optional[str]
     creator_avatar_url: Optional[str]
+    creator_avatar_thumb: Optional[str]
+    creator_avatar_medium: Optional[str]
+    creator_avatar_large: Optional[str]
+    creator_signature: Optional[str]
+    creator_verified: int
+    creator_follower_count: int
+    creator_following_count: int
+    creator_heart_count: int
+    creator_video_count: int
     description: Optional[str]
     view_count: int
     like_count: int
@@ -107,6 +116,25 @@ class SampleInDB(BaseModel):
         from_attributes = True
 
 
+class TikTokCreatorResponse(BaseModel):
+    id: UUID
+    tiktok_id: str
+    username: str
+    nickname: Optional[str] = None
+    avatar_thumb: Optional[str] = None
+    avatar_medium: Optional[str] = None
+    avatar_large: Optional[str] = None
+    signature: Optional[str] = None
+    verified: bool = False
+    follower_count: int = 0
+    following_count: int = 0
+    heart_count: int = 0
+    video_count: int = 0
+
+    class Config:
+        from_attributes = True
+
+
 class SampleResponse(BaseModel):
     id: UUID
     tiktok_url: Optional[str] = None
@@ -117,6 +145,15 @@ class SampleResponse(BaseModel):
     creator_username: Optional[str] = None
     creator_name: Optional[str] = None
     creator_avatar_url: Optional[str] = None
+    creator_avatar_thumb: Optional[str] = None
+    creator_avatar_medium: Optional[str] = None
+    creator_avatar_large: Optional[str] = None
+    creator_signature: Optional[str] = None
+    creator_verified: Optional[bool] = False
+    creator_follower_count: Optional[int] = 0
+    creator_following_count: Optional[int] = 0
+    creator_heart_count: Optional[int] = 0
+    creator_video_count: Optional[int] = 0
     description: Optional[str] = None
     view_count: Optional[int] = 0
     like_count: Optional[int] = 0
@@ -140,6 +177,9 @@ class SampleResponse(BaseModel):
     error_message: Optional[str] = None
     created_at: datetime
     processed_at: Optional[datetime] = None
+
+    # Nested creator object
+    tiktok_creator: Optional[TikTokCreatorResponse] = None
 
     class Config:
         from_attributes = True
