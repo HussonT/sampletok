@@ -33,6 +33,12 @@ inngest_kwargs = {
 # Add env parameter if INNGEST_ENV is set (required for branch environments)
 if settings.INNGEST_ENV:
     inngest_kwargs["env"] = settings.INNGEST_ENV
+    logger.info(f"Inngest client initialized with branch env: {settings.INNGEST_ENV}")
+else:
+    logger.info(f"Inngest client initialized for environment: {settings.ENVIRONMENT}")
+
+# Log configuration (without sensitive keys)
+logger.info(f"Inngest config - app_id: sampletok, is_production: {settings.ENVIRONMENT == 'production'}, has_event_key: {bool(settings.INNGEST_EVENT_KEY)}, has_signing_key: {bool(settings.INNGEST_SIGNING_KEY)}")
 
 inngest_client = inngest.Inngest(**inngest_kwargs)
 

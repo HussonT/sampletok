@@ -74,15 +74,28 @@ async def process_tiktok_url(
     await db.refresh(sample)
 
     # Send event to Inngest for processing
-    await inngest_client.send(
-        inngest.Event(
-            name="tiktok/video.submitted",
-            data={
-                "sample_id": str(sample.id),
-                "url": normalized_url
-            }
+    try:
+        logger.info(f"Sending Inngest event for sample {sample.id}")
+        await inngest_client.send(
+            inngest.Event(
+                name="tiktok/video.submitted",
+                data={
+                    "sample_id": str(sample.id),
+                    "url": normalized_url
+                }
+            )
         )
-    )
+        logger.info(f"Successfully sent Inngest event for sample {sample.id}")
+    except Exception as e:
+        logger.exception(f"Failed to send Inngest event for sample {sample.id}: {str(e)}")
+        # Mark sample as failed
+        sample.status = ProcessingStatus.FAILED
+        sample.error_message = f"Failed to queue processing: {str(e)}"
+        await db.commit()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to queue sample for processing: {str(e)}"
+        )
 
     return ProcessingTaskResponse(
         task_id=str(sample.id),
