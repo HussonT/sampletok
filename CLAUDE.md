@@ -203,6 +203,55 @@ No formal test suite currently. Test via:
 - Inngest dev server: https://www.inngest.com/docs/local-development
 - Manual frontend testing
 
+## Inngest Production Setup
+
+### Local Development (Default)
+- Uses Inngest Dev Server (no keys needed)
+- Leave `INNGEST_EVENT_KEY` and `INNGEST_SIGNING_KEY` blank in `.env`
+- Run: `npx inngest-cli@latest dev` in a separate terminal
+- Access dev UI: http://localhost:8288
+
+### Production Configuration
+
+1. **Create Inngest Account & App**
+   - Sign up at https://app.inngest.com
+   - Create a new app (e.g., "sampletok")
+   - Navigate to your production environment
+
+2. **Get Production Keys**
+   - Go to: https://app.inngest.com/env/production/manage/keys
+   - Copy your **Event Key** (starts with "inngest_event_key_...")
+   - Copy your **Signing Key** (for webhook security)
+
+3. **Configure Environment Variables**
+   ```bash
+   ENVIRONMENT=production
+   INNGEST_EVENT_KEY=inngest_event_key_...
+   INNGEST_SIGNING_KEY=signkey-prod-...
+   ```
+
+4. **Sync Functions to Inngest Cloud**
+   After deploying your backend:
+   ```bash
+   # Option 1: Sync via Inngest Cloud UI
+   # Navigate to your app → "Sync App" → Enter your backend URL
+   # URL: https://your-backend.com/api/inngest
+
+   # Option 2: Sync via curl
+   curl -X PUT https://your-backend.com/api/inngest
+   ```
+
+5. **Verify Setup**
+   - Functions should appear in Inngest Cloud UI
+   - Test with: `POST /api/v1/test/inngest` endpoint
+   - Check Inngest Cloud for function execution logs
+
+### Important Notes
+- Backend must be publicly accessible for Inngest Cloud to reach it
+- `/api/inngest` endpoint handles both function sync and webhook events
+- Re-sync after deploying new functions or changes
+- Monitor function execution in Inngest Cloud dashboard
+
 ## Deployment
 
 See `DEPLOYMENT.md` for detailed deployment guides:
@@ -213,5 +262,5 @@ Key deployment considerations:
 - Backend migrations run automatically in Dockerfile startup script
 - Use Secret Manager (GCP) or environment variables for secrets
 - Configure CORS with production frontend URLs
-- Set up Inngest webhook to backend `/api/inngest` endpoint
+- Set up Inngest webhook to backend `/api/inngest` endpoint (see Inngest Production Setup above)
 - Choose storage backend (AWS S3, Cloudflare R2, or GCS)

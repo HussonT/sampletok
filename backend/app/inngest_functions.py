@@ -21,9 +21,11 @@ from app.services.tiktok.creator_service import CreatorService
 logger = logging.getLogger(__name__)
 
 # Initialize Inngest client
+# For production: set INNGEST_EVENT_KEY and INNGEST_SIGNING_KEY environment variables
 inngest_client = inngest.Inngest(
     app_id="sampletok",
-    event_key=settings.INNGEST_EVENT_KEY if hasattr(settings, 'INNGEST_EVENT_KEY') else None,
+    event_key=settings.INNGEST_EVENT_KEY,
+    signing_key=settings.INNGEST_SIGNING_KEY,
     is_production=settings.ENVIRONMENT == "production"
 )
 
