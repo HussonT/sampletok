@@ -25,8 +25,15 @@ export default async function Home({ searchParams }: HomeProps) {
     limit: 20
   };
 
-  // Fetch data on the server
-  const samplesData = await getSamples(filters);
+  // Fetch data on the server with error handling
+  let samplesData;
+  try {
+    samplesData = await getSamples(filters);
+  } catch (error) {
+    console.error('Failed to fetch samples:', error);
+    // Return empty data if backend is unavailable
+    samplesData = { items: [], total: 0 };
+  }
 
   return (
     <Suspense fallback={<div>Loading samples...</div>}>
