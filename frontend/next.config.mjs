@@ -2,10 +2,18 @@
 const nextConfig = {
   reactStrictMode: true,
   images: {
-    domains: [],
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: '**.tiktok.com',
+      },
+      {
+        protocol: 'https',
+        hostname: '**.tiktokcdn.com',
+      },
+    ],
   },
   experimental: {
-    // Enable if you need server actions
     serverActions: {
       bodySizeLimit: '2mb',
     },
