@@ -28,9 +28,11 @@ export default async function Home({ searchParams }: HomeProps) {
   // Fetch data on the server with error handling
   let samplesData;
   try {
+    console.log('[BUILD] BACKEND_URL:', process.env.BACKEND_URL || 'NOT SET');
     samplesData = await getSamples(filters);
+    console.log('[BUILD] Successfully fetched', samplesData?.items?.length || 0, 'samples');
   } catch (error) {
-    console.error('Failed to fetch samples:', error);
+    console.error('[BUILD] Failed to fetch samples:', error);
     // Return empty data if backend is unavailable
     samplesData = { items: [], total: 0 };
   }
