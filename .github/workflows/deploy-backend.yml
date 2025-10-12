@@ -37,8 +37,9 @@ jobs:
 
       - name: Deploy to Cloud Run
         run: |
+          cd backend
           gcloud run deploy sampletok-backend \
-            --source ./backend \
+            --source . \
             --region us-central1 \
             --platform managed \
             --allow-unauthenticated \
