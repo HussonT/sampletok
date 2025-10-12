@@ -48,9 +48,8 @@ jobs:
       - name: Deploy to Vercel
         id: deploy
         run: |
-          DEPLOYMENT_URL=$(vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }} 2>&1 | grep -oE 'https://[a-z0-9-]+\.vercel\.app' | head -1)
-          echo "Frontend deployed to: $DEPLOYMENT_URL"
-          echo "url=$DEPLOYMENT_URL" >> $GITHUB_OUTPUT
+          vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
+          echo "url=https://sampletok.vercel.app" >> $GITHUB_OUTPUT
         working-directory: ./frontend
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
@@ -58,6 +57,6 @@ jobs:
 
       - name: Verify deployment
         run: |
-          sleep 10
-          curl -f ${{ steps.deploy.outputs.url }} || exit 1
-          echo "✅ Frontend health check passed"
+          sleep 15
+          curl -f https://sampletok.vercel.app || exit 1
+          echo "✅ Frontend health check passed at https://sampletok.vercel.app"
