@@ -1,9 +1,0 @@
-{
-  "version": 2,
-  "buildCommand": "npm run build",
-  "devCommand": "npm run dev",
-  "installCommand": "npm install",
-  "framework": "nextjs",
-  "outputDirectory": ".next",
-  "ignoreCommand": "git diff HEAD^ HEAD --quiet . && exit 0 || exit 1"
-}
