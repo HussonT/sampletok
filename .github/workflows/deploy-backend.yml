@@ -1,5 +1,6 @@
 name: Deploy Backend to Cloud Run
 
+# Deploys backend to Cloud Run on push to main
 on:
   push:
     branches:
