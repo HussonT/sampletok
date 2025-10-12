@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Cleanup script for orphaned/incomplete samples in the database.
+Cleanup script for orphaned/incomplete samples in the database!
 
 This script identifies and optionally removes sample records that:
 1. Have status != COMPLETED
