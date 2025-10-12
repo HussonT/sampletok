@@ -1,8 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Fix workspace root detection
-  outputFileTracingRoot: '/Users/tomhusson/sideprojects/sampletok/sampletok/frontend',
-
   // Enable server actions
   experimental: {
     serverActions: {
