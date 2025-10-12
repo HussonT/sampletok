@@ -1,0 +1,37 @@
+# Core
+fastapi
+uvicorn[standard]
+python-dotenv
+pydantic
+pydantic-settings
+
+# Database
+sqlalchemy
+alembic
+psycopg2-binary
+asyncpg
+greenlet
+
+# Inngest
+inngest
+
+# Authentication
+python-jose[cryptography]
+passlib[bcrypt]
+python-multipart
+
+# AWS S3 / Storage
+boto3
+python-magic
+
+# Audio Processing
+ffmpeg-python
+numpy
+scipy
+librosa
+essentia
+Pillow
+
+# HTTP Client
+httpx
+aiofiles

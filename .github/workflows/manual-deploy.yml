@@ -1,0 +1,58 @@
+name: Manual Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'What to deploy'
+        required: true
+        type: choice
+        options:
+          - backend
+          - frontend
+          - both
+      environment:
+        description: 'Environment'
+        required: true
+        type: choice
+        options:
+          - production
+          - staging
+
+jobs:
+  deploy-backend:
+    if: inputs.target == 'backend' || inputs.target == 'both'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy Backend
+        run: |
+          gcloud run deploy sampletok-backend-${{ inputs.environment }} \
+            --source ./backend \
+            --region us-central1 \
+            --platform managed
+
+  deploy-frontend:
+    if: inputs.target == 'frontend' || inputs.target == 'both'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Deploy Frontend
+        run: |
+          cd frontend
+          vercel deploy --prod --token=${{ secrets.VERCEL_TOKEN }}

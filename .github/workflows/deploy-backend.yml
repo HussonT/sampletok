@@ -1,0 +1,66 @@
+name: Deploy Backend to Cloud Run
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'backend/**'
+      - '.github/workflows/deploy-backend.yml'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: sampletok-prod
+
+      - name: Configure Docker for GCR
+        run: gcloud auth configure-docker
+
+      - name: Get Cloud SQL connection name
+        id: sql
+        run: |
+          CONNECTION_NAME=$(gcloud sql instances describe sampletok-db --format='value(connectionName)')
+          echo "connection_name=$CONNECTION_NAME" >> $GITHUB_OUTPUT
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy sampletok-backend \
+            --source ./backend \
+            --region us-central1 \
+            --platform managed \
+            --allow-unauthenticated \
+            --memory 2Gi \
+            --cpu 2 \
+            --timeout 300 \
+            --min-instances 0 \
+            --max-instances 10 \
+            --concurrency 80 \
+            --set-env-vars="ENVIRONMENT=production,STORAGE_TYPE=gcs,S3_BUCKET_NAME=sampletok-samples-prod,API_V1_STR=/api/v1,DEBUG=False,DATABASE_ECHO=False" \
+            --set-secrets="SECRET_KEY=SECRET_KEY:latest,JWT_SECRET_KEY=JWT_SECRET_KEY:latest,RAPIDAPI_KEY=RAPIDAPI_KEY:latest,INNGEST_EVENT_KEY=INNGEST_EVENT_KEY:latest,INNGEST_SIGNING_KEY=INNGEST_SIGNING_KEY:latest" \
+            --add-cloudsql-instances=${{ steps.sql.outputs.connection_name }}
+
+      - name: Get backend URL
+        id: backend
+        run: |
+          BACKEND_URL=$(gcloud run services describe sampletok-backend --region=us-central1 --format='value(status.url)')
+          echo "Backend deployed to: $BACKEND_URL"
+          echo "url=$BACKEND_URL" >> $GITHUB_OUTPUT
+
+      - name: Verify deployment
+        run: |
+          sleep 10
+          curl -f ${{ steps.backend.outputs.url }}/api/v1/health || exit 1
+          echo "✅ Backend health check passed"

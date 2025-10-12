@@ -1,0 +1,9 @@
+{
+  "version": 2,
+  "buildCommand": "cd frontend && npm run build",
+  "devCommand": "cd frontend && npm run dev",
+  "installCommand": "cd frontend && npm install",
+  "framework": "nextjs",
+  "outputDirectory": "frontend/.next",
+  "ignoreCommand": "bash -c 'if [[ $VERCEL_GIT_COMMIT_REF != main && $VERCEL_GIT_COMMIT_REF != develop ]]; then exit 1; else exit 0; fi'"
+}
