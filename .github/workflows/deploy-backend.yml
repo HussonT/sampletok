@@ -26,9 +26,6 @@ jobs:
         with:
           project_id: sampletok
 
-      - name: Configure Docker for GCR
-        run: gcloud auth configure-docker
-
       - name: Get Cloud SQL connection name
         id: sql
         run: |
@@ -38,6 +35,7 @@ jobs:
       - name: Deploy to Cloud Run
         run: |
           cd backend
+          # Deploys using Dockerfile in backend/ directory
           gcloud run deploy sampletok-backend \
             --source . \
             --region us-central1 \
