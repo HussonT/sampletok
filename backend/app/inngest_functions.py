@@ -26,7 +26,8 @@ inngest_client = inngest.Inngest(
     app_id="sampletok",
     event_key=settings.INNGEST_EVENT_KEY,
     signing_key=settings.INNGEST_SIGNING_KEY,
-    is_production=settings.ENVIRONMENT == "production"
+    is_production=settings.ENVIRONMENT == "production",
+    env="main"  # Branch environment name
 )
 
 @inngest_client.create_function(
