@@ -19,7 +19,7 @@ RUN pip install --no-cache-dir -r requirements-prod.txt
 # Copy application code
 COPY . .
 
-# Create startup script that runs migrations then starts server
+# Create startup script that runs migrations then starts serverr
 RUN echo '#!/bin/bash\n\
 set -e\n\
 echo "Running database migrations..."\n\
