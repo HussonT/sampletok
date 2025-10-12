@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Install Python dependencies (essentia has prebuilt manylinux wheels
+# Install Python dependencies (essentia has prebuilt manylinux wheels)
 COPY requirements-prod.txt .
 RUN pip install --no-cache-dir -r requirements-prod.txt
 
