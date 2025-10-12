@@ -1,4 +1,5 @@
 import React from 'react';
+import Image from 'next/image';
 import { TikTokCreator } from '@/types/api';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { Badge } from '@/components/ui/badge';
@@ -29,10 +30,13 @@ export function CreatorHoverCard({ creator, children }: CreatorHoverCardProps) {
           {/* Avatar */}
           <div className="flex-shrink-0">
             {creator.avatar_medium ? (
-              <img
+              <Image
                 src={creator.avatar_medium}
                 alt={creator.nickname || creator.username}
+                width={64}
+                height={64}
                 className="w-16 h-16 rounded-full object-cover"
+                unoptimized
               />
             ) : (
               <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center">

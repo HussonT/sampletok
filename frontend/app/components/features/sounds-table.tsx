@@ -1,4 +1,5 @@
 import React from 'react';
+import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { Play, Pause, Users, Download } from 'lucide-react';
 import { Sample } from '@/types/api';
@@ -143,10 +144,13 @@ export function SoundsTable({
                     <CreatorHoverCard creator={sample.tiktok_creator}>
                       <div className="flex items-center gap-3 cursor-pointer">
                         {sample.tiktok_creator.avatar_thumb && (
-                          <img
+                          <Image
                             src={sample.tiktok_creator.avatar_thumb}
                             alt={`@${sample.tiktok_creator.username}`}
+                            width={32}
+                            height={32}
                             className="w-8 h-8 rounded object-cover"
+                            unoptimized
                           />
                         )}
                         <div className="space-y-1">
@@ -163,10 +167,13 @@ export function SoundsTable({
                   ) : (
                     <div className="flex items-center gap-3">
                       {sample.creator_avatar_url && (
-                        <img
+                        <Image
                           src={sample.creator_avatar_url}
                           alt={`@${sample.creator_username || 'unknown'}`}
+                          width={32}
+                          height={32}
                           className="w-8 h-8 rounded object-cover"
+                          unoptimized
                         />
                       )}
                       <div className="space-y-1">
@@ -182,10 +189,13 @@ export function SoundsTable({
                 <td className="py-1 px-4">
                   <div className="w-48 h-20 relative">
                     {sample.waveform_url ? (
-                      <img
+                      <Image
                         src={sample.waveform_url}
                         alt="Waveform"
+                        width={192}
+                        height={80}
                         className="w-full h-full object-cover rounded-md"
+                        unoptimized
                       />
                     ) : (
                       <svg className="w-full h-full" viewBox="0 0 100 60">

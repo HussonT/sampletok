@@ -168,7 +168,7 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
     const interval = setInterval(pollStatus, 2000); // Poll every 2 seconds
 
     return () => clearInterval(interval);
-  }, [processingTasks.size]); // Only recreate when the SIZE changes, not the map itself
+  }, [processingTasks, updateProcessingTask, removeProcessingTask, router]);
 
   const filteredSamples = useMemo(() => {
     // Just return samples sorted by most recent
