@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     # Inngest
     INNGEST_EVENT_KEY: Optional[str] = None  # Optional - only needed for production
     INNGEST_SIGNING_KEY: Optional[str] = None  # Optional - for webhook verification
+    INNGEST_ENV: Optional[str] = None  # Branch environment name (required when using branch keys)
 
     # Storage
     STORAGE_TYPE: str = "s3"  # "s3" or "r2"

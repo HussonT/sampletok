@@ -22,12 +22,19 @@ logger = logging.getLogger(__name__)
 
 # Initialize Inngest client
 # For production: set INNGEST_EVENT_KEY and INNGEST_SIGNING_KEY environment variables
-inngest_client = inngest.Inngest(
-    app_id="sampletok",
-    event_key=settings.INNGEST_EVENT_KEY,
-    signing_key=settings.INNGEST_SIGNING_KEY,
-    is_production=settings.ENVIRONMENT == "production"
-)
+# When using branch keys, set INNGEST_ENV to specify the branch environment name
+inngest_kwargs = {
+    "app_id": "sampletok",
+    "event_key": settings.INNGEST_EVENT_KEY,
+    "signing_key": settings.INNGEST_SIGNING_KEY,
+    "is_production": settings.ENVIRONMENT == "production"
+}
+
+# Add env parameter if INNGEST_ENV is set (required for branch environments)
+if settings.INNGEST_ENV:
+    inngest_kwargs["env"] = settings.INNGEST_ENV
+
+inngest_client = inngest.Inngest(**inngest_kwargs)
 
 @inngest_client.create_function(
     fn_id="process-tiktok-video",
