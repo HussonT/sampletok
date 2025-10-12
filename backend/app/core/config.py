@@ -59,7 +59,7 @@ class Settings(BaseSettings):
     AUDIO_BIT_DEPTH: int = 24
     MP3_BITRATE: int = 320
     WAVEFORM_WIDTH: int = 800
-    WAVEFORM_HEIGHT: int = 140
+    WAVEFORM_HEIGHT: int = 320
 
     # RapidAPI Settings (must be set in .env)
     RAPIDAPI_KEY: str  # Required - no default for security

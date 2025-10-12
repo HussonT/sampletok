@@ -3,10 +3,10 @@
 import React, { useState, useMemo, useTransition, useOptimistic, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { SimpleSidebar } from '@/components/features/simple-sidebar';
-import { SearchFilters } from '@/components/features/search-filters';
 import { SoundsTable } from '@/components/features/sounds-table';
 import { ProcessingQueue, ProcessingTask } from '@/components/features/processing-queue';
 import { BottomPlayer } from '@/components/features/bottom-player';
+import { AddSampleDialog } from '@/components/features/add-sample-dialog';
 import { Download, Music } from 'lucide-react';
 import { Sample, SampleFilters, ProcessingStatus } from '@/types/api';
 import { processTikTokUrl, deleteSample, getProcessingStatus } from '@/actions/samples';
@@ -25,20 +25,60 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
   const [samples, setSamples] = useState<Sample[]>(initialSamples);
   const [currentSample, setCurrentSample] = useState<Sample | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
   const [activeSection, setActiveSection] = useState('browse');
-  const [selectedGenre, setSelectedGenre] = useState('all');
-  const [selectedBPM, setSelectedBPM] = useState('all');
-  const [selectedVideoType, setSelectedVideoType] = useState('all');
-  const [sortBy, setSortBy] = useState('recent');
   const [downloadedSamples, setDownloadedSamples] = useState<Set<string>>(new Set());
   const [credits, setCredits] = useState(10);
   const [processingTasks, setProcessingTasks] = useState<Map<string, ProcessingTask>>(new Map());
+  const [hasMore, setHasMore] = useState(initialSamples.length < totalSamples);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [skip, setSkip] = useState(initialSamples.length);
 
   // Update samples when initialSamples changes (from server refresh)
   useEffect(() => {
     setSamples(initialSamples);
-  }, [initialSamples]);
+    setSkip(initialSamples.length);
+    setHasMore(initialSamples.length < totalSamples);
+  }, [initialSamples, totalSamples]);
+
+  // Preload videos for current samples
+  useEffect(() => {
+    samples.forEach((sample) => {
+      if (sample.video_url) {
+        // Preload video in background
+        const link = document.createElement('link');
+        link.rel = 'prefetch';
+        link.as = 'video';
+        link.href = sample.video_url;
+        document.head.appendChild(link);
+      }
+    });
+  }, [samples]);
+
+  // Load more samples
+  const handleLoadMore = useCallback(async () => {
+    if (isLoadingMore || !hasMore) return;
+
+    setIsLoadingMore(true);
+    try {
+      const params = new URLSearchParams();
+      params.append('skip', skip.toString());
+      params.append('limit', '20');
+
+      const response = await fetch(`/api/samples?${params.toString()}`);
+      if (!response.ok) throw new Error('Failed to load more samples');
+
+      const data = await response.json();
+
+      setSamples(prev => [...prev, ...data.items]);
+      setSkip(prev => prev + data.items.length);
+      setHasMore(data.has_more);
+    } catch (error) {
+      console.error('Failed to load more samples:', error);
+      toast.error('Failed to load more samples');
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [skip, hasMore, isLoadingMore]);
 
   // Add a new processing task
   const addProcessingTask = useCallback((taskId: string, url: string) => {
@@ -131,59 +171,11 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
   }, [processingTasks.size]); // Only recreate when the SIZE changes, not the map itself
 
   const filteredSamples = useMemo(() => {
-    let filtered = [...samples];
-
-    if (searchQuery) {
-      filtered = filtered.filter(sample =>
-        sample.creator_username?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        sample.description?.toLowerCase().includes(searchQuery.toLowerCase())
-      );
-    }
-
-    if (selectedGenre !== 'all') {
-      filtered = filtered.filter(sample => {
-        const genres = ['house', 'hip hop', 'drill', 'pop', 'rnb', 'techno', 'trap'];
-        const sampleGenre = genres[sample.id.charCodeAt(0) % genres.length];
-        return sampleGenre === selectedGenre;
-      });
-    }
-
-    if (selectedBPM !== 'all') {
-      filtered = filtered.filter(sample => {
-        const bpm = 120 + (sample.id.charCodeAt(0) % 60);
-        switch (selectedBPM) {
-          case 'slow': return bpm >= 60 && bpm < 90;
-          case 'medium': return bpm >= 90 && bpm < 120;
-          case 'fast': return bpm >= 120 && bpm < 150;
-          case 'very-fast': return bpm >= 150;
-          default: return true;
-        }
-      });
-    }
-
-    if (selectedVideoType !== 'all') {
-      filtered = filtered.filter(sample => {
-        const videoTypes = ['viral', 'inspirational', 'funny', 'dance', 'trending', 'motivational', 'lifestyle', 'educational'];
-        const sampleVideoType = videoTypes[(sample.creator_username || 'a').charCodeAt(0) % videoTypes.length];
-        return sampleVideoType === selectedVideoType;
-      });
-    }
-
-    switch (sortBy) {
-      case 'popular':
-        filtered.sort((a, b) => b.id.length - a.id.length);
-        break;
-      case 'name':
-        filtered.sort((a, b) => (a.creator_username || '').localeCompare(b.creator_username || ''));
-        break;
-      case 'recent':
-      default:
-        filtered.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-        break;
-    }
-
-    return filtered;
-  }, [samples, searchQuery, selectedGenre, selectedBPM, selectedVideoType, sortBy]);
+    // Just return samples sorted by most recent
+    return [...samples].sort((a, b) =>
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+  }, [samples]);
 
   const handleSamplePreview = (sample: Sample) => {
     if (currentSample?.id === sample.id) {
@@ -231,7 +223,7 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
     const nextIndex = (currentIndex + 1) % filteredSamples.length;
     const nextSample = filteredSamples[nextIndex];
     setCurrentSample(nextSample);
-    setIsPlaying(true);
+    setIsPlaying(false);
   };
 
   const handlePlayerPrevious = () => {
@@ -280,8 +272,13 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
                 {activeSection === 'browse' ? 'Browse Samples' : 'My Downloads'}
               </h1>
             </div>
-            <div className="text-sm text-muted-foreground">
-              {credits} credits
+            <div className="flex items-center gap-4">
+              {activeSection === 'browse' && (
+                <AddSampleDialog onProcessingStarted={addProcessingTask} />
+              )}
+              <div className="text-sm text-muted-foreground">
+                {credits} credits
+              </div>
             </div>
           </div>
         </div>
@@ -292,23 +289,6 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
           onRemoveTask={removeProcessingTask}
         />
 
-        {/* Filters */}
-        {activeSection === 'browse' && (
-          <SearchFilters
-            searchQuery={searchQuery}
-            onSearchChange={setSearchQuery}
-            selectedGenre={selectedGenre}
-            onGenreChange={setSelectedGenre}
-            selectedBPM={selectedBPM}
-            onBPMChange={setSelectedBPM}
-            selectedVideoType={selectedVideoType}
-            onVideoTypeChange={setSelectedVideoType}
-            sortBy={sortBy}
-            onSortChange={setSortBy}
-            resultCount={filteredSamples.length}
-            onProcessingStarted={addProcessingTask}
-          />
-        )}
 
         {/* Content */}
         <div className="flex-1 overflow-auto" style={{ paddingBottom: currentSample ? '100px' : '0' }}>
@@ -320,6 +300,9 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
               downloadedSamples={downloadedSamples}
               onSamplePreview={handleSamplePreview}
               onSampleDownload={handleSampleDownload}
+              onLoadMore={handleLoadMore}
+              hasMore={hasMore}
+              isLoadingMore={isLoadingMore}
             />
           )}
 

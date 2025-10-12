@@ -63,7 +63,7 @@ export function AddSampleDialog({ onProcessingStarted }: AddSampleDialogProps) {
       <DialogTrigger asChild>
         <Button>
           <Plus className="mr-2 h-4 w-4" />
-          Add Sample
+          Create sample from TikTok
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-[525px]">

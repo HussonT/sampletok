@@ -89,7 +89,7 @@ class AudioProcessor:
 
     async def generate_waveform(self, audio_path: str, output_dir: str) -> str:
         """
-        Generate waveform visualization from audio file
+        Generate waveform visualization from audio file with gradient colors
         Returns path to waveform image
         """
         audio_path = Path(audio_path)
@@ -97,11 +97,12 @@ class AudioProcessor:
         waveform_path = output_dir / f"{audio_path.stem}_waveform.png"
 
         try:
-            # Use ffmpeg to generate waveform
+            # Use ffmpeg to generate waveform with pink to purple gradient
+            # Using showwavespic with multiple colors for gradient effect
             cmd = [
                 'ffmpeg', '-i', str(audio_path),
                 '-filter_complex',
-                f'[0:a]showwavespic=s={settings.WAVEFORM_WIDTH}x{settings.WAVEFORM_HEIGHT}:colors=#4B5EFF',
+                f'[0:a]showwavespic=s={settings.WAVEFORM_WIDTH}x{settings.WAVEFORM_HEIGHT}:colors=#EC4899|#8B5CF6',
                 '-frames:v', '1',
                 '-y',
                 str(waveform_path)

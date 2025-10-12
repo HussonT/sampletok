@@ -1,9 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 from typing import List, Optional
 from uuid import UUID
+import httpx
 
 from app.core.database import get_db
 from app.models import Sample, ProcessingStatus
@@ -20,7 +22,7 @@ router = APIRouter()
 @router.get("/", response_model=PaginatedResponse)
 async def get_samples(
     skip: int = Query(0, ge=0),
-    limit: int = Query(20, ge=1, le=100),
+    limit: int = Query(20, ge=1, le=20),
     genre: Optional[str] = None,
     status: Optional[str] = None,
     search: Optional[str] = None,
@@ -146,3 +148,42 @@ async def delete_sample(
     await db.commit()
 
     return {"message": "Sample deleted successfully"}
+
+
+@router.get("/{sample_id}/download")
+async def download_sample(
+    sample_id: UUID,
+    db: AsyncSession = Depends(get_db)
+):
+    """Download a sample audio file as WAV"""
+    query = select(Sample).where(Sample.id == sample_id)
+    result = await db.execute(query)
+    sample = result.scalar_one_or_none()
+
+    if not sample:
+        raise HTTPException(status_code=404, detail="Sample not found")
+
+    # Always use WAV format for downloads
+    audio_url = sample.audio_url_wav
+    if not audio_url:
+        raise HTTPException(status_code=404, detail="No WAV audio file available for this sample")
+
+    # Fetch the file from the remote URL
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(audio_url, follow_redirects=True)
+            response.raise_for_status()
+        except httpx.HTTPError as e:
+            raise HTTPException(status_code=500, detail=f"Failed to fetch audio file: {str(e)}")
+
+    # Generate filename
+    filename = f"{sample.creator_username or 'unknown'}_{sample.id}.wav"
+
+    # Return as streaming response with download headers
+    return StreamingResponse(
+        iter([response.content]),
+        media_type="audio/wav",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"'
+        }
+    )
