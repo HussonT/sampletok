@@ -63,5 +63,5 @@ jobs:
       - name: Verify deployment
         run: |
           sleep 10
-          curl -f ${{ steps.backend.outputs.url }}/api/v1/health || exit 1
+          curl -f ${{ steps.backend.outputs.url }}/health || exit 1
           echo "✅ Backend health check passed"
