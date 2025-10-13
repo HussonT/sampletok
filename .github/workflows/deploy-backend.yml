@@ -50,7 +50,7 @@ jobs:
             --concurrency 80 \
             --service-account github-deploy@sampletok.iam.gserviceaccount.com \
             --build-service-account projects/sampletok/serviceAccounts/github-deploy@sampletok.iam.gserviceaccount.com \
-            --set-env-vars="ENVIRONMENT=production,STORAGE_TYPE=gcs,S3_BUCKET_NAME=sampletok-samples-prod,API_V1_STR=/api/v1,DEBUG=False,DATABASE_ECHO=False" \
+            --set-env-vars="ENVIRONMENT=production,STORAGE_TYPE=gcs,S3_BUCKET_NAME=sampletok-samples,API_V1_STR=/api/v1,DEBUG=False,DATABASE_ECHO=False" \
             --set-secrets="DATABASE_URL=DATABASE_URL:latest,SECRET_KEY=SECRET_KEY:latest,JWT_SECRET_KEY=JWT_SECRET_KEY:latest,RAPIDAPI_KEY=RAPIDAPI_KEY:latest,INNGEST_EVENT_KEY=INNGEST_EVENT_KEY:latest,INNGEST_SIGNING_KEY=INNGEST_SIGNING_KEY:latest" \
             --add-cloudsql-instances=${{ steps.sql.outputs.connection_name }}
 
