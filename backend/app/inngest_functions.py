@@ -249,6 +249,39 @@ async def upload_to_storage(data: Dict[str, str]) -> Dict[str, str]:
     storage = S3Storage()
     sample_id = data["sample_id"]
 
+    # Log file paths for debugging
+    logger.info(f"upload_to_storage called with paths: wav={data['wav_path']}, mp3={data['mp3_path']}, waveform={data['waveform_path']}")
+
+    # Check if files exist before uploading
+    import os
+    wav_exists = os.path.exists(data["wav_path"])
+    mp3_exists = os.path.exists(data["mp3_path"])
+    waveform_exists = os.path.exists(data["waveform_path"])
+
+    logger.info(f"File existence check - WAV: {wav_exists}, MP3: {mp3_exists}, Waveform: {waveform_exists}")
+
+    if not all([wav_exists, mp3_exists, waveform_exists]):
+        missing_files = []
+        if not wav_exists:
+            missing_files.append(f"WAV: {data['wav_path']}")
+        if not mp3_exists:
+            missing_files.append(f"MP3: {data['mp3_path']}")
+        if not waveform_exists:
+            missing_files.append(f"Waveform: {data['waveform_path']}")
+
+        error_msg = f"Missing files before upload: {', '.join(missing_files)}"
+        logger.error(error_msg)
+
+        # List temp directory contents for debugging
+        temp_dir = Path(data["wav_path"]).parent
+        if temp_dir.exists():
+            files_in_dir = list(temp_dir.iterdir())
+            logger.error(f"Files in temp directory {temp_dir}: {[str(f) for f in files_in_dir]}")
+        else:
+            logger.error(f"Temp directory does not exist: {temp_dir}")
+
+        raise FileNotFoundError(error_msg)
+
     # Upload all files
     wav_url = await storage.upload_file(
         data["wav_path"],
