@@ -65,7 +65,8 @@ export function SoundsTable({
   const handleDownload = (sample: Sample) => {
     // Use the backend download endpoint to avoid CORS issues
     // Backend always serves WAV files
-    const downloadUrl = `http://localhost:8000/api/v1/samples/${sample.id}/download`;
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    const downloadUrl = `${apiUrl}/api/v1/samples/${sample.id}/download`;
 
     const link = document.createElement('a');
     link.href = downloadUrl;
