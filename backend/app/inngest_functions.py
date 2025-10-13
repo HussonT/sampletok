@@ -79,55 +79,49 @@ async def process_tiktok_video(ctx: inngest.Context) -> Dict[str, Any]:
         sample_id
     )
 
-    # Step 3: Extract audio (creates WAV and MP3)
+    # Step 3: Extract audio (creates WAV and MP3, uploads to R2, returns URLs)
     audio_files = await ctx.step.run(
         "extract-audio",
         extract_audio_from_video,
         video_metadata["video_path"],
-        video_metadata["temp_dir"]
+        video_metadata["temp_dir"],
+        sample_id
     )
 
-    # Step 4: Generate waveform
-    waveform_path = await ctx.step.run(
+    # Step 4: Generate waveform (generates PNG, uploads to R2, returns URL)
+    waveform_url = await ctx.step.run(
         "generate-waveform",
         generate_waveform,
-        audio_files["wav"],
-        video_metadata["temp_dir"]
+        audio_files["wav_path"],
+        video_metadata["temp_dir"],
+        sample_id
     )
 
     # Step 5: Analyze audio features (BPM, key detection)
     audio_analysis = await ctx.step.run(
         "analyze-audio-features",
         analyze_audio_features,
-        audio_files["wav"]
+        audio_files["wav_path"]
     )
 
-    # Step 6: Upload all files to storage
-    uploaded_urls = await ctx.step.run(
-        "upload-files",
-        upload_to_storage,
-        {
-            "sample_id": sample_id,
-            "wav_path": audio_files["wav"],
-            "mp3_path": audio_files["mp3"],
-            "waveform_path": waveform_path
-        }
-    )
-
-    # Step 7: Update database with results
+    # Step 6: Update database with results (URLs are already from R2)
     await ctx.step.run(
         "update-database",
         update_sample_complete,
         {
             "sample_id": sample_id,
             "metadata": video_metadata,
-            "urls": uploaded_urls,
+            "urls": {
+                "wav": audio_files["wav_url"],
+                "mp3": audio_files["mp3_url"],
+                "waveform": waveform_url
+            },
             "analysis": audio_analysis,
             "audio_metadata": audio_files.get("metadata", {})
         }
     )
 
-    # Step 8: Clean up temp files
+    # Step 7: Clean up temp files
     await ctx.step.run(
         "cleanup-temp-files",
         cleanup_temp_files,
@@ -137,8 +131,8 @@ async def process_tiktok_video(ctx: inngest.Context) -> Dict[str, Any]:
     return {
         "sample_id": sample_id,
         "status": "completed",
-        "audio_url": uploaded_urls["mp3"],
-        "waveform_url": uploaded_urls["waveform"]
+        "audio_url": audio_files["mp3_url"],
+        "waveform_url": waveform_url
     }
 
 
@@ -197,8 +191,8 @@ async def download_tiktok_video(url: str, sample_id: str) -> Dict[str, Any]:
         raise
 
 
-async def extract_audio_from_video(video_path: str, temp_dir: str) -> Dict[str, Any]:
-    """Extract audio from video file and get metadata"""
+async def extract_audio_from_video(video_path: str, temp_dir: str, sample_id: str) -> Dict[str, Any]:
+    """Extract audio from video file, upload to storage, and return URLs"""
     # Use the same temp directory from download step
     processor = AudioProcessor()
     audio_paths = await processor.extract_audio(video_path, temp_dir)
@@ -208,19 +202,53 @@ async def extract_audio_from_video(video_path: str, temp_dir: str) -> Dict[str, 
 
     logger.info(f"Extracted audio: WAV and MP3 created in {temp_dir}, duration={audio_metadata.get('duration'):.1f}s")
 
+    # Upload files to R2 immediately to make this step idempotent
+    storage = S3Storage()
+
+    logger.info(f"Uploading audio files to R2 for sample {sample_id}")
+    wav_url = await storage.upload_file(
+        audio_paths["wav"],
+        f"samples/{sample_id}/audio.wav"
+    )
+    mp3_url = await storage.upload_file(
+        audio_paths["mp3"],
+        f"samples/{sample_id}/audio.mp3"
+    )
+    logger.info(f"Successfully uploaded audio files to R2: WAV and MP3")
+
     return {
-        **audio_paths,
+        "wav_url": wav_url,
+        "mp3_url": mp3_url,
+        "wav_path": audio_paths["wav"],  # Keep for waveform/analysis in same step
         "metadata": audio_metadata
     }
 
 
-async def generate_waveform(audio_path: str, temp_dir: str) -> str:
-    """Generate waveform visualization from audio"""
+async def generate_waveform(audio_path: str, temp_dir: str, sample_id: str) -> str:
+    """Generate waveform visualization, upload to storage, and return URL"""
     # Use the same temp directory
     processor = AudioProcessor()
     waveform_path = await processor.generate_waveform(audio_path, temp_dir)
     logger.info(f"Generated waveform visualization in {temp_dir}")
-    return waveform_path
+
+    # Upload to R2 immediately
+    storage = S3Storage()
+    logger.info(f"Uploading waveform to R2 for sample {sample_id}")
+    waveform_url = await storage.upload_file(
+        waveform_path,
+        f"samples/{sample_id}/waveform.png"
+    )
+    logger.info(f"Successfully uploaded waveform to R2")
+
+    # Clean up waveform file
+    import os
+    try:
+        os.remove(waveform_path)
+        logger.info(f"Cleaned up local waveform file")
+    except Exception as e:
+        logger.warning(f"Failed to clean up waveform file: {e}")
+
+    return waveform_url
 
 
 async def analyze_audio_features(audio_path: str) -> Dict[str, Any]:
@@ -244,65 +272,8 @@ async def analyze_audio_features(audio_path: str) -> Dict[str, Any]:
         }
 
 
-async def upload_to_storage(data: Dict[str, str]) -> Dict[str, str]:
-    """Upload files to S3/storage"""
-    storage = S3Storage()
-    sample_id = data["sample_id"]
-
-    # Log file paths for debugging
-    logger.info(f"upload_to_storage called with paths: wav={data['wav_path']}, mp3={data['mp3_path']}, waveform={data['waveform_path']}")
-
-    # Check if files exist before uploading
-    import os
-    wav_exists = os.path.exists(data["wav_path"])
-    mp3_exists = os.path.exists(data["mp3_path"])
-    waveform_exists = os.path.exists(data["waveform_path"])
-
-    logger.info(f"File existence check - WAV: {wav_exists}, MP3: {mp3_exists}, Waveform: {waveform_exists}")
-
-    if not all([wav_exists, mp3_exists, waveform_exists]):
-        missing_files = []
-        if not wav_exists:
-            missing_files.append(f"WAV: {data['wav_path']}")
-        if not mp3_exists:
-            missing_files.append(f"MP3: {data['mp3_path']}")
-        if not waveform_exists:
-            missing_files.append(f"Waveform: {data['waveform_path']}")
-
-        error_msg = f"Missing files before upload: {', '.join(missing_files)}"
-        logger.error(error_msg)
-
-        # List temp directory contents for debugging
-        temp_dir = Path(data["wav_path"]).parent
-        if temp_dir.exists():
-            files_in_dir = list(temp_dir.iterdir())
-            logger.error(f"Files in temp directory {temp_dir}: {[str(f) for f in files_in_dir]}")
-        else:
-            logger.error(f"Temp directory does not exist: {temp_dir}")
-
-        raise FileNotFoundError(error_msg)
-
-    # Upload all files
-    wav_url = await storage.upload_file(
-        data["wav_path"],
-        f"samples/{sample_id}/audio.wav"
-    )
-    mp3_url = await storage.upload_file(
-        data["mp3_path"],
-        f"samples/{sample_id}/audio.mp3"
-    )
-    waveform_url = await storage.upload_file(
-        data["waveform_path"],
-        f"samples/{sample_id}/waveform.png"
-    )
-
-    logger.info(f"Uploaded files to storage for sample {sample_id}")
-
-    return {
-        "wav": wav_url,
-        "mp3": mp3_url,
-        "waveform": waveform_url
-    }
+# upload_to_storage function removed - files are now uploaded immediately after creation
+# This makes the pipeline idempotent and resilient to step retries
 
 
 def cleanup_temp_files(temp_dir: str) -> None:
