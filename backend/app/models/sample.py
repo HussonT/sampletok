@@ -87,4 +87,9 @@ class Sample(Base):
         secondary=user_samples,
         back_populates="downloaded_samples"
     )
+    tag_objects = relationship(
+        "Tag",
+        secondary="sample_tags",
+        back_populates="samples"
+    )
     

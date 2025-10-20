@@ -9,12 +9,14 @@ import httpx
 
 from app.core.database import get_db
 from app.models import Sample, ProcessingStatus
+from app.models.tag import Tag
 from app.models.schemas import (
     SampleResponse,
     SampleUpdate,
     PaginatedResponse,
     PaginationParams
 )
+from app.services.tag_service import TagService
 
 router = APIRouter()
 
@@ -26,9 +28,10 @@ async def get_samples(
     genre: Optional[str] = None,
     status: Optional[str] = None,
     search: Optional[str] = None,
+    tags: Optional[str] = Query(None, description="Comma-separated list of tag names to filter by"),
     db: AsyncSession = Depends(get_db)
 ):
-    """Get all samples with optional filtering"""
+    """Get all samples with optional filtering (including tags)"""
     query = select(Sample)
 
     # Filter out samples without essential data - only show completed, playable samples
@@ -66,13 +69,22 @@ async def get_samples(
             Sample.creator_username.ilike(f"%{search}%")
         )
 
+    # Filter by tags if provided
+    if tags:
+        tag_names = [TagService.normalize_tag_name(t.strip()) for t in tags.split(',')]
+        # Join with tags and filter by tag names
+        query = query.join(Sample.tag_objects).where(Tag.name.in_(tag_names)).distinct()
+
     # Get total count
     count_query = select(func.count()).select_from(query.subquery())
     result = await db.execute(count_query)
     total = result.scalar_one()
 
-    # Apply pagination and eager load creator
-    query = query.options(selectinload(Sample.tiktok_creator)).offset(skip).limit(limit).order_by(Sample.created_at.desc())
+    # Apply pagination and eager load creator and tags
+    query = query.options(
+        selectinload(Sample.tiktok_creator),
+        selectinload(Sample.tag_objects)
+    ).offset(skip).limit(limit).order_by(Sample.created_at.desc())
 
     # Execute query
     result = await db.execute(query)
@@ -96,7 +108,10 @@ async def get_sample(
     db: AsyncSession = Depends(get_db)
 ):
     """Get a specific sample by ID"""
-    query = select(Sample).options(selectinload(Sample.tiktok_creator)).where(Sample.id == sample_id)
+    query = select(Sample).options(
+        selectinload(Sample.tiktok_creator),
+        selectinload(Sample.tag_objects)
+    ).where(Sample.id == sample_id)
     result = await db.execute(query)
     sample = result.scalar_one_or_none()
 

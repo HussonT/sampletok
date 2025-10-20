@@ -3,6 +3,8 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Play, Pause, Download, Heart } from 'lucide-react';
+import TagList from '@/components/TagList';
+import { Tag } from '@/types/api';
 
 interface Sample {
   id: string;
@@ -14,6 +16,7 @@ interface Sample {
   audioUrl: string;
   waveformUrl: string;
   createdAt: string;
+  tag_objects?: Tag[];
 }
 
 interface SampleCardProps {
@@ -122,6 +125,16 @@ export function SampleCard({ sample, onPreview, onDownload, isPlaying }: SampleC
             {formatDuration(sample.duration)}
           </Badge>
         </div>
+
+        {/* Tags */}
+        {sample.tag_objects && sample.tag_objects.length > 0 && (
+          <TagList
+            tags={sample.tag_objects}
+            maxDisplay={3}
+            size="sm"
+            className="mt-1"
+          />
+        )}
 
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">

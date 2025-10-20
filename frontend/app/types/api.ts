@@ -1,5 +1,46 @@
 // API Types matching backend schemas
 
+export enum TagCategory {
+  GENRE = 'genre',
+  MOOD = 'mood',
+  INSTRUMENT = 'instrument',
+  CONTENT = 'content',
+  TEMPO = 'tempo',
+  EFFECT = 'effect',
+  OTHER = 'other'
+}
+
+export interface Tag {
+  id: string;
+  name: string;
+  display_name: string;
+  category: TagCategory;
+  usage_count: number;
+  created_at: string;
+}
+
+export interface TagSuggestion {
+  name: string;
+  display_name: string;
+  category: TagCategory;
+  confidence: number;
+  reason: string;
+}
+
+export interface TagSuggestionsResponse {
+  suggestions: TagSuggestion[];
+  sample_id: string;
+}
+
+export interface AddTagsRequest {
+  tag_names: string[];
+}
+
+export interface PopularTagsResponse {
+  tags: Tag[];
+  total: number;
+}
+
 export interface TikTokCreator {
   id: string;
   tiktok_id: string;
@@ -37,7 +78,8 @@ export interface Sample {
   bpm?: number;
   key?: string;
   genre?: string;
-  tags: string[];
+  tags: string[]; // Legacy field
+  tag_objects: Tag[]; // New structured tags
   audio_url_wav?: string;
   audio_url_mp3?: string;
   waveform_url?: string;
@@ -100,6 +142,7 @@ export interface SampleFilters {
   genre?: string;
   status?: string;
   search?: string;
+  tags?: string; // Comma-separated tag names
   sort_by?: 'recent' | 'popular' | 'duration';
 }
 

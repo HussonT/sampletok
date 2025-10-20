@@ -16,7 +16,9 @@ from app.services.storage.s3 import S3Storage
 from app.models import Sample, ProcessingStatus, TikTokCreator
 from app.core.database import AsyncSessionLocal
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from app.services.tiktok.creator_service import CreatorService
+from app.services.tag_service import TagService
 
 logger = logging.getLogger(__name__)
 
@@ -121,7 +123,14 @@ async def process_tiktok_video(ctx: inngest.Context) -> Dict[str, Any]:
         }
     )
 
-    # Step 7: Clean up temp files
+    # Step 7: Generate and add automatic tags
+    await ctx.step.run(
+        "generate-tags",
+        generate_automatic_tags,
+        sample_id
+    )
+
+    # Step 8: Clean up temp files
     await ctx.step.run(
         "cleanup-temp-files",
         cleanup_temp_files,
@@ -289,6 +298,58 @@ def cleanup_temp_files(temp_dir: str) -> None:
         # Don't fail the whole process if cleanup fails
 
 
+async def generate_automatic_tags(sample_id: str) -> Dict[str, Any]:
+    """Generate and add automatic tags to a sample based on its metadata"""
+    try:
+        async with AsyncSessionLocal() as db:
+            # Load sample with tag objects
+            query = select(Sample).options(selectinload(Sample.tag_objects)).where(Sample.id == uuid.UUID(sample_id))
+            result = await db.execute(query)
+            sample = result.scalar_one_or_none()
+
+            if not sample:
+                logger.warning(f"Sample {sample_id} not found for tag generation")
+                return {"status": "skipped", "reason": "sample_not_found"}
+
+            # Generate tag suggestions
+            suggestions = await TagService.generate_suggestions(db, sample)
+
+            if not suggestions:
+                logger.info(f"No tag suggestions generated for sample {sample_id}")
+                return {"status": "skipped", "reason": "no_suggestions"}
+
+            # Add high-confidence tags automatically (confidence >= 0.7)
+            high_confidence_tags = [
+                s.display_name for s in suggestions if s.confidence >= 0.7
+            ]
+
+            if high_confidence_tags:
+                added_tags = await TagService.add_tags_to_sample(
+                    db,
+                    sample,
+                    high_confidence_tags,
+                    auto_categorize=True
+                )
+                await db.commit()
+
+                tag_names = [t.display_name for t in added_tags]
+                logger.info(f"Added {len(added_tags)} automatic tags to sample {sample_id}: {', '.join(tag_names)}")
+
+                return {
+                    "status": "success",
+                    "tags_added": len(added_tags),
+                    "tag_names": tag_names
+                }
+            else:
+                logger.info(f"No high-confidence tags to add for sample {sample_id}")
+                return {"status": "skipped", "reason": "low_confidence"}
+
+    except Exception as e:
+        logger.error(f"Error generating automatic tags for sample {sample_id}: {e}")
+        # Don't fail the entire pipeline for tag generation errors
+        return {"status": "error", "error": str(e)}
+
+
 async def update_sample_complete(data: Dict[str, Any]) -> None:
     """Update sample with processing results"""
     try:
@@ -299,7 +360,7 @@ async def update_sample_complete(data: Dict[str, Any]) -> None:
             analysis = data.get("analysis", {})
             audio_metadata = data.get("audio_metadata", {})
 
-            query = select(Sample).where(Sample.id == uuid.UUID(sample_id))
+            query = select(Sample).options(selectinload(Sample.tag_objects)).where(Sample.id == uuid.UUID(sample_id))
             result = await db.execute(query)
             sample = result.scalar_one()
 

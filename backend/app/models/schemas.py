@@ -2,6 +2,7 @@ from pydantic import BaseModel, EmailStr, HttpUrl, Field, validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from uuid import UUID
+from enum import Enum
 import re
 
 
@@ -164,7 +165,7 @@ class SampleResponse(BaseModel):
     bpm: Optional[int] = None
     key: Optional[str] = None
     genre: Optional[str] = None
-    tags: Optional[List[str]] = Field(default_factory=list)
+    tags: Optional[List[str]] = Field(default_factory=list)  # Legacy: kept for backward compatibility
     audio_url_wav: Optional[str] = None
     audio_url_mp3: Optional[str] = None
     waveform_url: Optional[str] = None
@@ -180,6 +181,9 @@ class SampleResponse(BaseModel):
 
     # Nested creator object
     tiktok_creator: Optional[TikTokCreatorResponse] = None
+
+    # Tag objects (forward reference, will be defined below)
+    tag_objects: List['TagResponse'] = Field(default_factory=list)
 
     class Config:
         from_attributes = True
@@ -227,3 +231,69 @@ class SamplesListResponse(BaseModel):
     skip: int
     limit: int
     has_more: bool
+
+
+# Tag Schemas
+class TagCategoryEnum(str, Enum):
+    """Tag categories for frontend"""
+    GENRE = "genre"
+    MOOD = "mood"
+    INSTRUMENT = "instrument"
+    CONTENT = "content"
+    TEMPO = "tempo"
+    EFFECT = "effect"
+    OTHER = "other"
+
+
+class TagBase(BaseModel):
+    name: str = Field(..., min_length=1, max_length=50, description="Tag name (will be normalized)")
+    category: TagCategoryEnum = TagCategoryEnum.OTHER
+
+
+class TagCreate(TagBase):
+    pass
+
+
+class TagUpdate(BaseModel):
+    display_name: Optional[str] = Field(None, min_length=1, max_length=50)
+    category: Optional[TagCategoryEnum] = None
+
+
+class TagResponse(BaseModel):
+    id: UUID
+    name: str
+    display_name: str
+    category: TagCategoryEnum
+    usage_count: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class TagWithSamplesResponse(TagResponse):
+    """Tag response with sample count"""
+    sample_count: int = 0
+
+
+class PopularTagsResponse(BaseModel):
+    tags: List[TagResponse]
+    total: int
+
+
+class AddTagsRequest(BaseModel):
+    tag_names: List[str] = Field(..., min_items=1, max_items=20, description="List of tag names to add")
+
+
+class TagSuggestion(BaseModel):
+    """Suggested tag with confidence score"""
+    name: str
+    display_name: str
+    category: TagCategoryEnum
+    confidence: float = Field(..., ge=0.0, le=1.0)
+    reason: str  # Why this tag is suggested
+
+
+class TagSuggestionsResponse(BaseModel):
+    suggestions: List[TagSuggestion]
+    sample_id: UUID

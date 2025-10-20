@@ -1,5 +1,5 @@
 import { unstable_cache } from 'next/cache';
-import { Sample, PaginatedResponse, SampleFilters } from '@/types/api';
+import { Sample, PaginatedResponse, SampleFilters, Tag, PopularTagsResponse, TagSuggestionsResponse, AddTagsRequest } from '@/types/api';
 
 // Fetch samples with caching
 export const getSamples = unstable_cache(
@@ -76,4 +76,102 @@ export async function getProcessingStatus(taskId: string) {
   }
 
   return response.json();
+}
+
+// Tag-related functions
+
+// Get popular tags
+export const getPopularTags = unstable_cache(
+  async (limit: number = 30): Promise<PopularTagsResponse> => {
+    const response = await fetch(
+      `${process.env.BACKEND_URL}/api/v1/tags/popular?limit=${limit}`,
+      {
+        next: {
+          revalidate: 60,
+          tags: ['popular-tags']
+        }
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch popular tags');
+    }
+
+    return response.json();
+  },
+  ['popular-tags'],
+  {
+    revalidate: 60,
+    tags: ['popular-tags']
+  }
+);
+
+// Search tags (no cache, user input)
+export async function searchTags(query: string, limit: number = 20): Promise<Tag[]> {
+  const response = await fetch(
+    `${process.env.BACKEND_URL}/api/v1/tags?search=${encodeURIComponent(query)}&limit=${limit}`,
+    {
+      cache: 'no-store'
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error('Failed to search tags');
+  }
+
+  return response.json();
+}
+
+// Get tag suggestions for a sample
+export async function getTagSuggestions(sampleId: string): Promise<TagSuggestionsResponse> {
+  const response = await fetch(
+    `${process.env.BACKEND_URL}/api/v1/tags/samples/${sampleId}/suggestions`,
+    {
+      cache: 'no-store'
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error('Failed to get tag suggestions');
+  }
+
+  return response.json();
+}
+
+// Add tags to a sample
+export async function addTagsToSample(sampleId: string, tagNames: string[]): Promise<Tag[]> {
+  const body: AddTagsRequest = { tag_names: tagNames };
+
+  const response = await fetch(
+    `${process.env.BACKEND_URL}/api/v1/tags/samples/${sampleId}/tags`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+      cache: 'no-store'
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error('Failed to add tags');
+  }
+
+  return response.json();
+}
+
+// Remove tag from a sample
+export async function removeTagFromSample(sampleId: string, tagName: string): Promise<void> {
+  const response = await fetch(
+    `${process.env.BACKEND_URL}/api/v1/tags/samples/${sampleId}/tags/${encodeURIComponent(tagName)}`,
+    {
+      method: 'DELETE',
+      cache: 'no-store'
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error('Failed to remove tag');
+  }
 }
