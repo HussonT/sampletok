@@ -2,7 +2,6 @@ import React from 'react';
 import Image from 'next/image';
 import { TikTokCreator } from '@/types/api';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
-import { Badge } from '@/components/ui/badge';
 import { Users, Heart, Video, CheckCircle } from 'lucide-react';
 import { getAvatarWithFallback } from '@/lib/avatar';
 

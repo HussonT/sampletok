@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -6,15 +6,22 @@ from sqlalchemy.orm import selectinload
 from typing import List, Optional
 from uuid import UUID
 import httpx
+import inngest
+import asyncio
+import logging
 
-from app.core.database import get_db
+from app.core.database import get_db, AsyncSessionLocal
 from app.models import Sample, ProcessingStatus
 from app.models.schemas import (
     SampleResponse,
     SampleUpdate,
     PaginatedResponse,
-    PaginationParams
+    PaginationParams,
+    ReprocessRequest,
+    ReprocessResponse
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -225,4 +232,262 @@ async def download_video(
         headers={
             "Content-Disposition": f'attachment; filename="{filename}"'
         }
+    )
+
+
+async def check_url_has_content(url: Optional[str], timeout: int = 10) -> bool:
+    """
+    Check if a URL exists and has actual content behind it.
+    Returns True if URL has valid content, False otherwise.
+    """
+    if not url:
+        return False
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            # Use HEAD request first for efficiency
+            response = await client.head(url, follow_redirects=True)
+
+            # Check if response is successful
+            if response.status_code != 200:
+                return False
+
+            # Check Content-Length header if available
+            content_length = response.headers.get('content-length')
+            if content_length:
+                # If content length is 0 or very small, likely broken
+                if int(content_length) < 100:  # Less than 100 bytes is suspicious
+                    return False
+            else:
+                # If no Content-Length header, do a GET to check actual content
+                response = await client.get(url, follow_redirects=True)
+                if response.status_code != 200 or len(response.content) < 100:
+                    return False
+
+            return True
+
+    except Exception as e:
+        logger.debug(f"URL check failed for {url}: {e}")
+        return False
+
+
+async def sample_has_broken_links(sample: Sample) -> bool:
+    """
+    Check if a sample has any broken or missing media links.
+    Returns True if sample needs reprocessing due to broken links.
+    """
+    # Check essential media URLs
+    urls_to_check = []
+
+    # Video URL (critical)
+    if sample.video_url:
+        urls_to_check.append(("video", sample.video_url))
+    else:
+        return True  # Missing video URL
+
+    # Audio URLs (critical)
+    if sample.audio_url_wav:
+        urls_to_check.append(("audio_wav", sample.audio_url_wav))
+    else:
+        return True  # Missing WAV
+
+    if sample.audio_url_mp3:
+        urls_to_check.append(("audio_mp3", sample.audio_url_mp3))
+    else:
+        return True  # Missing MP3
+
+    # Waveform (critical for UI)
+    if sample.waveform_url:
+        urls_to_check.append(("waveform", sample.waveform_url))
+    else:
+        return True  # Missing waveform
+
+    # Check each URL
+    for media_type, url in urls_to_check:
+        has_content = await check_url_has_content(url)
+        if not has_content:
+            logger.info(f"  Sample {sample.id}: Broken {media_type} URL")
+            return True
+
+    return False
+
+
+async def reprocess_samples_background(
+    filter_status: Optional[str] = None,
+    limit: Optional[int] = None,
+    skip_reset: bool = False,
+    broken_links_only: bool = False
+):
+    """Background task to reprocess samples"""
+    logger.info("="*60)
+    logger.info("Starting background sample reprocessing")
+    if broken_links_only:
+        logger.info("Mode: Broken links only")
+    logger.info("="*60)
+
+    stats = {
+        'total': 0,
+        'triggered': 0,
+        'failed': 0,
+        'skipped': 0,
+    }
+
+    async with AsyncSessionLocal() as db:
+        # Build query
+        query = select(Sample).order_by(Sample.created_at.desc())
+
+        if filter_status:
+            status_enum = ProcessingStatus(filter_status)
+            query = query.where(Sample.status == status_enum)
+            logger.info(f"Filtering by status: {filter_status}")
+
+        result = await db.execute(query)
+        samples = result.scalars().all()
+
+        if limit:
+            samples = samples[:limit]
+            logger.info(f"Limited to first {limit} samples")
+
+        stats['total'] = len(samples)
+        logger.info(f"Found {len(samples)} samples to reprocess")
+
+        if stats['total'] == 0:
+            logger.info("No samples to process. Exiting.")
+            return
+
+        # Get Inngest client
+        from app.inngest_functions import inngest_client
+
+        # Process each sample
+        for i, sample in enumerate(samples, 1):
+            logger.info(f"[{i}/{len(samples)}] Processing sample {sample.id}")
+            logger.info(f"  URL: {sample.tiktok_url}")
+            logger.info(f"  Creator: @{sample.creator_username}")
+            logger.info(f"  Current status: {sample.status.value}")
+
+            # Check for broken links if requested
+            if broken_links_only:
+                logger.info(f"  Checking URLs for sample {sample.id}...")
+                has_broken = await sample_has_broken_links(sample)
+                if not has_broken:
+                    logger.info(f"  ✓ All URLs valid, skipping sample {sample.id}")
+                    stats['skipped'] += 1
+                    continue
+                else:
+                    logger.info(f"  ✗ Found broken/missing URLs, will reprocess")
+
+            # Reset status if requested
+            if not skip_reset:
+                try:
+                    sample.status = ProcessingStatus.PENDING
+                    sample.error_message = None
+                    await db.commit()
+                    logger.info(f"  Reset sample {sample.id} to pending")
+                except Exception as e:
+                    logger.error(f"  Error resetting sample status: {e}")
+                    await db.rollback()
+
+            # Trigger reprocessing
+            if not sample.tiktok_url:
+                logger.warning(f"  Sample {sample.id} has no TikTok URL, skipping")
+                continue
+
+            try:
+                await inngest_client.send(
+                    inngest.Event(
+                        name="tiktok/video.submitted",
+                        data={
+                            "sample_id": str(sample.id),
+                            "url": sample.tiktok_url
+                        }
+                    )
+                )
+                logger.info(f"  ✓ Pipeline triggered for sample {sample.id}")
+                stats['triggered'] += 1
+            except Exception as e:
+                logger.error(f"  ✗ Error triggering pipeline for sample {sample.id}: {e}")
+                stats['failed'] += 1
+
+            # Small delay to avoid overwhelming the system
+            await asyncio.sleep(2)
+
+    # Log summary
+    logger.info("="*60)
+    logger.info("BACKGROUND REPROCESSING COMPLETE")
+    logger.info("="*60)
+    logger.info(f"Total samples: {stats['total']}")
+    logger.info(f"Successfully triggered: {stats['triggered']}")
+    logger.info(f"Failed: {stats['failed']}")
+    logger.info(f"Skipped: {stats['skipped']}")
+    logger.info("="*60)
+
+
+@router.post("/reprocess", response_model=ReprocessResponse)
+async def reprocess_samples(
+    request: ReprocessRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Trigger reprocessing of samples through the full Inngest pipeline.
+
+    This endpoint triggers background reprocessing of samples, downloading fresh media
+    from TikTok and storing everything in your infrastructure.
+
+    - **filter_status**: Only reprocess samples with specific status (pending/processing/completed/failed)
+    - **limit**: Maximum number of samples to reprocess
+    - **skip_reset**: Don't reset sample status to pending
+    - **dry_run**: Show what would be processed without actually triggering
+    """
+    # Build query to count samples
+    query = select(func.count(Sample.id))
+
+    if request.filter_status:
+        try:
+            status_enum = ProcessingStatus(request.filter_status)
+            query = query.where(Sample.status == status_enum)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid status: {request.filter_status}. Must be one of: pending, processing, completed, failed"
+            )
+
+    result = await db.execute(query)
+    total_count = result.scalar()
+
+    # Apply limit if specified
+    samples_to_process = min(total_count, request.limit) if request.limit else total_count
+
+    if samples_to_process == 0:
+        return ReprocessResponse(
+            message="No samples found matching the criteria",
+            total_samples=0,
+            status="completed"
+        )
+
+    if request.dry_run:
+        return ReprocessResponse(
+            message=f"Dry run: Would reprocess {samples_to_process} samples",
+            total_samples=samples_to_process,
+            status="dry_run"
+        )
+
+    # Add background task
+    background_tasks.add_task(
+        reprocess_samples_background,
+        filter_status=request.filter_status,
+        limit=request.limit,
+        skip_reset=request.skip_reset,
+        broken_links_only=request.broken_links_only
+    )
+
+    message = f"Started reprocessing {samples_to_process} samples in the background."
+    if request.broken_links_only:
+        message += " Only samples with broken/missing URLs will be processed."
+    message += " Check logs for progress."
+
+    return ReprocessResponse(
+        message=message,
+        total_samples=samples_to_process,
+        status="started"
     )

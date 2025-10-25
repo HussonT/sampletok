@@ -227,3 +227,18 @@ class SamplesListResponse(BaseModel):
     skip: int
     limit: int
     has_more: bool
+
+
+# Reprocessing Schemas
+class ReprocessRequest(BaseModel):
+    filter_status: Optional[str] = Field(None, description="Only reprocess samples with this status (pending, processing, completed, failed)")
+    limit: Optional[int] = Field(None, description="Maximum number of samples to reprocess", ge=1, le=100)
+    skip_reset: bool = Field(False, description="Don't reset sample status to pending")
+    dry_run: bool = Field(False, description="Show what would be processed without actually doing it")
+    broken_links_only: bool = Field(False, description="Only reprocess samples with broken/inaccessible media URLs")
+
+
+class ReprocessResponse(BaseModel):
+    message: str
+    total_samples: int
+    status: str = "started"  # started, dry_run, or error
