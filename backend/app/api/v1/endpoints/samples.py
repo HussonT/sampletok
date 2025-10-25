@@ -187,3 +187,42 @@ async def download_sample(
             "Content-Disposition": f'attachment; filename="{filename}"'
         }
     )
+
+
+@router.get("/{sample_id}/download-video")
+async def download_video(
+    sample_id: UUID,
+    db: AsyncSession = Depends(get_db)
+):
+    """Download the TikTok video file (costs 1 credit)"""
+    query = select(Sample).where(Sample.id == sample_id)
+    result = await db.execute(query)
+    sample = result.scalar_one_or_none()
+
+    if not sample:
+        raise HTTPException(status_code=404, detail="Sample not found")
+
+    # Get video URL from our storage
+    video_url = sample.video_url
+    if not video_url:
+        raise HTTPException(status_code=404, detail="No video file available for this sample")
+
+    # Fetch the file from our storage
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(video_url, follow_redirects=True)
+            response.raise_for_status()
+        except httpx.HTTPError as e:
+            raise HTTPException(status_code=500, detail=f"Failed to fetch video file: {str(e)}")
+
+    # Generate filename
+    filename = f"{sample.creator_username or 'unknown'}_{sample.id}.mp4"
+
+    # Return as streaming response with download headers
+    return StreamingResponse(
+        iter([response.content]),
+        media_type="video/mp4",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"'
+        }
+    )

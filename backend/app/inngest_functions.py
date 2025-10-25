@@ -6,7 +6,7 @@ import tempfile
 import logging
 from pathlib import Path
 import uuid
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from app.core.config import settings
 from app.services.tiktok.downloader import TikTokDownloader
@@ -51,11 +51,13 @@ async def process_tiktok_video(ctx: inngest.Context) -> Dict[str, Any]:
     """
     Process a TikTok video through multiple steps:
     1. Download video from TikTok
-    2. Extract audio (WAV and MP3)
-    3. Generate waveform visualization
-    4. Analyze audio features (BPM, key detection)
-    5. Upload files to storage
-    6. Update database with results
+    2. Upload video to our storage
+    3. Upload thumbnails/covers to our storage
+    4. Extract audio (WAV and MP3)
+    5. Generate waveform visualization
+    6. Analyze audio features (BPM, key detection)
+    7. Update database with results
+    8. Clean up temp files
     """
     event_data = ctx.event.data
     sample_id = event_data.get("sample_id")
@@ -79,7 +81,24 @@ async def process_tiktok_video(ctx: inngest.Context) -> Dict[str, Any]:
         sample_id
     )
 
-    # Step 3: Extract audio (creates WAV and MP3, uploads to R2, returns URLs)
+    # Step 3: Upload video file to our storage
+    video_url = await ctx.step.run(
+        "upload-video",
+        upload_video_to_storage,
+        video_metadata["video_path"],
+        sample_id
+    )
+
+    # Step 4: Upload thumbnails/covers to our storage
+    media_urls = await ctx.step.run(
+        "upload-media",
+        upload_media_to_storage,
+        sample_id,
+        video_metadata.get("thumbnail_url"),
+        video_metadata.get("origin_cover_url")
+    )
+
+    # Step 5: Extract audio (creates WAV and MP3, uploads to R2, returns URLs)
     audio_files = await ctx.step.run(
         "extract-audio",
         extract_audio_from_video,
@@ -88,7 +107,7 @@ async def process_tiktok_video(ctx: inngest.Context) -> Dict[str, Any]:
         sample_id
     )
 
-    # Step 4: Generate waveform (generates PNG, uploads to R2, returns URL)
+    # Step 6: Generate waveform (generates PNG, uploads to R2, returns URL)
     waveform_url = await ctx.step.run(
         "generate-waveform",
         generate_waveform,
@@ -97,14 +116,14 @@ async def process_tiktok_video(ctx: inngest.Context) -> Dict[str, Any]:
         sample_id
     )
 
-    # Step 5: Analyze audio features (BPM, key detection)
+    # Step 7: Analyze audio features (BPM, key detection)
     audio_analysis = await ctx.step.run(
         "analyze-audio-features",
         analyze_audio_features,
         audio_files["wav_path"]
     )
 
-    # Step 6: Update database with results (URLs are already from R2)
+    # Step 8: Update database with results (all URLs are from our storage)
     await ctx.step.run(
         "update-database",
         update_sample_complete,
@@ -112,6 +131,9 @@ async def process_tiktok_video(ctx: inngest.Context) -> Dict[str, Any]:
             "sample_id": sample_id,
             "metadata": video_metadata,
             "urls": {
+                "video": video_url,
+                "thumbnail": media_urls.get("thumbnail"),
+                "cover": media_urls.get("cover"),
                 "wav": audio_files["wav_url"],
                 "mp3": audio_files["mp3_url"],
                 "waveform": waveform_url
@@ -121,7 +143,7 @@ async def process_tiktok_video(ctx: inngest.Context) -> Dict[str, Any]:
         }
     )
 
-    # Step 7: Clean up temp files
+    # Step 9: Clean up temp files
     await ctx.step.run(
         "cleanup-temp-files",
         cleanup_temp_files,
@@ -131,6 +153,7 @@ async def process_tiktok_video(ctx: inngest.Context) -> Dict[str, Any]:
     return {
         "sample_id": sample_id,
         "status": "completed",
+        "video_url": video_url,
         "audio_url": audio_files["mp3_url"],
         "waveform_url": waveform_url
     }
@@ -224,6 +247,56 @@ async def extract_audio_from_video(video_path: str, temp_dir: str, sample_id: st
     }
 
 
+async def upload_video_to_storage(video_path: str, sample_id: str) -> str:
+    """Upload video file to our storage and return URL"""
+    storage = S3Storage()
+    logger.info(f"Uploading video to storage for sample {sample_id}")
+
+    video_url = await storage.upload_file(
+        video_path,
+        f"samples/{sample_id}/video.mp4"
+    )
+    logger.info(f"Successfully uploaded video to storage")
+
+    return video_url
+
+
+async def upload_media_to_storage(
+    sample_id: str,
+    thumbnail_url: Optional[str],
+    cover_url: Optional[str]
+) -> Dict[str, Optional[str]]:
+    """Download and upload thumbnail and cover images to our storage"""
+    storage = S3Storage()
+    media_urls = {}
+
+    # Upload thumbnail
+    if thumbnail_url:
+        logger.info(f"Downloading and uploading thumbnail for sample {sample_id}")
+        stored_url = await storage.download_and_upload_url(
+            thumbnail_url,
+            f"samples/{sample_id}/thumbnail.jpg",
+            "image/jpeg"
+        )
+        media_urls["thumbnail"] = stored_url
+        if stored_url:
+            logger.info(f"Successfully uploaded thumbnail")
+
+    # Upload cover image
+    if cover_url:
+        logger.info(f"Downloading and uploading cover image for sample {sample_id}")
+        stored_url = await storage.download_and_upload_url(
+            cover_url,
+            f"samples/{sample_id}/cover.jpg",
+            "image/jpeg"
+        )
+        media_urls["cover"] = stored_url
+        if stored_url:
+            logger.info(f"Successfully uploaded cover image")
+
+    return media_urls
+
+
 async def generate_waveform(audio_path: str, temp_dir: str, sample_id: str) -> str:
     """Generate waveform visualization, upload to storage, and return URL"""
     # Use the same temp directory
@@ -303,27 +376,22 @@ async def update_sample_complete(data: Dict[str, Any]) -> None:
             result = await db.execute(query)
             sample = result.scalar_one()
 
-            # Update metadata - now with RapidAPI fields
+            # Update metadata from TikTok API
             sample.tiktok_id = metadata.get("tiktok_id")
             sample.aweme_id = metadata.get("aweme_id")
             sample.title = metadata.get("title")
             sample.region = metadata.get("region")
             sample.creator_username = metadata.get("creator_username")
             sample.creator_name = metadata.get("creator_name")
-            sample.creator_avatar_url = metadata.get("creator_avatar_url")
             sample.description = metadata.get("description")
             sample.view_count = metadata.get("view_count", 0)
             sample.like_count = metadata.get("like_count", 0)
             sample.comment_count = metadata.get("comment_count", 0)
             sample.share_count = metadata.get("share_count", 0)
+            sample.upload_timestamp = metadata.get("upload_timestamp")
+
             # Use duration from audio metadata (extracted from actual audio file)
             sample.duration_seconds = audio_metadata.get("duration", metadata.get("duration"))
-            sample.thumbnail_url = metadata.get("thumbnail_url")
-            sample.origin_cover_url = metadata.get("origin_cover_url")
-            sample.music_url = metadata.get("music_url")
-            sample.video_url = metadata.get("video_url")
-            sample.video_url_watermark = metadata.get("video_url_watermark")
-            sample.upload_timestamp = metadata.get("upload_timestamp")
 
             # Update audio analysis results
             if analysis.get("bpm"):
@@ -334,10 +402,17 @@ async def update_sample_complete(data: Dict[str, Any]) -> None:
                 sample.key = f"{analysis['key']} {analysis['scale']}"
                 logger.info(f"Set key: {sample.key}")
 
-            # Update file URLs
+            # Update file URLs - All from our storage (R2/S3/GCS)
+            sample.video_url = urls.get("video")
+            sample.thumbnail_url = urls.get("thumbnail")
+            sample.cover_url = urls.get("cover")
             sample.audio_url_wav = urls["wav"]
             sample.audio_url_mp3 = urls["mp3"]
             sample.waveform_url = urls["waveform"]
+
+            # Calculate video file size if available
+            if metadata.get("file_size"):
+                sample.file_size_video = metadata["file_size"]
 
             # Link to TikTok creator if available
             tiktok_creator_id = metadata.get("tiktok_creator_id")

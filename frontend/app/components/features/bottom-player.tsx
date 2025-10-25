@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { Sample } from '@/types/api';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
+import { getAvatarWithFallback } from '@/lib/avatar';
 
 interface BottomPlayerProps {
   sample?: Sample | null;
@@ -109,7 +110,7 @@ export function BottomPlayer({
       {sample && (
         <audio
           ref={audioRef}
-          src={sample.music_url || sample.audio_url_mp3 || sample.audio_url_wav}
+          src={sample.audio_url_mp3 || sample.audio_url_wav}
           onTimeUpdate={handleTimeUpdate}
           onEnded={onNext}
         />
@@ -120,7 +121,10 @@ export function BottomPlayer({
         <div className="flex items-center gap-4 flex-1 min-w-0">
           <Avatar className="w-12 h-12 flex-shrink-0 rounded-md">
             <AvatarImage
-              src={sample.tiktok_creator?.avatar_thumb || sample.tiktok_creator?.avatar_medium || sample.creator_avatar_url}
+              src={getAvatarWithFallback(
+                sample.tiktok_creator?.avatar_thumb || sample.tiktok_creator?.avatar_medium,
+                sample.creator_username || sample.id
+              )}
               alt={sample.creator_username || 'Creator'}
             />
             <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/40 text-primary rounded-md">

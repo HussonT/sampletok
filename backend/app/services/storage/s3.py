@@ -6,6 +6,8 @@ import logging
 from typing import Optional
 import aiofiles
 import asyncio
+import httpx
+import tempfile
 
 from app.core.config import settings
 
@@ -83,6 +85,59 @@ class S3Storage:
             upload_params['ACL'] = 'public-read'
 
         self.s3_client.put_object(**upload_params)
+
+    async def download_and_upload_url(self, url: str, object_key: str, content_type: Optional[str] = None) -> Optional[str]:
+        """
+        Download file from external URL and upload to our storage
+
+        Args:
+            url: External URL to download from
+            object_key: S3 key to store the file under
+            content_type: Optional content type override
+
+        Returns:
+            Public URL of uploaded file, or None if download/upload fails
+        """
+        if not url:
+            logger.warning("Empty URL provided to download_and_upload_url")
+            return None
+
+        try:
+            # Download from external URL
+            logger.info(f"Downloading from URL: {url}")
+            async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
+                response = await client.get(url)
+                response.raise_for_status()
+                file_data = response.content
+
+                # Use response content type if not provided
+                if not content_type:
+                    content_type = response.headers.get('content-type', 'application/octet-stream')
+
+            # Upload to our storage
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(
+                None,
+                self._upload_to_s3,
+                file_data,
+                object_key,
+                content_type
+            )
+
+            # Generate and return public URL
+            url = self.get_public_url(object_key)
+            logger.info(f"Successfully uploaded {object_key} from external URL")
+            return url
+
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP error downloading from {url}: {e.response.status_code}")
+            return None
+        except ClientError as e:
+            logger.error(f"S3 upload failed for {object_key}: {str(e)}")
+            return None
+        except Exception as e:
+            logger.error(f"Unexpected error in download_and_upload_url: {str(e)}")
+            return None
 
     async def download_file(self, object_key: str, destination_path: str) -> str:
         """

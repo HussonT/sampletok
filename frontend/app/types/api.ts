@@ -25,7 +25,6 @@ export interface Sample {
   region?: string;
   creator_username?: string;
   creator_name?: string;
-  creator_avatar_url?: string;
   creator_follower_count?: number;
   description?: string;
   view_count: number;
@@ -38,14 +37,16 @@ export interface Sample {
   key?: string;
   genre?: string;
   tags: string[];
+  // File URLs - All stored in our infrastructure (R2/S3/GCS)
   audio_url_wav?: string;
   audio_url_mp3?: string;
   waveform_url?: string;
-  thumbnail_url?: string;
-  origin_cover_url?: string;
-  music_url?: string;
-  video_url?: string;
-  video_url_watermark?: string;
+  video_url?: string;  // Our stored video file
+  thumbnail_url?: string;  // Our stored thumbnail
+  cover_url?: string;  // Our stored cover image
+  file_size_video?: number;
+  file_size_wav?: number;
+  file_size_mp3?: number;
   status: ProcessingStatus;
   error_message?: string;
   created_at: string;

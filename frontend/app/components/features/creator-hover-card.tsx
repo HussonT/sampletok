@@ -4,6 +4,7 @@ import { TikTokCreator } from '@/types/api';
 import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { Badge } from '@/components/ui/badge';
 import { Users, Heart, Video, CheckCircle } from 'lucide-react';
+import { getAvatarWithFallback } from '@/lib/avatar';
 
 interface CreatorHoverCardProps {
   creator: TikTokCreator;
@@ -28,23 +29,20 @@ export function CreatorHoverCard({ creator, children }: CreatorHoverCardProps) {
       <HoverCardContent className="w-80" side="top">
         <div className="flex gap-4">
           {/* Avatar */}
-          <div className="flex-shrink-0">
-            {creator.avatar_medium ? (
-              <Image
-                src={creator.avatar_medium}
-                alt={creator.nickname || creator.username}
-                width={64}
-                height={64}
-                className="w-16 h-16 rounded-full object-cover"
-                unoptimized
-              />
-            ) : (
-              <div className="w-16 h-16 rounded-full bg-primary/20 flex items-center justify-center">
-                <span className="text-xl font-bold text-primary">
-                  {(creator.nickname || creator.username).charAt(0).toUpperCase()}
-                </span>
-              </div>
-            )}
+          <div className="flex-shrink-0 relative">
+            <Image
+              src={getAvatarWithFallback(creator.avatar_medium || creator.avatar_large, creator.username)}
+              alt={creator.nickname || creator.username}
+              width={64}
+              height={64}
+              className="w-16 h-16 rounded-full object-cover"
+              unoptimized
+              onError={(e) => {
+                // Fallback to generated avatar on error
+                const target = e.target as HTMLImageElement;
+                target.src = getAvatarWithFallback(null, creator.username);
+              }}
+            />
           </div>
 
           {/* Creator Info */}

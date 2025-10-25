@@ -17,10 +17,10 @@ class TikTokCreator(Base):
     username = Column(String, unique=True, index=True, nullable=False)  # @username
     nickname = Column(String)  # Display name
 
-    # Profile media
-    avatar_thumb = Column(String)  # Small avatar URL
-    avatar_medium = Column(String)  # Medium avatar URL
-    avatar_large = Column(String)  # Large avatar URL
+    # Profile media - All stored in our infrastructure (R2/S3/GCS)
+    avatar_thumb = Column(String)  # Our stored small avatar
+    avatar_medium = Column(String)  # Our stored medium avatar
+    avatar_large = Column(String)  # Our stored large avatar
 
     # Profile info
     signature = Column(Text)  # Bio/signature

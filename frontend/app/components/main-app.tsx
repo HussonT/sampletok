@@ -27,6 +27,7 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
   const [isPlaying, setIsPlaying] = useState(false);
   const [activeSection, setActiveSection] = useState('browse');
   const [downloadedSamples, setDownloadedSamples] = useState<Set<string>>(new Set());
+  const [downloadedVideos, setDownloadedVideos] = useState<Set<string>>(new Set());
   const [credits, setCredits] = useState(10);
   const [processingTasks, setProcessingTasks] = useState<Map<string, ProcessingTask>>(new Map());
   const [hasMore, setHasMore] = useState(initialSamples.length < totalSamples);
@@ -208,6 +209,28 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
     }
   };
 
+  const handleVideoDownload = (sample: Sample) => {
+    if (downloadedVideos.has(sample.id)) {
+      toast.success('Download started!', {
+        description: `Downloading ${sample.creator_username} video`,
+      });
+    } else {
+      if (credits <= 0) {
+        toast.error('No credits remaining', {
+          description: 'Purchase more credits to download videos',
+        });
+        return;
+      }
+
+      setCredits(prev => prev - 1);
+      setDownloadedVideos(prev => new Set([...prev, sample.id]));
+
+      toast.success('Video purchased!', {
+        description: `Used 1 credit. ${credits - 1} credits remaining`,
+      });
+    }
+  };
+
 
   const handleSectionChange = (section: string) => {
     setActiveSection(section);
@@ -298,8 +321,10 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
               currentSample={currentSample}
               isPlaying={isPlaying}
               downloadedSamples={downloadedSamples}
+              downloadedVideos={downloadedVideos}
               onSamplePreview={handleSamplePreview}
               onSampleDownload={handleSampleDownload}
+              onVideoDownload={handleVideoDownload}
               onLoadMore={handleLoadMore}
               hasMore={hasMore}
               isLoadingMore={isLoadingMore}
@@ -323,8 +348,10 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
                 currentSample={currentSample}
                 isPlaying={isPlaying}
                 downloadedSamples={downloadedSamples}
+                downloadedVideos={downloadedVideos}
                 onSamplePreview={handleSamplePreview}
                 onSampleDownload={handleSampleDownload}
+                onVideoDownload={handleVideoDownload}
               />
             )
           )}

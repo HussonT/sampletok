@@ -10,6 +10,7 @@ from sqlalchemy import select
 
 from app.models.tiktok_creator import TikTokCreator
 from app.services.tiktok.downloader import TikTokDownloader
+from app.services.storage.s3 import S3Storage
 
 logger = logging.getLogger(__name__)
 
@@ -70,13 +71,11 @@ class CreatorService:
 
     async def _create_creator(self, data: Dict[str, Any]) -> TikTokCreator:
         """Create new creator in DB"""
+        # Create creator first to get ID
         creator = TikTokCreator(
             tiktok_id=data.get('creator_id', ''),
             username=data.get('creator_username', ''),
             nickname=data.get('creator_name', ''),
-            avatar_thumb=data.get('creator_avatar_thumb'),
-            avatar_medium=data.get('creator_avatar_medium'),
-            avatar_large=data.get('creator_avatar_large'),
             signature=data.get('creator_signature'),
             verified=data.get('creator_verified', False),
             follower_count=data.get('creator_follower_count', 0),
@@ -90,15 +89,31 @@ class CreatorService:
         await self.db.commit()
         await self.db.refresh(creator)
 
+        # Download and upload avatars to our storage
+        storage = S3Storage()
+        creator_id = str(creator.id)
+
+        avatar_urls = await self._download_avatars(
+            storage,
+            creator_id,
+            data.get('creator_avatar_thumb'),
+            data.get('creator_avatar_medium'),
+            data.get('creator_avatar_large')
+        )
+
+        # Update creator with stored avatar URLs
+        creator.avatar_thumb = avatar_urls.get('thumb')
+        creator.avatar_medium = avatar_urls.get('medium')
+        creator.avatar_large = avatar_urls.get('large')
+        await self.db.commit()
+        await self.db.refresh(creator)
+
         logger.info(f"Created new creator @{creator.username} with {creator.follower_count} followers")
         return creator
 
     async def _update_creator(self, creator: TikTokCreator, data: Dict[str, Any]) -> TikTokCreator:
         """Update existing creator with fresh data"""
         creator.nickname = data.get('creator_name', creator.nickname)
-        creator.avatar_thumb = data.get('creator_avatar_thumb', creator.avatar_thumb)
-        creator.avatar_medium = data.get('creator_avatar_medium', creator.avatar_medium)
-        creator.avatar_large = data.get('creator_avatar_large', creator.avatar_large)
         creator.signature = data.get('creator_signature', creator.signature)
         creator.verified = data.get('creator_verified', creator.verified)
         creator.follower_count = data.get('creator_follower_count', creator.follower_count)
@@ -107,8 +122,68 @@ class CreatorService:
         creator.video_count = data.get('creator_video_count', creator.video_count)
         creator.last_fetched_at = datetime.utcnow()
 
+        # Download and upload new avatars to our storage
+        storage = S3Storage()
+        creator_id = str(creator.id)
+
+        avatar_urls = await self._download_avatars(
+            storage,
+            creator_id,
+            data.get('creator_avatar_thumb'),
+            data.get('creator_avatar_medium'),
+            data.get('creator_avatar_large')
+        )
+
+        # Update with new stored URLs if available
+        if avatar_urls.get('thumb'):
+            creator.avatar_thumb = avatar_urls['thumb']
+        if avatar_urls.get('medium'):
+            creator.avatar_medium = avatar_urls['medium']
+        if avatar_urls.get('large'):
+            creator.avatar_large = avatar_urls['large']
+
         await self.db.commit()
         await self.db.refresh(creator)
 
         logger.info(f"Updated creator @{creator.username} - {creator.follower_count} followers")
         return creator
+
+    async def _download_avatars(
+        self,
+        storage: S3Storage,
+        creator_id: str,
+        thumb_url: Optional[str],
+        medium_url: Optional[str],
+        large_url: Optional[str]
+    ) -> Dict[str, Optional[str]]:
+        """Download and upload creator avatars to our storage"""
+        avatar_urls = {}
+
+        # Download and upload thumb avatar
+        if thumb_url:
+            stored_url = await storage.download_and_upload_url(
+                thumb_url,
+                f"creators/{creator_id}/avatar_thumb.jpg",
+                "image/jpeg"
+            )
+            avatar_urls['thumb'] = stored_url
+
+        # Download and upload medium avatar
+        if medium_url:
+            stored_url = await storage.download_and_upload_url(
+                medium_url,
+                f"creators/{creator_id}/avatar_medium.jpg",
+                "image/jpeg"
+            )
+            avatar_urls['medium'] = stored_url
+
+        # Download and upload large avatar
+        if large_url:
+            stored_url = await storage.download_and_upload_url(
+                large_url,
+                f"creators/{creator_id}/avatar_large.jpg",
+                "image/jpeg"
+            )
+            avatar_urls['large'] = stored_url
+
+        return avatar_urls

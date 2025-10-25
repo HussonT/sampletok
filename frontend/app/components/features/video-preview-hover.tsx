@@ -75,8 +75,8 @@ export function VideoPreviewHover({ videoUrl, tiktokUrl }: VideoPreviewHoverProp
           onMouseEnter={() => setIsOpen(true)}
           onMouseLeave={(e) => {
             // Only close if not moving to the content
-            const relatedTarget = e.relatedTarget as HTMLElement;
-            if (!relatedTarget?.closest('[role="dialog"]')) {
+            const relatedTarget = e.relatedTarget;
+            if (!relatedTarget || !(relatedTarget instanceof Element) || !relatedTarget.closest('[role="dialog"]')) {
               setIsOpen(false);
             }
           }}

@@ -1,18 +1,21 @@
 import React from 'react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
-import { Play, Pause, Users, Download } from 'lucide-react';
+import { Play, Pause, Users, Download, Video } from 'lucide-react';
 import { Sample } from '@/types/api';
 import { CreatorHoverCard } from '@/components/features/creator-hover-card';
 import { VideoPreviewHover } from '@/components/features/video-preview-hover';
+import { getAvatarWithFallback } from '@/lib/avatar';
 
 interface SoundsTableProps {
   samples: Sample[];
   currentSample?: Sample | null;
   isPlaying?: boolean;
   downloadedSamples?: Set<string>;
+  downloadedVideos?: Set<string>;
   onSamplePreview?: (sample: Sample) => void;
   onSampleDownload?: (sample: Sample) => void;
+  onVideoDownload?: (sample: Sample) => void;
   onLoadMore?: () => void;
   hasMore?: boolean;
   isLoadingMore?: boolean;
@@ -22,8 +25,11 @@ export function SoundsTable({
   samples,
   currentSample,
   isPlaying = false,
+  downloadedSamples,
+  downloadedVideos,
   onSamplePreview,
   onSampleDownload,
+  onVideoDownload,
   onLoadMore,
   hasMore = false,
   isLoadingMore = false
@@ -53,8 +59,8 @@ export function SoundsTable({
   };
 
   const getCategories = (_sample: Sample): string[] => {
-    const allCategories = ['drums', 'trance'];
-    return allCategories;
+    // TODO: Implement proper category detection
+    return [];
   };
 
   const handleDragStart = (e: React.DragEvent, sample: Sample) => {
@@ -78,6 +84,21 @@ export function SoundsTable({
     onSampleDownload?.(sample);
   };
 
+  const handleVideoDownload = (sample: Sample) => {
+    // Use the backend video download endpoint
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    const downloadUrl = `${apiUrl}/api/v1/samples/${sample.id}/download-video`;
+
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = `${sample.creator_username || 'unknown'}_${sample.id}.mp4`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    onVideoDownload?.(sample);
+  };
+
   return (
     <div className="w-full bg-background">
       <table className="w-full">
@@ -91,7 +112,8 @@ export function SoundsTable({
             <th className="text-left py-3 px-4 font-normal">Key</th>
             <th className="text-left py-3 px-4 font-normal">BPM</th>
             <th className="text-left py-3 px-4 font-normal">TikTok</th>
-            <th className="text-left py-3 px-4 font-normal">Download</th>
+            <th className="text-left py-3 px-4 font-normal">Audio</th>
+            <th className="text-left py-3 px-4 font-normal">Video</th>
           </tr>
         </thead>
         <tbody>
@@ -144,16 +166,17 @@ export function SoundsTable({
                   {sample.tiktok_creator ? (
                     <CreatorHoverCard creator={sample.tiktok_creator}>
                       <div className="flex items-center gap-3 cursor-pointer">
-                        {sample.tiktok_creator.avatar_thumb && (
-                          <Image
-                            src={sample.tiktok_creator.avatar_thumb}
-                            alt={`@${sample.tiktok_creator.username}`}
-                            width={32}
-                            height={32}
-                            className="w-8 h-8 rounded object-cover"
-                            unoptimized
-                          />
-                        )}
+                        <Image
+                          src={getAvatarWithFallback(
+                            sample.tiktok_creator.avatar_thumb,
+                            sample.tiktok_creator.username
+                          )}
+                          alt={`@${sample.tiktok_creator.username}`}
+                          width={32}
+                          height={32}
+                          className="w-8 h-8 rounded object-cover"
+                          unoptimized
+                        />
                         <div className="space-y-1">
                           <div className="text-sm font-medium hover:text-primary transition-colors">
                             @{sample.tiktok_creator.username}
@@ -167,21 +190,19 @@ export function SoundsTable({
                     </CreatorHoverCard>
                   ) : (
                     <div className="flex items-center gap-3">
-                      {sample.creator_avatar_url && (
-                        <Image
-                          src={sample.creator_avatar_url}
-                          alt={`@${sample.creator_username || 'unknown'}`}
-                          width={32}
-                          height={32}
-                          className="w-8 h-8 rounded object-cover"
-                          unoptimized
-                        />
-                      )}
+                      <Image
+                        src={getAvatarWithFallback(null, sample.creator_username || sample.id)}
+                        alt={`@${sample.creator_username || 'unknown'}`}
+                        width={32}
+                        height={32}
+                        className="w-8 h-8 rounded object-cover"
+                        unoptimized
+                      />
                       <div className="space-y-1">
                         <div className="text-sm font-medium">@{sample.creator_username || 'unknown'}</div>
                         <div className="flex items-center gap-1 text-xs text-muted-foreground">
                           <Users className="w-3 h-3" />
-                          <span>0 followers</span>
+                          <span>{sample.creator_follower_count ? formatFollowers(sample.creator_follower_count) : '0 followers'}</span>
                         </div>
                       </div>
                     </div>
@@ -248,9 +269,21 @@ export function SoundsTable({
                     size="sm"
                     className="p-0 w-8 h-8"
                     onClick={() => handleDownload(sample)}
-                    title="Download sample"
+                    title="Download audio sample (WAV)"
                   >
                     <Download className="w-4 h-4" />
+                  </Button>
+                </td>
+                <td className="py-3 px-4">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className={`p-0 w-8 h-8 ${downloadedVideos?.has(sample.id) ? 'text-primary' : ''}`}
+                    onClick={() => handleVideoDownload(sample)}
+                    title={downloadedVideos?.has(sample.id) ? "Download video (already purchased)" : "Download video (1 credit)"}
+                    disabled={!sample.video_url}
+                  >
+                    <Video className="w-4 h-4" />
                   </Button>
                 </td>
               </tr>

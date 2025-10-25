@@ -38,7 +38,6 @@ class Sample(Base):
     region = Column(String)  # Country/region code
     creator_username = Column(String, index=True)
     creator_name = Column(String)
-    creator_avatar_url = Column(String)  # Creator's profile picture (keeping for backward compatibility)
     description = Column(Text)
     view_count = Column(Integer, default=0)
     like_count = Column(Integer, default=0)
@@ -53,17 +52,16 @@ class Sample(Base):
     genre = Column(String)
     tags = Column(JSONB, default=list)
 
-    # File information
-    audio_url_wav = Column(String)
-    audio_url_mp3 = Column(String)
-    waveform_url = Column(String)
-    thumbnail_url = Column(String)
-    origin_cover_url = Column(String)  # Original cover image
-    music_url = Column(String)  # Original audio track URL
-    video_url = Column(String)  # No-watermark video URL
-    video_url_watermark = Column(String)  # Watermarked video URL
+    # File URLs - All stored in our infrastructure (R2/S3/GCS)
+    audio_url_wav = Column(String)  # Our stored WAV file
+    audio_url_mp3 = Column(String)  # Our stored MP3 file
+    waveform_url = Column(String)  # Our stored waveform PNG
+    video_url = Column(String)  # Our stored video file
+    thumbnail_url = Column(String)  # Our stored thumbnail image
+    cover_url = Column(String)  # Our stored cover image
     file_size_wav = Column(Integer)
     file_size_mp3 = Column(Integer)
+    file_size_video = Column(Integer)
 
     # Processing information
     status = Column(Enum(ProcessingStatus), default=ProcessingStatus.PENDING)
