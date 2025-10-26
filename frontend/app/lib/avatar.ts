@@ -14,14 +14,14 @@ export type AvatarStyle = 'notionists' | 'fun-emoji';
  * @returns Data URI of the generated SVG avatar
  */
 export function generateAvatarUrl(seed: string, style: AvatarStyle = 'notionists'): string {
-  const collection = style === 'fun-emoji' ? funEmoji : notionists;
+  if (style === 'fun-emoji') {
+    const avatar = createAvatar(funEmoji, { seed });
+    return avatar.toDataUri();
+  }
 
-  const avatar = createAvatar(collection, {
+  const avatar = createAvatar(notionists, {
     seed,
-    // Notionists specific options
-    ...(style === 'notionists' && {
-      backgroundColor: ['b6e3f4', 'c0aede', 'd1d4f9', 'ffd5dc', 'ffdfbf'],
-    }),
+    backgroundColor: ['b6e3f4', 'c0aede', 'd1d4f9', 'ffd5dc', 'ffdfbf'],
   });
 
   return avatar.toDataUri();

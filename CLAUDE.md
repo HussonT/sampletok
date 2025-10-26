@@ -264,3 +264,4 @@ Key deployment considerations:
 - Configure CORS with production frontend URLs
 - Set up Inngest webhook to backend `/api/inngest` endpoint (see Inngest Production Setup above)
 - Choose storage backend (AWS S3, Cloudflare R2, or GCS)
+- No backwards compatibility or fallbacks in future implementations. Just implement the new solution cleanly and move forward.

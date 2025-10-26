@@ -2,16 +2,14 @@
 
 import React, { useState, useMemo, useTransition, useOptimistic, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { SimpleSidebar } from '@/components/features/simple-sidebar';
 import { SoundsTable } from '@/components/features/sounds-table';
 import { ProcessingQueue, ProcessingTask } from '@/components/features/processing-queue';
 import { BottomPlayer } from '@/components/features/bottom-player';
-import { AddSampleDialog } from '@/components/features/add-sample-dialog';
 import { Download, Music } from 'lucide-react';
 import { Sample, SampleFilters, ProcessingStatus } from '@/types/api';
 import { processTikTokUrl, deleteSample, getProcessingStatus } from '@/actions/samples';
 import { toast } from 'sonner';
-import { Toaster } from '@/components/ui/sonner';
+import { useProcessing } from '@/contexts/processing-context';
 
 interface MainAppProps {
   initialSamples: Sample[];
@@ -21,11 +19,12 @@ interface MainAppProps {
 
 export default function MainApp({ initialSamples, totalSamples, currentFilters }: MainAppProps) {
   const router = useRouter();
+  const { registerProcessingHandler, unregisterProcessingHandler } = useProcessing();
   const [isPending, startTransition] = useTransition();
   const [samples, setSamples] = useState<Sample[]>(initialSamples);
   const [currentSample, setCurrentSample] = useState<Sample | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [activeSection, setActiveSection] = useState('browse');
+  const [activeSection, setActiveSection] = useState('explore');
   const [downloadedSamples, setDownloadedSamples] = useState<Set<string>>(new Set());
   const [downloadedVideos, setDownloadedVideos] = useState<Set<string>>(new Set());
   const [credits, setCredits] = useState(10);
@@ -113,6 +112,12 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
       return newMap;
     });
   }, []);
+
+  // Register processing handler with layout so sidebar can trigger it
+  useEffect(() => {
+    registerProcessingHandler(addProcessingTask);
+    return () => unregisterProcessingHandler();
+  }, [addProcessingTask, registerProcessingHandler, unregisterProcessingHandler]);
 
   // Poll for processing status
   useEffect(() => {
@@ -273,49 +278,37 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
   }, [currentSample]);
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Sidebar */}
-      <SimpleSidebar
-        activeSection={activeSection}
-        onSectionChange={handleSectionChange}
-      />
-
-      {/* Main Content */}
-      <div className="ml-64 flex flex-col min-h-screen">
-        {/* Header */}
-        <div className="border-b border-border px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              {activeSection === 'browse' ? (
-                <Music className="w-5 h-5" />
-              ) : (
-                <Download className="w-5 h-5" />
-              )}
-              <h1 className="text-xl font-semibold">
-                {activeSection === 'browse' ? 'Browse Samples' : 'My Downloads'}
-              </h1>
-            </div>
-            <div className="flex items-center gap-4">
-              {activeSection === 'browse' && (
-                <AddSampleDialog onProcessingStarted={addProcessingTask} />
-              )}
-              <div className="text-sm text-muted-foreground">
-                {credits} credits
-              </div>
+    <>
+      {/* Header */}
+      <div className="flex-none border-b border-border px-6 py-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            {activeSection === 'explore' ? (
+              <Music className="w-5 h-5" />
+            ) : (
+              <Download className="w-5 h-5" />
+            )}
+            <h1 className="text-xl font-semibold">
+              {activeSection === 'explore' ? 'Explore' : 'My Downloads'}
+            </h1>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="text-sm text-muted-foreground">
+              {credits} credits
             </div>
           </div>
         </div>
+      </div>
 
-        {/* Processing Queue */}
-        <ProcessingQueue
-          tasks={Array.from(processingTasks.values())}
-          onRemoveTask={removeProcessingTask}
-        />
+      {/* Processing Queue */}
+      <ProcessingQueue
+        tasks={Array.from(processingTasks.values())}
+        onRemoveTask={removeProcessingTask}
+      />
 
-
-        {/* Content */}
-        <div className="flex-1 overflow-auto" style={{ paddingBottom: currentSample ? '100px' : '0' }}>
-          {activeSection === 'browse' && (
+      {/* Content */}
+      <div className="flex-1 overflow-auto px-6 pb-6" style={{ paddingBottom: currentSample ? '100px' : '24px' }}>
+          {activeSection === 'explore' && (
             <SoundsTable
               samples={filteredSamples}
               currentSample={currentSample}
@@ -356,7 +349,6 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
             )
           )}
         </div>
-      </div>
 
       {/* Bottom Player */}
       <BottomPlayer
@@ -367,8 +359,6 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
         onPrevious={handlePlayerPrevious}
         onDownload={handleSampleDownload}
       />
-
-      <Toaster />
-    </div>
+    </>
   );
 }

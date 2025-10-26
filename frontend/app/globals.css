@@ -74,3 +74,30 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Make toast notifications fully opaque */
+[data-sonner-toast] {
+  background-color: hsl(var(--card)) !important;
+  border: 1px solid hsl(var(--border)) !important;
+  opacity: 1 !important;
+}
+
+[data-sonner-toast][data-type="success"] {
+  background-color: hsl(142 76% 36%) !important;
+  color: white !important;
+}
+
+[data-sonner-toast][data-type="error"] {
+  background-color: hsl(var(--destructive)) !important;
+  color: hsl(var(--destructive-foreground)) !important;
+}
+
+[data-sonner-toast][data-type="info"] {
+  background-color: hsl(var(--primary)) !important;
+  color: hsl(var(--primary-foreground)) !important;
+}
+
+[data-sonner-toast][data-type="loading"] {
+  background-color: hsl(var(--card)) !important;
+  color: hsl(var(--card-foreground)) !important;
+}

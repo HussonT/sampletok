@@ -2,9 +2,27 @@ import { ApiError } from '@/types/api';
 
 export class ApiClient {
   private baseUrl: string;
+  private getToken?: () => Promise<string | null>;
 
-  constructor(baseUrl: string) {
+  constructor(baseUrl: string, getToken?: () => Promise<string | null>) {
     this.baseUrl = baseUrl;
+    this.getToken = getToken;
+  }
+
+  private async getHeaders(): Promise<HeadersInit> {
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+
+    // Add Authorization header if getToken is provided and returns a token
+    if (this.getToken) {
+      const token = await this.getToken();
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+    }
+
+    return headers;
   }
 
   private async handleResponse<T>(response: Response): Promise<T> {
@@ -32,9 +50,7 @@ export class ApiClient {
 
     const response = await fetch(url.toString(), {
       method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: await this.getHeaders(),
     });
 
     return this.handleResponse<T>(response);
@@ -43,9 +59,7 @@ export class ApiClient {
   async post<T>(path: string, body?: any): Promise<T> {
     const response = await fetch(`${this.baseUrl}${path}`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: await this.getHeaders(),
       body: body ? JSON.stringify(body) : undefined,
     });
 
@@ -55,9 +69,7 @@ export class ApiClient {
   async patch<T>(path: string, body: any): Promise<T> {
     const response = await fetch(`${this.baseUrl}${path}`, {
       method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: await this.getHeaders(),
       body: JSON.stringify(body),
     });
 
@@ -67,9 +79,7 @@ export class ApiClient {
   async delete<T>(path: string): Promise<T> {
     const response = await fetch(`${this.baseUrl}${path}`, {
       method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: await this.getHeaders(),
     });
 
     return this.handleResponse<T>(response);
@@ -79,4 +89,19 @@ export class ApiClient {
 // Server-side API client for Next.js API routes
 export const backendApi = new ApiClient(
   `${process.env.BACKEND_URL}/api/${process.env.API_VERSION || 'v1'}`
+);
+
+// Helper to create an authenticated API client for use in React components
+// Usage: const api = createAuthenticatedClient(getToken);
+// Authentication uses Clerk ID from JWT - email not needed
+export function createAuthenticatedClient(
+  getToken: () => Promise<string | null>
+): ApiClient {
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+  return new ApiClient(`${baseUrl}/api/v1`, getToken);
+}
+
+// Unauthenticated client for public endpoints (for use in React components)
+export const publicApi = new ApiClient(
+  `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1`
 );

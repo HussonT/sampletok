@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, Float, DateTime, Text, ForeignKey, Table, Enum
+from sqlalchemy import Column, String, Integer, Float, DateTime, Text, ForeignKey, Enum
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 from datetime import datetime
@@ -15,14 +15,7 @@ class ProcessingStatus(enum.Enum):
     FAILED = "failed"
 
 
-# Association table for many-to-many relationship
-user_samples = Table(
-    'user_samples',
-    Base.metadata,
-    Column('user_id', UUID(as_uuid=True), ForeignKey('users.id'), primary_key=True),
-    Column('sample_id', UUID(as_uuid=True), ForeignKey('samples.id'), primary_key=True),
-    Column('downloaded_at', DateTime, default=datetime.utcnow)
-)
+# Note: user_samples table removed - replaced with UserDownload model for better tracking
 
 
 class Sample(Base):
@@ -68,6 +61,9 @@ class Sample(Base):
     error_message = Column(Text)
     processed_at = Column(DateTime)
 
+    # Download tracking (aggregate count for public display)
+    download_count = Column(Integer, default=0)
+
     # User who added the sample
     creator_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=True)
 
@@ -80,9 +76,6 @@ class Sample(Base):
     # Relationships
     creator = relationship("User", back_populates="samples", foreign_keys=[creator_id])
     tiktok_creator = relationship("TikTokCreator", back_populates="samples")
-    downloaded_by = relationship(
-        "User",
-        secondary=user_samples,
-        back_populates="downloaded_samples"
-    )
+    user_downloads = relationship("UserDownload", back_populates="sample", cascade="all, delete-orphan")
+    user_favorites = relationship("UserFavorite", back_populates="sample", cascade="all, delete-orphan")
     

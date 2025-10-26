@@ -20,9 +20,10 @@ import { useRouter } from 'next/navigation';
 
 interface AddSampleDialogProps {
   onProcessingStarted?: (taskId: string, url: string) => void;
+  variant?: 'default' | 'sidebar';
 }
 
-export function AddSampleDialog({ onProcessingStarted }: AddSampleDialogProps) {
+export function AddSampleDialog({ onProcessingStarted, variant = 'default' }: AddSampleDialogProps) {
   const [open, setOpen] = useState(false);
   const [url, setUrl] = useState('');
   const [isPending, startTransition] = useTransition();
@@ -61,10 +62,17 @@ export function AddSampleDialog({ onProcessingStarted }: AddSampleDialogProps) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button>
-          <Plus className="mr-2 h-4 w-4" />
-          Create sample from TikTok
-        </Button>
+        {variant === 'sidebar' ? (
+          <Button className="w-full justify-start bg-primary/20 hover:bg-primary text-foreground hover:text-primary-foreground transition-all">
+            <Plus className="mr-2 h-4 w-4" />
+            New Sample
+          </Button>
+        ) : (
+          <Button>
+            <Plus className="mr-2 h-4 w-4" />
+            Create sample from TikTok
+          </Button>
+        )}
       </DialogTrigger>
       <DialogContent className="sm:max-w-[525px]">
         <form onSubmit={handleSubmit}>

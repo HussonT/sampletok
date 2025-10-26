@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks, Body
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 from typing import List, Optional
 from uuid import UUID
+from pydantic import BaseModel
 import httpx
 import inngest
 import asyncio
@@ -12,6 +13,7 @@ import logging
 
 from app.core.database import get_db, AsyncSessionLocal
 from app.models import Sample, ProcessingStatus
+from app.models.user import User, UserDownload, UserFavorite
 from app.models.schemas import (
     SampleResponse,
     SampleUpdate,
@@ -20,10 +22,92 @@ from app.models.schemas import (
     ReprocessRequest,
     ReprocessResponse
 )
+from app.api.deps import get_current_user, get_current_user_optional
+from app.services.user_service import UserDownloadService, UserFavoriteService
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+# Request/Response models
+class DownloadRequest(BaseModel):
+    download_type: str  # "wav" or "mp3"
+
+
+class FavoriteResponse(BaseModel):
+    is_favorited: bool
+    favorited_at: Optional[str] = None
+
+
+async def enrich_samples_with_user_data(
+    samples: List[Sample],
+    user: Optional[User],
+    db: AsyncSession
+) -> List[SampleResponse]:
+    """
+    Convert samples to SampleResponse with user-specific fields (is_favorited, is_downloaded).
+    If user is None, these fields remain null.
+    """
+    if not user:
+        # No user, return samples as-is without user-specific data
+        return [SampleResponse.model_validate(sample) for sample in samples]
+
+    # Get all sample IDs
+    sample_ids = [sample.id for sample in samples]
+
+    # Batch query for favorites
+    favorites_stmt = select(UserFavorite.sample_id, UserFavorite.favorited_at).where(
+        and_(
+            UserFavorite.user_id == user.id,
+            UserFavorite.sample_id.in_(sample_ids)
+        )
+    )
+    favorites_result = await db.execute(favorites_stmt)
+    favorites_map = {row[0]: row[1] for row in favorites_result}
+
+    # Batch query for downloads (get most recent download for each sample)
+    from sqlalchemy import distinct
+    downloads_stmt = select(
+        UserDownload.sample_id,
+        UserDownload.downloaded_at,
+        UserDownload.download_type
+    ).where(
+        and_(
+            UserDownload.user_id == user.id,
+            UserDownload.sample_id.in_(sample_ids)
+        )
+    ).order_by(UserDownload.downloaded_at.desc())
+    downloads_result = await db.execute(downloads_stmt)
+    downloads_map = {}
+    for row in downloads_result:
+        sample_id = row[0]
+        if sample_id not in downloads_map:  # Only keep most recent
+            downloads_map[sample_id] = (row[1], row[2])
+
+    # Build responses with user-specific data
+    responses = []
+    for sample in samples:
+        sample_dict = SampleResponse.model_validate(sample).model_dump()
+
+        # Add favorite data
+        if sample.id in favorites_map:
+            sample_dict['is_favorited'] = True
+            sample_dict['favorited_at'] = favorites_map[sample.id].isoformat()
+        else:
+            sample_dict['is_favorited'] = False
+
+        # Add download data
+        if sample.id in downloads_map:
+            sample_dict['is_downloaded'] = True
+            sample_dict['downloaded_at'] = downloads_map[sample.id][0].isoformat()
+            sample_dict['download_type'] = downloads_map[sample.id][1]
+        else:
+            sample_dict['is_downloaded'] = False
+
+        responses.append(SampleResponse(**sample_dict))
+
+    return responses
 
 
 @router.get("/", response_model=PaginatedResponse)
@@ -33,9 +117,13 @@ async def get_samples(
     genre: Optional[str] = None,
     status: Optional[str] = None,
     search: Optional[str] = None,
+    current_user: Optional[User] = Depends(get_current_user_optional),
     db: AsyncSession = Depends(get_db)
 ):
-    """Get all samples with optional filtering"""
+    """
+    Get all samples with optional filtering.
+    Includes user-specific fields (is_favorited, is_downloaded) when authenticated.
+    """
     query = select(Sample)
 
     # Filter out samples without essential data - only show completed, playable samples
@@ -85,8 +173,8 @@ async def get_samples(
     result = await db.execute(query)
     samples = result.scalars().all()
 
-    # Convert to response models
-    items = [SampleResponse.model_validate(sample) for sample in samples]
+    # Enrich with user-specific data (favorites, downloads)
+    items = await enrich_samples_with_user_data(samples, current_user, db)
 
     return PaginatedResponse(
         items=items,
@@ -100,9 +188,13 @@ async def get_samples(
 @router.get("/{sample_id}", response_model=SampleResponse)
 async def get_sample(
     sample_id: UUID,
+    current_user: Optional[User] = Depends(get_current_user_optional),
     db: AsyncSession = Depends(get_db)
 ):
-    """Get a specific sample by ID"""
+    """
+    Get a specific sample by ID.
+    Includes user-specific fields (is_favorited, is_downloaded) when authenticated.
+    """
     query = select(Sample).options(selectinload(Sample.tiktok_creator)).where(Sample.id == sample_id)
     result = await db.execute(query)
     sample = result.scalar_one_or_none()
@@ -110,7 +202,10 @@ async def get_sample(
     if not sample:
         raise HTTPException(status_code=404, detail="Sample not found")
 
-    return SampleResponse.model_validate(sample)
+    # Enrich with user-specific data
+    enriched_samples = await enrich_samples_with_user_data([sample], current_user, db)
+
+    return enriched_samples[0]
 
 
 @router.patch("/{sample_id}", response_model=SampleResponse)
@@ -157,12 +252,25 @@ async def delete_sample(
     return {"message": "Sample deleted successfully"}
 
 
-@router.get("/{sample_id}/download")
+@router.post("/{sample_id}/download")
 async def download_sample(
     sample_id: UUID,
+    request: DownloadRequest,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Download a sample audio file as WAV"""
+    """
+    Download a sample audio file (WAV or MP3) - requires authentication.
+    Records the download in user history and increments download count.
+    """
+    # Validate download_type
+    if request.download_type not in ["wav", "mp3"]:
+        raise HTTPException(
+            status_code=400,
+            detail="download_type must be 'wav' or 'mp3'"
+        )
+
+    # Get sample
     query = select(Sample).where(Sample.id == sample_id)
     result = await db.execute(query)
     sample = result.scalar_one_or_none()
@@ -170,10 +278,33 @@ async def download_sample(
     if not sample:
         raise HTTPException(status_code=404, detail="Sample not found")
 
-    # Always use WAV format for downloads
-    audio_url = sample.audio_url_wav
+    # Get appropriate audio URL
+    if request.download_type == "wav":
+        audio_url = sample.audio_url_wav
+        media_type = "audio/wav"
+        extension = "wav"
+    else:  # mp3
+        audio_url = sample.audio_url_mp3
+        media_type = "audio/mpeg"
+        extension = "mp3"
+
     if not audio_url:
-        raise HTTPException(status_code=404, detail="No WAV audio file available for this sample")
+        raise HTTPException(
+            status_code=404,
+            detail=f"No {request.download_type.upper()} audio file available for this sample"
+        )
+
+    # Record download in database (also increments sample.download_count)
+    try:
+        await UserDownloadService.record_download(
+            db=db,
+            user_id=current_user.id,
+            sample_id=sample_id,
+            download_type=request.download_type
+        )
+    except Exception as e:
+        logger.error(f"Failed to record download: {e}")
+        # Continue with download even if recording fails
 
     # Fetch the file from the remote URL
     async with httpx.AsyncClient() as client:
@@ -184,24 +315,29 @@ async def download_sample(
             raise HTTPException(status_code=500, detail=f"Failed to fetch audio file: {str(e)}")
 
     # Generate filename
-    filename = f"{sample.creator_username or 'unknown'}_{sample.id}.wav"
+    filename = f"{sample.creator_username or 'unknown'}_{sample.id}.{extension}"
 
     # Return as streaming response with download headers
     return StreamingResponse(
         iter([response.content]),
-        media_type="audio/wav",
+        media_type=media_type,
         headers={
             "Content-Disposition": f'attachment; filename="{filename}"'
         }
     )
 
 
-@router.get("/{sample_id}/download-video")
+@router.post("/{sample_id}/download-video")
 async def download_video(
     sample_id: UUID,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Download the TikTok video file (costs 1 credit)"""
+    """
+    Download the TikTok video file - requires authentication.
+    Records the download in user history and increments download count.
+    """
+    # Get sample
     query = select(Sample).where(Sample.id == sample_id)
     result = await db.execute(query)
     sample = result.scalar_one_or_none()
@@ -213,6 +349,18 @@ async def download_video(
     video_url = sample.video_url
     if not video_url:
         raise HTTPException(status_code=404, detail="No video file available for this sample")
+
+    # Record download in database (also increments sample.download_count)
+    try:
+        await UserDownloadService.record_download(
+            db=db,
+            user_id=current_user.id,
+            sample_id=sample_id,
+            download_type="video"
+        )
+    except Exception as e:
+        logger.error(f"Failed to record video download: {e}")
+        # Continue with download even if recording fails
 
     # Fetch the file from our storage
     async with httpx.AsyncClient() as client:
@@ -233,6 +381,57 @@ async def download_video(
             "Content-Disposition": f'attachment; filename="{filename}"'
         }
     )
+
+
+@router.post("/{sample_id}/favorite", response_model=FavoriteResponse)
+async def add_favorite(
+    sample_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Add a sample to user's favorites - requires authentication.
+    Idempotent: returns success even if already favorited.
+    """
+    # Verify sample exists
+    query = select(Sample).where(Sample.id == sample_id)
+    result = await db.execute(query)
+    sample = result.scalar_one_or_none()
+
+    if not sample:
+        raise HTTPException(status_code=404, detail="Sample not found")
+
+    # Add to favorites (idempotent)
+    favorite = await UserFavoriteService.add_favorite(
+        db=db,
+        user_id=current_user.id,
+        sample_id=sample_id
+    )
+
+    return FavoriteResponse(
+        is_favorited=True,
+        favorited_at=favorite.favorited_at.isoformat()
+    )
+
+
+@router.delete("/{sample_id}/favorite", status_code=204)
+async def remove_favorite(
+    sample_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Remove a sample from user's favorites - requires authentication.
+    Idempotent: returns success even if not favorited.
+    """
+    # Remove from favorites (idempotent)
+    await UserFavoriteService.remove_favorite(
+        db=db,
+        user_id=current_user.id,
+        sample_id=sample_id
+    )
+
+    return None  # 204 No Content
 
 
 async def check_url_has_content(url: Optional[str], timeout: int = 10) -> bool:

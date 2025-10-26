@@ -177,9 +177,17 @@ class SampleResponse(BaseModel):
     error_message: Optional[str] = None
     created_at: datetime
     processed_at: Optional[datetime] = None
+    download_count: Optional[int] = 0
 
     # Nested creator object
     tiktok_creator: Optional[TikTokCreatorResponse] = None
+
+    # User-specific fields (only present when authenticated)
+    is_favorited: Optional[bool] = None
+    is_downloaded: Optional[bool] = None
+    downloaded_at: Optional[str] = None  # ISO datetime string
+    download_type: Optional[str] = None  # "wav" or "mp3"
+    favorited_at: Optional[str] = None  # ISO datetime string
 
     class Config:
         from_attributes = True

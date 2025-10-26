@@ -1,3 +1,5 @@
+"use client";
+
 import React, { useState, useRef } from 'react';
 import { ExternalLink, Volume2, VolumeX } from 'lucide-react';
 import {

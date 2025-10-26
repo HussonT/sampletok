@@ -44,11 +44,9 @@ class Settings(BaseSettings):
     R2_PUBLIC_DOMAIN: Optional[str] = None  # Custom domain for R2 public access
     CLOUDFLARE_TOKEN: Optional[str] = None
 
-    # JWT
-    JWT_SECRET_KEY: str
-    JWT_ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    REFRESH_TOKEN_EXPIRE_DAYS: int = 7
+    # Clerk Authentication
+    CLERK_FRONTEND_API: str  # e.g., "your-app.clerk.accounts.dev"
+    CLERK_SECRET_KEY: str  # Backend secret key for API calls
 
     # TikTok Processing
     MAX_VIDEO_DURATION_SECONDS: int = 300

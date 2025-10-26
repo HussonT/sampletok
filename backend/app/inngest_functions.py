@@ -17,6 +17,7 @@ from app.models import Sample, ProcessingStatus, TikTokCreator
 from app.core.database import AsyncSessionLocal
 from sqlalchemy import select
 from app.services.tiktok.creator_service import CreatorService
+from app.utils import extract_hashtags
 
 logger = logging.getLogger(__name__)
 
@@ -389,6 +390,15 @@ async def update_sample_complete(data: Dict[str, Any]) -> None:
             sample.comment_count = metadata.get("comment_count", 0)
             sample.share_count = metadata.get("share_count", 0)
             sample.upload_timestamp = metadata.get("upload_timestamp")
+
+            # Extract hashtags from description and title
+            description_text = metadata.get("description", "")
+            title_text = metadata.get("title", "")
+            combined_text = f"{title_text} {description_text}"
+            hashtags = extract_hashtags(combined_text)
+            if hashtags:
+                sample.tags = hashtags
+                logger.info(f"Extracted {len(hashtags)} hashtags: {hashtags}")
 
             # Use duration from audio metadata (extracted from actual audio file)
             sample.duration_seconds = audio_metadata.get("duration", metadata.get("duration"))

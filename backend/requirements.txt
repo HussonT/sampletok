@@ -15,10 +15,9 @@ greenlet==3.2.4
 # Inngest
 inngest==0.4.0
 
-# Authentication
-python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
-python-multipart==0.0.6
+# Authentication (Clerk)
+PyJWT==2.8.0
+cryptography==41.0.7
 
 # AWS S3 / Storage
 boto3==1.33.0

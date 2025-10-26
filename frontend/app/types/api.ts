@@ -51,7 +51,14 @@ export interface Sample {
   error_message?: string;
   created_at: string;
   processed_at?: string;
+  download_count?: number;
   tiktok_creator?: TikTokCreator;
+  // User-specific fields (only present when authenticated)
+  is_favorited?: boolean;
+  is_downloaded?: boolean;
+  downloaded_at?: string;  // ISO datetime string
+  download_type?: string;  // "wav" or "mp3"
+  favorited_at?: string;  // ISO datetime string
 }
 
 export enum ProcessingStatus {
