@@ -6,6 +6,7 @@ import { SoundsTable } from '@/components/features/sounds-table';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Sample } from '@/types/api';
 import { useAuth } from '@clerk/nextjs';
+import { useAudioPlayer } from '../layout';
 
 function LoadingSkeleton() {
   return (
@@ -26,6 +27,7 @@ function LoadingSkeleton() {
 
 export default function MyDownloadsPage() {
   const { getToken } = useAuth();
+  const { currentSample, isPlaying, playPreview } = useAudioPlayer();
   const [downloads, setDownloads] = useState<Sample[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -106,6 +108,9 @@ export default function MyDownloadsPage() {
         ) : (
           <SoundsTable
             samples={uniqueSamples}
+            currentSample={currentSample}
+            isPlaying={isPlaying}
+            onSamplePreview={playPreview}
             downloadedSamples={new Set(uniqueSamples.map(s => s.id))}
           />
         )}
