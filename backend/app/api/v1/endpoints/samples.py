@@ -690,3 +690,79 @@ async def reprocess_samples(
         total_samples=samples_to_process,
         status="started"
     )
+
+
+@router.post("/fix-creator-avatars")
+async def fix_creator_avatars(
+    dry_run: bool = False,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Fix creator avatar URLs by updating from internal R2 endpoint to public R2 domain
+    """
+    from app.models.tiktok_creator import TikTokCreator
+    from app.core.config import settings
+
+    def fix_url(old_url: str) -> str:
+        """Convert broken R2 URL to public R2 domain URL"""
+        if not old_url:
+            return old_url
+
+        # If already using public domain, no change needed
+        if settings.R2_PUBLIC_DOMAIN in old_url:
+            return old_url
+
+        # Extract the path after bucket name
+        if '/sampletok-samples/' in old_url:
+            path = old_url.split('/sampletok-samples/')[-1]
+            return f"https://{settings.R2_PUBLIC_DOMAIN}/{path}"
+
+        return old_url
+
+    # Get all creators
+    query = select(TikTokCreator)
+    result = await db.execute(query)
+    creators = result.scalars().all()
+
+    stats = {
+        'total': len(creators),
+        'fixed': 0,
+        'skipped': 0,
+    }
+
+    for creator in creators:
+        # Check if any avatar URLs need fixing
+        needs_fix = False
+
+        if creator.avatar_thumb and settings.R2_PUBLIC_DOMAIN not in creator.avatar_thumb:
+            needs_fix = True
+        if creator.avatar_medium and settings.R2_PUBLIC_DOMAIN not in creator.avatar_medium:
+            needs_fix = True
+        if creator.avatar_large and settings.R2_PUBLIC_DOMAIN not in creator.avatar_large:
+            needs_fix = True
+
+        if not needs_fix:
+            stats['skipped'] += 1
+            continue
+
+        # Fix URLs
+        if not dry_run:
+            if creator.avatar_thumb:
+                creator.avatar_thumb = fix_url(creator.avatar_thumb)
+            if creator.avatar_medium:
+                creator.avatar_medium = fix_url(creator.avatar_medium)
+            if creator.avatar_large:
+                creator.avatar_large = fix_url(creator.avatar_large)
+
+        stats['fixed'] += 1
+
+    if not dry_run:
+        await db.commit()
+
+    return {
+        "message": f"{'Dry run: Would fix' if dry_run else 'Fixed'} {stats['fixed']} creator avatar URLs",
+        "total_creators": stats['total'],
+        "fixed": stats['fixed'],
+        "skipped": stats['skipped'],
+        "dry_run": dry_run
+    }
