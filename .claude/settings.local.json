@@ -29,7 +29,8 @@
       "Bash(gcloud secrets create:*)",
       "Bash(gcloud secrets list:*)",
       "Bash(gcloud run services update:*)",
-      "Bash(gcloud run services:*)"
+      "Bash(gcloud run services:*)",
+      "Bash(gcloud run revisions describe:*)"
     ],
     "deny": [],
     "ask": []

@@ -49,4 +49,19 @@ async def test_connection():
     }
 
 
+@router.get("/test-storage-config")
+async def test_storage_config():
+    """
+    Debug endpoint to check storage configuration
+    """
+    from app.core.config import settings
+    return {
+        "storage_type": settings.STORAGE_TYPE,
+        "r2_public_domain": settings.R2_PUBLIC_DOMAIN,
+        "s3_endpoint_url": settings.S3_ENDPOINT_URL,
+        "s3_bucket_name": settings.S3_BUCKET_NAME,
+        "environment": settings.ENVIRONMENT
+    }
+
+
 # Test Inngest function moved to app.inngest_functions
