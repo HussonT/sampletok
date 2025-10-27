@@ -378,7 +378,9 @@ async def update_sample_complete(data: Dict[str, Any]) -> None:
             sample = result.scalar_one()
 
             # Update metadata from TikTok API
-            sample.tiktok_id = metadata.get("tiktok_id")
+            # Only set tiktok_id if it's not already set (avoid unique constraint errors during reprocessing)
+            if not sample.tiktok_id and metadata.get("tiktok_id"):
+                sample.tiktok_id = metadata.get("tiktok_id")
             sample.aweme_id = metadata.get("aweme_id")
             sample.title = metadata.get("title")
             sample.region = metadata.get("region")
