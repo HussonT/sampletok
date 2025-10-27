@@ -65,12 +65,12 @@ export function AddSampleDialog({ onProcessingStarted, variant = 'default' }: Ad
         {variant === 'sidebar' ? (
           <Button className="w-full justify-start bg-primary/20 hover:bg-primary text-foreground hover:text-primary-foreground transition-all">
             <Plus className="mr-2 h-4 w-4" />
-            New Sample
+            Sample a Tiktok
           </Button>
         ) : (
           <Button>
             <Plus className="mr-2 h-4 w-4" />
-            Create sample from TikTok
+            Sample a Tiktok
           </Button>
         )}
       </DialogTrigger>

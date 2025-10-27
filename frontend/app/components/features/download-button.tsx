@@ -1,8 +1,7 @@
 "use client";
 
 import React, { useState } from 'react';
-import { useAuth } from '@clerk/nextjs';
-import { useRouter } from 'next/navigation';
+import { useAuth, useClerk } from '@clerk/nextjs';
 import { Button } from '@/components/ui/button';
 import { Download, Loader2 } from 'lucide-react';
 import { Sample } from '@/types/api';
@@ -34,18 +33,17 @@ export function DownloadButton({
   onDownloadComplete
 }: DownloadButtonProps) {
   const { isSignedIn, getToken } = useAuth();
-  const router = useRouter();
+  const { openSignUp } = useClerk();
   const [isDownloading, setIsDownloading] = useState(false);
 
   const handleDownload = async () => {
-    // Redirect to sign-in if not authenticated
+    // Open Clerk sign-up modal if not authenticated
     if (!isSignedIn) {
-      toast.info('Please sign in to download', {
-        description: 'You need to be signed in to download samples',
+      const currentUrl = window.location.pathname + window.location.search;
+      openSignUp({
+        redirectUrl: currentUrl,
+        afterSignUpUrl: currentUrl,
       });
-      // Store the current URL as return URL
-      const returnUrl = encodeURIComponent(window.location.pathname + window.location.search);
-      router.push(`/sign-in?redirect_url=${returnUrl}`);
       return;
     }
 

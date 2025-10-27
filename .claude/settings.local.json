@@ -25,7 +25,9 @@
       "mcp__linear-server__create_comment",
       "mcp__linear-server__get_issue",
       "Bash(lsof:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(gcloud secrets create:*)",
+      "Bash(gcloud secrets list:*)"
     ],
     "deny": [],
     "ask": []

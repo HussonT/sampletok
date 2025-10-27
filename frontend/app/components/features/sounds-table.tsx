@@ -2,8 +2,7 @@
 
 import React, { useState } from 'react';
 import Image from 'next/image';
-import { useAuth } from '@clerk/nextjs';
-import { useRouter } from 'next/navigation';
+import { useAuth, useClerk } from '@clerk/nextjs';
 import { Button } from '@/components/ui/button';
 import { Play, Pause, Users, Video } from 'lucide-react';
 import { Sample } from '@/types/api';
@@ -49,7 +48,7 @@ export function SoundsTable({
   isLoadingMore = false
 }: SoundsTableProps) {
   const { isSignedIn, getToken } = useAuth();
-  const router = useRouter();
+  const { openSignUp } = useClerk();
   const [downloadingVideo, setDownloadingVideo] = useState<string | null>(null);
 
   const formatDuration = (seconds: number): string => {
@@ -86,13 +85,13 @@ export function SoundsTable({
   };
 
   const handleVideoDownload = async (sample: Sample) => {
-    // Redirect to sign-in if not authenticated
+    // Open Clerk sign-up modal if not authenticated
     if (!isSignedIn) {
-      toast.info('Please sign in to download videos', {
-        description: 'You need to be signed in to download videos',
+      const currentUrl = window.location.pathname + window.location.search;
+      openSignUp({
+        redirectUrl: currentUrl,
+        afterSignUpUrl: currentUrl,
       });
-      const returnUrl = encodeURIComponent(window.location.pathname + window.location.search);
-      router.push(`/sign-in?redirect_url=${returnUrl}`);
       return;
     }
 
