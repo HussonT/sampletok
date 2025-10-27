@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import Image from 'next/image';
 import { useAuth, useClerk } from '@clerk/nextjs';
 import { Button } from '@/components/ui/button';
-import { Play, Pause, Users, Video } from 'lucide-react';
+import { Play, Pause, Users, Video, ImageOff } from 'lucide-react';
 import { Sample } from '@/types/api';
 import { CreatorHoverCard } from '@/components/features/creator-hover-card';
 import { VideoPreviewHover } from '@/components/features/video-preview-hover';
@@ -50,6 +50,7 @@ export function SoundsTable({
   const { isSignedIn, getToken } = useAuth();
   const { openSignUp } = useClerk();
   const [downloadingVideo, setDownloadingVideo] = useState<string | null>(null);
+  const [waveformErrors, setWaveformErrors] = useState<Set<string>>(new Set());
 
   const formatDuration = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
@@ -242,6 +243,11 @@ export function SoundsTable({
                           height={40}
                           className="w-10 h-10 rounded object-cover flex-shrink-0"
                           unoptimized
+                          onError={(e) => {
+                            // Fallback to generated avatar on error
+                            const target = e.target as HTMLImageElement;
+                            target.src = getAvatarWithFallback(null, sample.tiktok_creator!.username);
+                          }}
                         />
                         <div className="min-w-0 flex-1">
                           <div className="text-sm font-medium hover:text-primary transition-colors truncate">
@@ -263,6 +269,11 @@ export function SoundsTable({
                         height={40}
                         className="w-10 h-10 rounded object-cover flex-shrink-0"
                         unoptimized
+                        onError={(e) => {
+                          // Fallback to generated avatar on error
+                          const target = e.target as HTMLImageElement;
+                          target.src = getAvatarWithFallback(null, sample.creator_username || sample.id);
+                        }}
                       />
                       <div className="min-w-0 flex-1">
                         <div className="text-sm font-medium truncate">@{sample.creator_username || 'unknown'}</div>
@@ -319,7 +330,7 @@ export function SoundsTable({
                 </td>
                 <td className="py-3 px-4">
                   <div className="w-full h-16 relative">
-                    {sample.waveform_url ? (
+                    {sample.waveform_url && !waveformErrors.has(sample.id) ? (
                       <Image
                         src={sample.waveform_url}
                         alt="Waveform"
@@ -327,7 +338,17 @@ export function SoundsTable({
                         height={64}
                         className="w-full h-full object-contain rounded-md"
                         unoptimized
+                        onError={() => {
+                          setWaveformErrors(prev => new Set(prev).add(sample.id));
+                        }}
                       />
+                    ) : waveformErrors.has(sample.id) ? (
+                      <div className="w-full h-full flex items-center justify-center bg-secondary/20 rounded-md border border-border">
+                        <div className="flex flex-col items-center gap-1 text-muted-foreground">
+                          <ImageOff className="w-4 h-4" />
+                          <span className="text-[10px]">Image unavailable</span>
+                        </div>
+                      </div>
                     ) : (
                       <svg className="w-full h-full" viewBox="0 0 100 60">
                         <defs>

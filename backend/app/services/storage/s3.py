@@ -189,10 +189,14 @@ class S3Storage:
         """
         Generate public URL for an S3/R2 object
         """
+        # Debug logging to see actual config values
+        logger.debug(f"get_public_url called - STORAGE_TYPE={settings.STORAGE_TYPE}, R2_PUBLIC_DOMAIN={settings.R2_PUBLIC_DOMAIN}, object_key={object_key}")
+
         # Check if using Cloudflare R2
         if settings.STORAGE_TYPE == "r2":
             # Option 1: Use custom domain if configured
             if settings.R2_PUBLIC_DOMAIN:
+                logger.info(f"Using R2 public domain: {settings.R2_PUBLIC_DOMAIN}")
                 return f"https://{settings.R2_PUBLIC_DOMAIN}/{object_key}"
             # Option 2: Use R2 dev subdomain (requires bucket-level public access)
             # Format: https://pub-{hash}.r2.dev/{object_key}
