@@ -20,6 +20,7 @@ inngest
 python-jose[cryptography]
 passlib[bcrypt]
 python-multipart
+PyJWT==2.8.0
 
 # AWS S3 / Storage
 boto3
