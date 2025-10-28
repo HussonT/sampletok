@@ -1,6 +1,7 @@
 """
 Inngest functions for async processing of TikTok videos
 """
+import asyncio
 import inngest
 import tempfile
 import logging
@@ -13,11 +14,14 @@ from app.services.tiktok.downloader import TikTokDownloader
 from app.services.audio.processor import AudioProcessor
 from app.services.audio.analyzer import AudioAnalyzer
 from app.services.storage.s3 import S3Storage
-from app.models import Sample, ProcessingStatus, TikTokCreator
+from app.models import Sample, ProcessingStatus, TikTokCreator, Collection, CollectionSample, CollectionStatus
+from app.models.user import UserDownload
 from app.core.database import AsyncSessionLocal
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from app.services.tiktok.creator_service import CreatorService
+from app.services.tiktok.collection_service import TikTokCollectionService
 from app.utils import extract_hashtags
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -164,9 +168,20 @@ async def update_sample_status(sample_id: str, status: ProcessingStatus) -> None
     """Update sample processing status in database"""
     try:
         async with AsyncSessionLocal() as db:
-            query = select(Sample).where(Sample.id == uuid.UUID(sample_id))
+            # Convert sample_id to UUID if it's a string
+            if isinstance(sample_id, str):
+                sample_uuid = uuid.UUID(sample_id)
+            else:
+                sample_uuid = sample_id
+
+            query = select(Sample).where(Sample.id == sample_uuid)
             result = await db.execute(query)
-            sample = result.scalar_one()
+            sample = result.scalars().first()
+
+            if not sample:
+                logger.error(f"Sample {sample_uuid} not found in database during update_sample_status!")
+                raise ValueError(f"Sample {sample_uuid} not found - may have been deleted or never created")
+
             sample.status = status
             await db.commit()
             logger.info(f"Updated sample {sample_id} status to {status.value}")
@@ -373,9 +388,35 @@ async def update_sample_complete(data: Dict[str, Any]) -> None:
             analysis = data.get("analysis", {})
             audio_metadata = data.get("audio_metadata", {})
 
-            query = select(Sample).where(Sample.id == uuid.UUID(sample_id))
+            # Convert sample_id to UUID if it's a string
+            if isinstance(sample_id, str):
+                sample_uuid = uuid.UUID(sample_id)
+            else:
+                sample_uuid = sample_id
+
+            logger.info(f"Looking for sample with ID: {sample_uuid}")
+            query = select(Sample).where(Sample.id == sample_uuid)
             result = await db.execute(query)
-            sample = result.scalar_one()
+            sample = result.scalars().first()
+
+            if not sample:
+                logger.error(f"Sample {sample_uuid} not found in database during update_sample_complete!")
+                logger.error(f"Sample metadata: aweme_id={metadata.get('aweme_id')}, tiktok_id={metadata.get('tiktok_id')}")
+
+                # Try to find by aweme_id as fallback
+                aweme_id = metadata.get('aweme_id')
+                if aweme_id:
+                    logger.info(f"Attempting to find sample by aweme_id: {aweme_id}")
+                    query = select(Sample).where(Sample.aweme_id == aweme_id)
+                    result = await db.execute(query)
+                    sample = result.scalars().first()
+                    if sample:
+                        logger.info(f"Found sample by aweme_id: {sample.id}")
+                    else:
+                        logger.error(f"Sample not found by aweme_id either. Sample may have been deleted.")
+                        raise ValueError(f"Sample {sample_uuid} not found - may have been deleted or never created")
+                else:
+                    raise ValueError(f"Sample {sample_uuid} not found and no aweme_id available for fallback lookup")
 
             # Update metadata from TikTok API
             # Only set tiktok_id if it's not already set (avoid unique constraint errors during reprocessing)
@@ -468,6 +509,432 @@ async def handle_processing_error(ctx: inngest.Context) -> None:
     await ctx.step.run("mark-as-failed", update_failed_status)
 
 
+# Collection processing function
+@inngest_client.create_function(
+    fn_id="process-collection",
+    trigger=inngest.TriggerEvent(event="collection/import.submitted"),
+    retries=3
+)
+async def process_collection(ctx: inngest.Context) -> Dict[str, Any]:
+    """
+    Process a TikTok collection:
+    1. Fetch all videos from the collection
+    2. For each video:
+       - Check if sample exists
+       - If not, create sample and trigger processing
+       - Create UserDownload record
+       - Link to collection via CollectionSample
+    3. Mark collection as completed
+    """
+    event_data = ctx.event.data
+    collection_id = event_data.get("collection_id")
+
+    # Fetch collection details from database (single source of truth)
+    collection_data = await ctx.step.run(
+        f"fetch-collection-from-db-{collection_id}",
+        fetch_collection_from_db,
+        collection_id
+    )
+
+    tiktok_collection_id = collection_data["tiktok_collection_id"]
+    user_id = collection_data["user_id"]
+    cursor = collection_data["current_cursor"]
+    max_videos = 30  # Always process max 30 per batch
+
+    logger.info(f"Processing collection {collection_id} (TikTok ID: {tiktok_collection_id}) for user {user_id} from cursor {cursor}")
+
+    # Step 1: Update collection status to processing
+    await ctx.step.run(
+        f"update-collection-status-processing-{collection_id}",
+        update_collection_status,
+        collection_id,
+        CollectionStatus.processing
+    )
+
+    # Step 2: Fetch videos from TikTok collection (with cursor for pagination)
+    fetch_result = await ctx.step.run(
+        f"fetch-collection-videos-{collection_id}-cursor{cursor}",
+        fetch_collection_videos_with_cursor,
+        tiktok_collection_id,
+        cursor,
+        max_videos
+    )
+
+    video_list = fetch_result["videos"]
+    next_cursor = fetch_result.get("next_cursor")
+    has_more = fetch_result.get("has_more", False)
+
+    logger.info(f"Fetched {len(video_list)} videos from collection {tiktok_collection_id}, has_more: {has_more}")
+
+    # Step 3: Get current processed count from DB to accumulate correctly
+    collection_data_updated = await ctx.step.run(
+        f"get-current-processed-count-{collection_id}",
+        fetch_collection_from_db,
+        collection_id
+    )
+    existing_processed_count = collection_data_updated.get("processed_count", 0)
+    processed_count = existing_processed_count
+
+    # Process each video
+    for batch_position, video_data in enumerate(video_list):
+        try:
+            # Calculate absolute position in collection (cursor + batch position)
+            absolute_position = cursor + batch_position
+
+            aweme_id = video_data.get('aweme_id', f'unknown-{cursor}-{batch_position}')
+            logger.info(f"Processing video {batch_position + 1}/{len(video_list)} (absolute position {absolute_position}): {aweme_id}")
+
+            # CRITICAL: Include collection_id in step ID to prevent Inngest from reusing cached results
+            # when the same collection is imported multiple times
+            unique_step_id = f"process-video-{collection_id}-{aweme_id}" if aweme_id and aweme_id != f'unknown-{cursor}-{batch_position}' else f"process-video-{collection_id}-cursor{cursor}-pos{batch_position}"
+
+            sample_id = await ctx.step.run(
+                unique_step_id,
+                process_collection_video,
+                collection_id,
+                user_id,
+                video_data,
+                absolute_position  # Use absolute position, not batch position
+            )
+
+            if sample_id:
+                processed_count += 1
+                logger.info(f"Successfully processed video {batch_position + 1}, sample_id: {sample_id}, total processed: {processed_count}")
+                # Update processed count after each video
+                await ctx.step.run(
+                    f"update-processed-count-{collection_id}-cursor{cursor}-pos{batch_position}",
+                    update_collection_processed_count,
+                    collection_id,
+                    processed_count
+                )
+            else:
+                logger.warning(f"Video {batch_position + 1} returned None - check for errors")
+
+        except Exception as e:
+            logger.exception(f"Exception processing video at position {absolute_position} (batch {batch_position}): {str(e)}")
+            # Continue with next video instead of failing entire collection
+
+    # Step 4: Mark collection batch as completed and update pagination
+    await ctx.step.run(
+        f"mark-collection-completed-{collection_id}",
+        complete_collection,
+        collection_id,
+        next_cursor,
+        has_more
+    )
+
+    return {
+        "collection_id": collection_id,
+        "status": "completed",
+        "processed_count": processed_count,
+        "total_videos": len(video_list),
+        "has_more": has_more,
+        "next_cursor": next_cursor
+    }
+
+
+async def fetch_collection_from_db(collection_id: str) -> Dict[str, Any]:
+    """Fetch collection details from database"""
+    try:
+        async with AsyncSessionLocal() as db:
+            query = select(Collection).where(Collection.id == uuid.UUID(collection_id))
+            result = await db.execute(query)
+            collection = result.scalar_one()
+
+            return {
+                "tiktok_collection_id": collection.tiktok_collection_id,
+                "user_id": str(collection.user_id),
+                "current_cursor": collection.current_cursor,
+                "total_video_count": collection.total_video_count,
+                "name": collection.name,
+                "tiktok_username": collection.tiktok_username,
+                "processed_count": collection.processed_count
+            }
+    except Exception as e:
+        logger.exception(f"Error fetching collection {collection_id} from database: {e}")
+        raise
+
+
+async def update_collection_status(collection_id: str, status: CollectionStatus) -> None:
+    """Update collection processing status"""
+    try:
+        async with AsyncSessionLocal() as db:
+            query = select(Collection).where(Collection.id == uuid.UUID(collection_id))
+            result = await db.execute(query)
+            collection = result.scalar_one()
+            collection.status = status
+            if status == CollectionStatus.processing:
+                collection.started_at = datetime.utcnow()
+            await db.commit()
+            logger.info(f"Updated collection {collection_id} status to {status.value}")
+    except Exception as e:
+        logger.exception(f"Error updating collection {collection_id} status: {e}")
+        raise
+
+
+async def fetch_collection_videos_with_cursor(
+    tiktok_collection_id: str,
+    cursor: int,
+    max_videos: int
+) -> Dict[str, Any]:
+    """
+    Fetch videos from a TikTok collection with pagination
+
+    Note: The TikTok API is sometimes inconsistent and may return different numbers
+    of videos on subsequent requests. We retry multiple times and return the response
+    with the most videos to maximize completeness.
+    """
+    try:
+        logger.info(f"Fetching videos for collection_id={tiktok_collection_id}, cursor={cursor}, max_videos={max_videos}")
+        collection_service = TikTokCollectionService()
+
+        # Retry up to 3 times to handle API inconsistencies
+        best_result = None
+        max_video_count = 0
+
+        for attempt in range(3):
+            try:
+                result = await collection_service.fetch_collection_posts(
+                    collection_id=tiktok_collection_id,
+                    count=max_videos,
+                    cursor=cursor
+                )
+
+                data = result.get('data', {})
+                videos = data.get('videos', [])
+                video_count = len(videos)
+
+                logger.info(f"Attempt {attempt + 1}/3: Got {video_count} videos")
+
+                # Keep the result with the most videos
+                if video_count > max_video_count:
+                    max_video_count = video_count
+                    best_result = result
+                    logger.info(f"New best result: {video_count} videos")
+
+                # Small delay between retries
+                if attempt < 2:
+                    await asyncio.sleep(0.5)
+
+            except Exception as e:
+                logger.warning(f"Attempt {attempt + 1} failed: {e}")
+                if attempt == 2:  # Last attempt
+                    raise
+
+        if best_result is None:
+            raise ValueError("All fetch attempts failed")
+
+        data = best_result.get('data', {})
+        videos = data.get('videos', [])
+        logger.info(f"Using best result with {len(videos)} videos")
+
+        return {
+            "videos": videos,
+            "next_cursor": data.get('cursor'),
+            "has_more": data.get('hasMore', False)
+        }
+    except Exception as e:
+        logger.exception(f"Error fetching collection videos: {e}")
+        raise
+
+
+async def process_collection_video(
+    collection_id: str,
+    user_id: str,
+    video_data: Dict[str, Any],
+    position: int
+) -> Optional[str]:
+    """
+    Process a single video from a collection:
+    1. Check if sample exists
+    2. If not, create and trigger processing
+    3. Create UserDownload record
+    4. Link to collection
+    """
+    try:
+        logger.info(f"process_collection_video called with video_data keys: {list(video_data.keys())}")
+        async with AsyncSessionLocal() as db:
+            # Extract video identifiers
+            aweme_id = video_data.get('aweme_id')
+            video_id = video_data.get('video_id')  # Changed from video.id to video_id
+            logger.info(f"Extracted aweme_id={aweme_id}, video_id={video_id}")
+
+            if not aweme_id:
+                logger.warning(f"No aweme_id found for video at position {position}")
+                return None
+
+            # Build TikTok URL (format: https://www.tiktok.com/@username/video/{video_id})
+            author = video_data.get('author', {})
+            author_unique_id = author.get('unique_id', '')
+
+            # Use video_id for URL (the numeric ID), not aweme_id
+            tiktok_url = f"https://www.tiktok.com/@{author_unique_id}/video/{video_id}"
+
+            logger.info(f"Processing video: {tiktok_url} (aweme_id: {aweme_id})")
+
+            # Check if sample already exists
+            query = select(Sample).where(
+                or_(
+                    Sample.aweme_id == aweme_id,
+                    Sample.tiktok_id == video_id
+                )
+            )
+            result = await db.execute(query)
+            existing_sample = result.scalars().first()
+
+            sample_id = None
+
+            if existing_sample:
+                logger.info(f"Sample already exists for aweme_id {aweme_id}: {existing_sample.id}")
+                sample_id = existing_sample.id
+
+                # Only create download if sample is completed
+                if existing_sample.status == ProcessingStatus.COMPLETED:
+                    # Create UserDownload record (MP3)
+                    download = UserDownload(
+                        user_id=uuid.UUID(user_id),
+                        sample_id=existing_sample.id,
+                        download_type="mp3"
+                    )
+                    db.add(download)
+
+                    # Increment download count
+                    existing_sample.download_count += 1
+            else:
+                # Create new sample and trigger processing
+                logger.info(f"Creating new sample for aweme_id {aweme_id}, video_id {video_id}, URL: {tiktok_url}")
+                sample = Sample(
+                    tiktok_url=tiktok_url,
+                    aweme_id=aweme_id,
+                    tiktok_id=video_id,
+                    status=ProcessingStatus.PENDING
+                )
+                db.add(sample)
+                logger.info(f"Sample added to session, about to commit...")
+                await db.commit()
+                logger.info(f"Sample committed to database")
+                await db.refresh(sample)
+                logger.info(f"Sample refreshed, ID: {sample.id}, aweme_id: {sample.aweme_id}, status: {sample.status.value}")
+
+                sample_id = sample.id
+
+                # Verify the sample was actually committed by querying it again
+                verify_query = select(Sample).where(Sample.id == sample_id)
+                verify_result = await db.execute(verify_query)
+                verify_sample = verify_result.scalars().first()
+                if verify_sample:
+                    logger.info(f"✓ Verified sample {sample_id} exists in database after commit")
+                else:
+                    logger.error(f"✗ WARNING: Sample {sample_id} NOT FOUND in database immediately after commit!")
+
+                # Trigger Inngest processing for this sample
+                try:
+                    logger.info(f"Sending Inngest event for sample {sample.id}")
+                    await inngest_client.send(
+                        inngest.Event(
+                            name="tiktok/video.submitted",
+                            data={
+                                "sample_id": str(sample.id),
+                                "url": tiktok_url
+                            }
+                        )
+                    )
+                    logger.info(f"✓ Successfully triggered processing for sample {sample.id}")
+
+                    # Note: We'll create the UserDownload after processing completes
+                    # For now, just create the CollectionSample link
+                except Exception as e:
+                    logger.error(f"✗ Failed to trigger processing for sample {sample.id}: {e}")
+
+            # Create CollectionSample link
+            if sample_id:
+                # Check if link already exists
+                link_query = select(CollectionSample).where(
+                    (CollectionSample.collection_id == uuid.UUID(collection_id)) &
+                    (CollectionSample.sample_id == sample_id)
+                )
+                link_result = await db.execute(link_query)
+                existing_link = link_result.scalars().first()
+
+                if not existing_link:
+                    collection_sample = CollectionSample(
+                        collection_id=uuid.UUID(collection_id),
+                        sample_id=sample_id,
+                        position=position
+                    )
+                    db.add(collection_sample)
+
+                await db.commit()
+                return str(sample_id)
+
+            return None
+
+    except Exception as e:
+        logger.exception(f"Error processing collection video at position {position}: {e}")
+        return None
+
+
+async def update_collection_processed_count(collection_id: str, count: int) -> None:
+    """Update the processed count for a collection"""
+    try:
+        async with AsyncSessionLocal() as db:
+            query = select(Collection).where(Collection.id == uuid.UUID(collection_id))
+            result = await db.execute(query)
+            collection = result.scalar_one()
+            collection.processed_count = count
+            await db.commit()
+    except Exception as e:
+        logger.exception(f"Error updating collection processed count: {e}")
+
+
+async def complete_collection(
+    collection_id: str,
+    next_cursor: Optional[int],
+    has_more: bool
+) -> None:
+    """Mark collection batch as completed and update pagination info"""
+    try:
+        async with AsyncSessionLocal() as db:
+            query = select(Collection).where(Collection.id == uuid.UUID(collection_id))
+            result = await db.execute(query)
+            collection = result.scalar_one()
+            collection.status = CollectionStatus.completed
+            collection.completed_at = datetime.utcnow()
+            collection.next_cursor = next_cursor
+            collection.has_more = has_more
+            await db.commit()
+            logger.info(f"Marked collection {collection_id} batch as completed (has_more: {has_more})")
+    except Exception as e:
+        logger.exception(f"Error completing collection: {e}")
+        raise
+
+
+# Collection error handler
+@inngest_client.create_function(
+    fn_id="handle-collection-error",
+    trigger=inngest.TriggerEvent(event="collection/processing.failed")
+)
+async def handle_collection_error(ctx: inngest.Context) -> None:
+    """Handle collection processing failures"""
+    event_data = ctx.event.data
+    collection_id = event_data.get("collection_id")
+    error_message = event_data.get("error", "Unknown error occurred")
+
+    async def update_failed_status():
+        async with AsyncSessionLocal() as db:
+            query = select(Collection).where(Collection.id == uuid.UUID(collection_id))
+            result = await db.execute(query)
+            collection = result.scalar_one()
+
+            collection.status = CollectionStatus.failed
+            collection.error_message = error_message
+
+            await db.commit()
+            logger.exception(f"Collection {collection_id} processing failed: {error_message}")
+
+    await ctx.step.run("mark-collection-as-failed", update_failed_status)
+
+
 @inngest_client.create_function(
     fn_id="test-function",
     trigger=inngest.TriggerEvent(event="test/hello")
@@ -482,5 +949,7 @@ def get_all_functions():
     return [
         process_tiktok_video,
         handle_processing_error,
+        process_collection,
+        handle_collection_error,
         test_function
     ]
