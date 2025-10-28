@@ -29,6 +29,7 @@ interface SoundsTableProps {
   onSamplePreview?: (sample: Sample) => void;
   onSampleDownload?: (sample: Sample) => void;
   onVideoDownload?: (sample: Sample) => void;
+  onFavoriteChange?: (sampleId: string, isFavorited: boolean) => void;
 }
 
 export function SoundsTable({
@@ -39,7 +40,8 @@ export function SoundsTable({
   downloadedVideos,
   onSamplePreview,
   onSampleDownload,
-  onVideoDownload
+  onVideoDownload,
+  onFavoriteChange
 }: SoundsTableProps) {
   const { isSignedIn, getToken } = useAuth();
   const { openSignUp } = useClerk();
@@ -210,6 +212,7 @@ export function SoundsTable({
                         variant="ghost"
                         size="sm"
                         className="p-0 w-8 h-8"
+                        onFavoriteChange={(isFavorited) => onFavoriteChange?.(sample.id, isFavorited)}
                       />
                     )}
                   </div>

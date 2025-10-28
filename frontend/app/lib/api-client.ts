@@ -34,7 +34,18 @@ export class ApiClient {
       throw new Error(error.detail || 'An error occurred');
     }
 
-    return response.json();
+    // Handle 204 No Content or empty responses
+    if (response.status === 204 || response.headers.get('content-length') === '0') {
+      return {} as T;
+    }
+
+    // Check if response has content
+    const text = await response.text();
+    if (!text) {
+      return {} as T;
+    }
+
+    return JSON.parse(text);
   }
 
   async get<T>(path: string, params?: Record<string, any>): Promise<T> {

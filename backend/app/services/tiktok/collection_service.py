@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 import httpx
 
 from app.core.config import settings
@@ -21,7 +21,7 @@ class TikTokCollectionService:
     async def fetch_collection_list(
         self,
         username: str,
-        count: int = 35,
+        count: int = None,
         cursor: int = 0
     ) -> Dict[str, Any]:
         """
@@ -29,7 +29,7 @@ class TikTokCollectionService:
 
         Args:
             username: TikTok username (unique_id)
-            count: Number of collections to fetch (default 35, max per API)
+            count: Number of collections to fetch (uses MAX_COLLECTIONS_PER_REQUEST if not specified)
             cursor: Pagination cursor (default 0)
 
         Returns:
@@ -56,7 +56,7 @@ class TikTokCollectionService:
         api_url = f"https://{self.api_host}/collection/list"
         params = {
             "unique_id": username,
-            "count": count,
+            "count": count if count is not None else settings.MAX_COLLECTIONS_PER_REQUEST,
             "cursor": cursor
         }
 
@@ -87,7 +87,7 @@ class TikTokCollectionService:
     async def fetch_collection_posts(
         self,
         collection_id: str,
-        count: int = 30,
+        count: int = None,
         cursor: int = 0
     ) -> Dict[str, Any]:
         """
@@ -95,7 +95,7 @@ class TikTokCollectionService:
 
         Args:
             collection_id: TikTok collection ID
-            count: Number of posts to fetch (default 30, max per API request)
+            count: Number of posts to fetch (uses TIKTOK_API_MAX_PER_REQUEST if not specified)
             cursor: Pagination cursor (default 0)
 
         Returns:
@@ -125,7 +125,7 @@ class TikTokCollectionService:
         api_url = f"https://{self.api_host}/collection/posts"
         params = {
             "collection_id": collection_id,
-            "count": count,
+            "count": count if count is not None else settings.TIKTOK_API_MAX_PER_REQUEST,
             "cursor": cursor
         }
 
@@ -157,19 +157,22 @@ class TikTokCollectionService:
     async def fetch_all_collection_posts(
         self,
         collection_id: str,
-        max_videos: int = 30
+        max_videos: int = None
     ) -> List[Dict[str, Any]]:
         """
         Fetch all posts from a collection with pagination
-        Limits to max_videos (default 30 per user requirement)
+        Limits to max_videos (uses MAX_VIDEOS_PER_BATCH if not specified)
 
         Args:
             collection_id: TikTok collection ID
-            max_videos: Maximum number of videos to fetch (default 30)
+            max_videos: Maximum number of videos to fetch (uses MAX_VIDEOS_PER_BATCH if not specified)
 
         Returns:
             List of video data dicts (aweme objects)
         """
+        if max_videos is None:
+            max_videos = settings.MAX_VIDEOS_PER_BATCH
+
         all_posts = []
         cursor = 0
         has_more = True
@@ -177,7 +180,7 @@ class TikTokCollectionService:
         while has_more and len(all_posts) < max_videos:
             # Calculate how many more we need
             remaining = max_videos - len(all_posts)
-            count = min(30, remaining)  # API max is 30 per request
+            count = min(settings.TIKTOK_API_MAX_PER_REQUEST, remaining)
 
             try:
                 result = await self.fetch_collection_posts(

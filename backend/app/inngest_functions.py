@@ -522,7 +522,6 @@ async def process_collection(ctx: inngest.Context) -> Dict[str, Any]:
     2. For each video:
        - Check if sample exists
        - If not, create sample and trigger processing
-       - Create UserDownload record
        - Link to collection via CollectionSample
     3. Mark collection as completed
     """
@@ -539,7 +538,7 @@ async def process_collection(ctx: inngest.Context) -> Dict[str, Any]:
     tiktok_collection_id = collection_data["tiktok_collection_id"]
     user_id = collection_data["user_id"]
     cursor = collection_data["current_cursor"]
-    max_videos = 30  # Always process max 30 per batch
+    max_videos = settings.MAX_VIDEOS_PER_BATCH
 
     logger.info(f"Processing collection {collection_id} (TikTok ID: {tiktok_collection_id}) for user {user_id} from cursor {cursor}")
 
@@ -767,8 +766,7 @@ async def process_collection_video(
     Process a single video from a collection:
     1. Check if sample exists
     2. If not, create and trigger processing
-    3. Create UserDownload record
-    4. Link to collection
+    3. Link to collection
     """
     try:
         logger.info(f"process_collection_video called with video_data keys: {list(video_data.keys())}")
@@ -807,19 +805,7 @@ async def process_collection_video(
             if existing_sample:
                 logger.info(f"Sample already exists for aweme_id {aweme_id}: {existing_sample.id}")
                 sample_id = existing_sample.id
-
-                # Only create download if sample is completed
-                if existing_sample.status == ProcessingStatus.COMPLETED:
-                    # Create UserDownload record (MP3)
-                    download = UserDownload(
-                        user_id=uuid.UUID(user_id),
-                        sample_id=existing_sample.id,
-                        download_type="mp3"
-                    )
-                    db.add(download)
-
-                    # Increment download count
-                    existing_sample.download_count += 1
+                # Don't auto-create downloads - user must explicitly download
             else:
                 # Create new sample and trigger processing
                 logger.info(f"Creating new sample for aweme_id {aweme_id}, video_id {video_id}, URL: {tiktok_url}")

@@ -31,7 +31,12 @@
       "Bash(gcloud run services update:*)",
       "Bash(gcloud run services:*)",
       "Bash(gcloud run revisions describe:*)",
-      "mcp__ide__getDiagnostics"
+      "mcp__ide__getDiagnostics",
+      "Bash(gh pr view:*)",
+      "Bash(gh api:*)",
+      "Bash(npm run build:*)",
+      "Bash(grep:*)",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": []

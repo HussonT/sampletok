@@ -53,6 +53,11 @@ class Settings(BaseSettings):
     MAX_CONCURRENT_DOWNLOADS: int = 5
     DOWNLOAD_TIMEOUT_SECONDS: int = 60
 
+    # TikTok Collections
+    MAX_VIDEOS_PER_BATCH: int = 30  # Maximum videos to process in one batch
+    MAX_COLLECTIONS_PER_REQUEST: int = 35  # Maximum collections to fetch in one request
+    TIKTOK_API_MAX_PER_REQUEST: int = 30  # TikTok API limit per request
+
     # Audio Processing
     AUDIO_SAMPLE_RATE: int = 48000
     AUDIO_BIT_DEPTH: int = 24

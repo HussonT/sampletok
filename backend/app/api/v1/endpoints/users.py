@@ -44,6 +44,7 @@ async def get_my_downloads(
             # Add download-specific metadata
             sample_dict['downloaded_at'] = download.downloaded_at.isoformat()
             sample_dict['download_type'] = download.download_type
+            sample_dict['is_downloaded'] = True  # Mark as downloaded for UI
             samples.append(SampleResponse(**sample_dict))
 
     return samples
@@ -77,6 +78,7 @@ async def get_my_favorites(
             sample_dict = SampleResponse.model_validate(sample).model_dump()
             # Add favorite-specific metadata
             sample_dict['favorited_at'] = favorite.favorited_at.isoformat()
+            sample_dict['is_favorited'] = True  # Mark as favorited for UI
             samples.append(SampleResponse(**sample_dict))
 
     return samples

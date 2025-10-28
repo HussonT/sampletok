@@ -31,13 +31,18 @@ export function AppSidebar({ activeSection, onSectionChange, onProcessingStarted
   const { user, isLoaded, isSignedIn } = useUser();
   const pathname = usePathname();
 
-  // Determine active section from pathname if not explicitly provided
-  const currentSection = activeSection || pathname;
+  // Helper function to check if path is active
+  const isActive = (path: string) => {
+    if (path === '/') {
+      return pathname === '/';
+    }
+    return pathname?.startsWith(path) || false;
+  };
 
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-4 border-b border-border">
+      <div className="flex items-center gap-3 px-6 h-16 border-b flex-shrink-0">
         <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
           <Music className="w-5 h-5 text-white" />
         </div>
@@ -56,8 +61,8 @@ export function AppSidebar({ activeSection, onSectionChange, onProcessingStarted
               <Link href="/" className="w-full">
                 <button
                   className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors ${
-                    currentSection === '/'
-                      ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
+                    isActive('/')
+                      ? 'bg-primary text-primary-foreground font-semibold shadow-sm'
                       : 'text-sidebar-foreground hover:bg-sidebar-accent/50'
                   }`}
                 >
@@ -82,8 +87,8 @@ export function AppSidebar({ activeSection, onSectionChange, onProcessingStarted
                 <Link href="/tiktok-connect" className="w-full">
                   <button
                     className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors ${
-                      currentSection === '/tiktok-connect'
-                        ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
+                      isActive('/tiktok-connect')
+                        ? 'bg-primary text-primary-foreground font-semibold shadow-sm'
                         : 'text-sidebar-foreground hover:bg-sidebar-accent/50'
                     }`}
                   >
@@ -105,8 +110,8 @@ export function AppSidebar({ activeSection, onSectionChange, onProcessingStarted
                 <Link href="/my-downloads" className="w-full">
                   <button
                     className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors ${
-                      currentSection === '/my-downloads'
-                        ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
+                      isActive('/my-downloads')
+                        ? 'bg-primary text-primary-foreground font-semibold shadow-sm'
                         : 'text-sidebar-foreground hover:bg-sidebar-accent/50'
                     }`}
                   >
@@ -117,8 +122,8 @@ export function AppSidebar({ activeSection, onSectionChange, onProcessingStarted
                 <Link href="/my-collections" className="w-full">
                   <button
                     className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors ${
-                      currentSection === '/my-collections'
-                        ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
+                      isActive('/my-collections')
+                        ? 'bg-primary text-primary-foreground font-semibold shadow-sm'
                         : 'text-sidebar-foreground hover:bg-sidebar-accent/50'
                     }`}
                   >
@@ -129,8 +134,8 @@ export function AppSidebar({ activeSection, onSectionChange, onProcessingStarted
                 <Link href="/my-favorites" className="w-full">
                   <button
                     className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors ${
-                      currentSection === '/my-favorites'
-                        ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
+                      isActive('/my-favorites')
+                        ? 'bg-primary text-primary-foreground font-semibold shadow-sm'
                         : 'text-sidebar-foreground hover:bg-sidebar-accent/50'
                     }`}
                   >
@@ -145,7 +150,7 @@ export function AppSidebar({ activeSection, onSectionChange, onProcessingStarted
       </div>
 
       {/* Auth Section */}
-      <div className="px-4 py-3 border-t border-border">
+      <div className="px-4 py-3 border-t">
         <SignedOut>
           <div className="flex flex-col gap-1.5">
             <SignInButton mode="modal">
@@ -184,7 +189,7 @@ export function AppSidebar({ activeSection, onSectionChange, onProcessingStarted
       </div>
 
       {/* Footer */}
-      <div className="px-4 py-2 border-t border-border">
+      <div className="px-4 py-2 border-t">
         <p className="text-xs text-sidebar-foreground/60 text-left">
           make music at the speed of culture
         </p>

@@ -16,7 +16,6 @@ import { Label } from '@/components/ui/label';
 import { processTikTokUrl } from '@/actions/samples';
 import { toast } from 'sonner';
 import { Loader2, Plus, Link2 } from 'lucide-react';
-import { useRouter } from 'next/navigation';
 
 interface AddSampleDialogProps {
   onProcessingStarted?: (taskId: string, url: string) => void;
@@ -27,7 +26,6 @@ export function AddSampleDialog({ onProcessingStarted, variant = 'default' }: Ad
   const [open, setOpen] = useState(false);
   const [url, setUrl] = useState('');
   const [isPending, startTransition] = useTransition();
-  const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

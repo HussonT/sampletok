@@ -31,41 +31,50 @@ export default function MyFavoritesPage() {
   const [favorites, setFavorites] = useState<Sample[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Fetch favorites
-  useEffect(() => {
-    async function fetchFavorites() {
-      try {
-        const token = await getToken();
-        if (!token) {
-          setIsLoading(false);
-          return;
-        }
-
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-        const response = await fetch(`${apiUrl}/api/v1/users/me/favorites?limit=50`, {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        });
-
-        if (!response.ok) {
-          console.error('Failed to fetch favorites:', response.status, response.statusText);
-          setIsLoading(false);
-          return;
-        }
-
-        const data = await response.json();
-        setFavorites(data);
-      } catch (error) {
-        console.error('Error fetching favorites:', error);
-      } finally {
+  // Fetch favorites function
+  const fetchFavorites = async () => {
+    try {
+      const token = await getToken();
+      if (!token) {
         setIsLoading(false);
+        return;
       }
-    }
 
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const response = await fetch(`${apiUrl}/api/v1/users/me/favorites?limit=50`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        console.error('Failed to fetch favorites:', response.status, response.statusText);
+        setIsLoading(false);
+        return;
+      }
+
+      const data = await response.json();
+      setFavorites(data);
+    } catch (error) {
+      console.error('Error fetching favorites:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Fetch favorites on mount
+  useEffect(() => {
     fetchFavorites();
   }, [getToken]);
+
+  // Handle favorite removal
+  const handleFavoriteToggle = (sampleId: string, isFavorited: boolean) => {
+    if (!isFavorited) {
+      // Remove from local state immediately for smooth UX
+      setFavorites(prev => prev.filter(fav => fav.id !== sampleId));
+    }
+  };
 
   // Deduplicate samples (should be unique by design, but add safety check)
   const uniqueFavorites = Array.from(
@@ -81,15 +90,13 @@ export default function MyFavoritesPage() {
   return (
     <>
       {/* Header */}
-      <div className="flex-none border-b border-border px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Heart className="w-5 h-5 text-red-500 fill-current" />
-            <h1 className="text-xl font-semibold">My Favorites</h1>
-          </div>
-          <div className="text-sm text-muted-foreground">
-            {isLoading ? '...' : `${uniqueFavorites.length} ${uniqueFavorites.length === 1 ? 'sample' : 'samples'}`}
-          </div>
+      <div className="flex-none border-b px-6 h-16 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Heart className="w-5 h-5 text-red-500 fill-current" />
+          <h1 className="text-xl font-semibold">My Favorites</h1>
+        </div>
+        <div className="text-sm text-muted-foreground">
+          {isLoading ? '...' : `${uniqueFavorites.length} ${uniqueFavorites.length === 1 ? 'sample' : 'samples'}`}
         </div>
       </div>
 
@@ -111,6 +118,7 @@ export default function MyFavoritesPage() {
             currentSample={currentSample}
             isPlaying={isPlaying}
             onSamplePreview={playPreview}
+            onFavoriteChange={handleFavoriteToggle}
           />
         )}
       </div>

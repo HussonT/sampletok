@@ -10,7 +10,6 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { formatDistanceToNow } from 'date-fns';
 
 export default function MyCollectionsPage() {
   const { getToken } = useAuth();
@@ -22,6 +21,7 @@ export default function MyCollectionsPage() {
 
   useEffect(() => {
     fetchCollections();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Fetch user credits
@@ -173,10 +173,6 @@ export default function MyCollectionsPage() {
                         <span className="flex items-center gap-1">
                           {getStatusIcon(collection.status)}
                           {collection.processed_count} / {collection.total_video_count} videos
-                        </span>
-                        <span>•</span>
-                        <span>
-                          {formatDistanceToNow(new Date(collection.created_at), { addSuffix: true })}
                         </span>
                       </div>
 

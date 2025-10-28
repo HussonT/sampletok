@@ -277,6 +277,41 @@ class ProcessCollectionRequest(BaseModel):
     video_count: int = Field(..., description="Total videos in collection", gt=0)
     cursor: int = Field(default=0, description="Cursor for pagination (default 0 for first batch)")
 
+    @validator('collection_id')
+    def validate_collection_id(cls, v):
+        """Validate TikTok collection ID format"""
+        if not v or not v.strip():
+            raise ValueError('Collection ID cannot be empty')
+        # Collection IDs should be numeric strings (typically 19 digits)
+        if not v.isdigit():
+            raise ValueError('Collection ID must be numeric')
+        if len(v) < 10 or len(v) > 30:
+            raise ValueError('Collection ID length must be between 10 and 30 characters')
+        return v.strip()
+
+    @validator('tiktok_username')
+    def validate_tiktok_username(cls, v):
+        """Validate TikTok username format"""
+        if not v or not v.strip():
+            raise ValueError('Username cannot be empty')
+        v = v.strip()
+        # TikTok usernames: 1-30 chars, alphanumeric + underscore + period
+        if len(v) < 1 or len(v) > 30:
+            raise ValueError('Username must be between 1 and 30 characters')
+        if not re.match(r'^[a-zA-Z0-9_.]+$', v):
+            raise ValueError('Username can only contain letters, numbers, underscores, and periods')
+        return v
+
+    @validator('name')
+    def validate_name(cls, v):
+        """Validate collection name"""
+        if not v or not v.strip():
+            raise ValueError('Collection name cannot be empty')
+        v = v.strip()
+        if len(v) > 200:
+            raise ValueError('Collection name must be 200 characters or less')
+        return v
+
 
 class CollectionResponse(BaseModel):
     """Response model for a collection"""

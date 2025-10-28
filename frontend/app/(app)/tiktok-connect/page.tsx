@@ -28,9 +28,12 @@ export default function TikTokConnectPage() {
   const [processingStatus, setProcessingStatus] = useState<CollectionStatusResponse | null>(null);
   const [userCredits, setUserCredits] = useState<number | null>(null);
 
-  // Poll for processing status
+  // Poll for processing status with exponential backoff
   useEffect(() => {
     if (!processingCollectionId) return;
+
+    let intervalId: NodeJS.Timeout;
+    let pollCount = 0;
 
     const pollStatus = async () => {
       try {
@@ -42,6 +45,7 @@ export default function TikTokConnectPage() {
 
         // Stop polling if completed or failed
         if (status.status === 'completed' || status.status === 'failed') {
+          if (intervalId) clearInterval(intervalId);
           setProcessingCollectionId(null);
           setProcessingStatus(null);  // Clear the status to hide the card
           if (status.status === 'completed') {
@@ -49,18 +53,38 @@ export default function TikTokConnectPage() {
           } else {
             toast.error(`Processing failed: ${status.error_message || 'Unknown error'}`);
           }
+        } else {
+          // Schedule next poll with exponential backoff
+          pollCount++;
+          const nextDelay = getPollingDelay(pollCount);
+          if (intervalId) clearInterval(intervalId);
+          intervalId = setTimeout(pollStatus, nextDelay);
         }
       } catch (error) {
         console.error('Error polling status:', error);
+        // On error, retry with current backoff schedule
+        pollCount++;
+        const nextDelay = getPollingDelay(pollCount);
+        if (intervalId) clearInterval(intervalId);
+        intervalId = setTimeout(pollStatus, nextDelay);
       }
     };
 
-    // Poll immediately, then every 3 seconds
+    // Start polling immediately
     pollStatus();
-    const interval = setInterval(pollStatus, 3000);
 
-    return () => clearInterval(interval);
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
   }, [processingCollectionId, getToken]);
+
+  // Exponential backoff: 3s → 5s → 10s → 30s (then stays at 30s)
+  const getPollingDelay = (pollCount: number): number => {
+    if (pollCount <= 5) return 3000;      // First 5 polls: 3s
+    if (pollCount <= 10) return 5000;     // Next 5 polls: 5s
+    if (pollCount <= 15) return 10000;    // Next 5 polls: 10s
+    return 30000;                         // After that: 30s
+  };
 
   // Fetch user credits if signed in
   useEffect(() => {
@@ -182,7 +206,7 @@ export default function TikTokConnectPage() {
             )}
           </div>
           <p className="text-muted-foreground">
-            Browse any TikTok user's public collections and import them to your library
+            Browse any TikTok user&apos;s public collections and import them to your library
           </p>
         </div>
 

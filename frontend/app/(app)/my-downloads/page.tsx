@@ -81,15 +81,13 @@ export default function MyDownloadsPage() {
   return (
     <>
       {/* Header */}
-      <div className="flex-none border-b border-border px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Download className="w-5 h-5" />
-            <h1 className="text-xl font-semibold">My Downloads</h1>
-          </div>
-          <div className="text-sm text-muted-foreground">
-            {isLoading ? '...' : `${uniqueSamples.length} unique ${uniqueSamples.length === 1 ? 'sample' : 'samples'}`}
-          </div>
+      <div className="flex-none border-b px-6 h-16 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Download className="w-5 h-5" />
+          <h1 className="text-xl font-semibold">My Downloads</h1>
+        </div>
+        <div className="text-sm text-muted-foreground">
+          {isLoading ? '...' : `${uniqueSamples.length} unique ${uniqueSamples.length === 1 ? 'sample' : 'samples'}`}
         </div>
       </div>
 
