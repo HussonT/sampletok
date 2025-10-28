@@ -26,6 +26,7 @@ class User(Base):
     samples = relationship("Sample", back_populates="creator", cascade="all, delete-orphan")
     downloads = relationship("UserDownload", back_populates="user", cascade="all, delete-orphan")
     favorites = relationship("UserFavorite", back_populates="user", cascade="all, delete-orphan")
+    collections = relationship("Collection", back_populates="user", cascade="all, delete-orphan")
 
 
 class UserDownload(Base):

@@ -30,7 +30,8 @@
       "Bash(gcloud secrets list:*)",
       "Bash(gcloud run services update:*)",
       "Bash(gcloud run services:*)",
-      "Bash(gcloud run revisions describe:*)"
+      "Bash(gcloud run revisions describe:*)",
+      "mcp__ide__getDiagnostics"
     ],
     "deny": [],
     "ask": []

@@ -566,7 +566,17 @@ async def process_collection(ctx: inngest.Context) -> Dict[str, Any]:
 
     logger.info(f"Fetched {len(video_list)} videos from collection {tiktok_collection_id}, has_more: {has_more}")
 
-    # Step 3: Get current processed count from DB to accumulate correctly
+    # Step 3: Update total video count if this is the first batch and count differs
+    # (This happens when invalid/deleted videos are filtered out)
+    if cursor == 0 and len(video_list) != collection_data["total_video_count"]:
+        await ctx.step.run(
+            f"update-total-video-count-{collection_id}",
+            update_collection_total_count,
+            collection_id,
+            len(video_list)
+        )
+
+    # Step 4: Get current processed count from DB to accumulate correctly
     collection_data_updated = await ctx.step.run(
         f"get-current-processed-count-{collection_id}",
         fetch_collection_from_db,
@@ -614,7 +624,7 @@ async def process_collection(ctx: inngest.Context) -> Dict[str, Any]:
             logger.exception(f"Exception processing video at position {absolute_position} (batch {batch_position}): {str(e)}")
             # Continue with next video instead of failing entire collection
 
-    # Step 4: Mark collection batch as completed and update pagination
+    # Step 5: Mark collection batch as completed and update pagination
     await ctx.step.run(
         f"mark-collection-completed-{collection_id}",
         complete_collection,
@@ -726,10 +736,19 @@ async def fetch_collection_videos_with_cursor(
 
         data = best_result.get('data', {})
         videos = data.get('videos', [])
-        logger.info(f"Using best result with {len(videos)} videos")
+
+        # Filter out invalid videos (deleted/private/unavailable)
+        # Only need video_id and author username to build URL - aweme_id comes from download API
+        valid_videos = [
+            video for video in videos
+            if (video.get('video_id') and
+                video.get('author', {}).get('unique_id'))
+        ]
+
+        logger.info(f"Using best result with {len(videos)} total videos, {len(valid_videos)} valid videos")
 
         return {
-            "videos": videos,
+            "videos": valid_videos,
             "next_cursor": data.get('cursor'),
             "has_more": data.get('hasMore', False)
         }
@@ -755,30 +774,31 @@ async def process_collection_video(
         logger.info(f"process_collection_video called with video_data keys: {list(video_data.keys())}")
         async with AsyncSessionLocal() as db:
             # Extract video identifiers
-            aweme_id = video_data.get('aweme_id')
-            video_id = video_data.get('video_id')  # Changed from video.id to video_id
-            logger.info(f"Extracted aweme_id={aweme_id}, video_id={video_id}")
-
-            if not aweme_id:
-                logger.warning(f"No aweme_id found for video at position {position}")
-                return None
-
-            # Build TikTok URL (format: https://www.tiktok.com/@username/video/{video_id})
+            aweme_id = video_data.get('aweme_id')  # Optional, will be fetched by download API
+            video_id = video_data.get('video_id')
             author = video_data.get('author', {})
             author_unique_id = author.get('unique_id', '')
 
-            # Use video_id for URL (the numeric ID), not aweme_id
+            if not video_id or not author_unique_id:
+                logger.warning(f"Missing required fields at position {position}: video_id={video_id}, username={author_unique_id}")
+                return None
+
+            # Build TikTok URL (format: https://www.tiktok.com/@username/video/{video_id})
             tiktok_url = f"https://www.tiktok.com/@{author_unique_id}/video/{video_id}"
 
-            logger.info(f"Processing video: {tiktok_url} (aweme_id: {aweme_id})")
+            logger.info(f"Processing video: {tiktok_url}")
 
-            # Check if sample already exists
-            query = select(Sample).where(
-                or_(
-                    Sample.aweme_id == aweme_id,
-                    Sample.tiktok_id == video_id
+            # Check if sample already exists (by video_id, or aweme_id if available)
+            if aweme_id:
+                query = select(Sample).where(
+                    or_(
+                        Sample.tiktok_id == video_id,
+                        Sample.aweme_id == aweme_id
+                    )
                 )
-            )
+            else:
+                query = select(Sample).where(Sample.tiktok_id == video_id)
+
             result = await db.execute(query)
             existing_sample = result.scalars().first()
 
@@ -885,6 +905,21 @@ async def update_collection_processed_count(collection_id: str, count: int) -> N
             await db.commit()
     except Exception as e:
         logger.exception(f"Error updating collection processed count: {e}")
+
+
+async def update_collection_total_count(collection_id: str, total_count: int) -> None:
+    """Update the total video count for a collection (after filtering invalid videos)"""
+    try:
+        async with AsyncSessionLocal() as db:
+            query = select(Collection).where(Collection.id == uuid.UUID(collection_id))
+            result = await db.execute(query)
+            collection = result.scalar_one()
+            old_count = collection.total_video_count
+            collection.total_video_count = total_count
+            await db.commit()
+            logger.info(f"Updated collection {collection_id} total_video_count from {old_count} to {total_count}")
+    except Exception as e:
+        logger.exception(f"Error updating collection total count: {e}")
 
 
 async def complete_collection(

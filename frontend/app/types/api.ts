@@ -75,6 +75,7 @@ export interface PaginatedResponse<T> {
   skip: number;
   limit: number;
   has_more: boolean;
+  next_cursor?: string | null; // For cursor-based pagination
 }
 
 export interface ProcessingTaskResponse {
@@ -114,4 +115,67 @@ export interface SampleFilters {
 export interface ApiError {
   detail: string;
   status_code?: number;
+}
+
+// Collection Types (matching backend)
+export interface TikTokCollectionItem {
+  id: string;
+  name: string;
+  state: number;
+  video_count: number;
+}
+
+export interface TikTokCollectionListResponse {
+  collection_list: TikTokCollectionItem[];
+  cursor: number;
+  hasMore: boolean;
+}
+
+export interface ProcessCollectionRequest {
+  collection_id: string;
+  tiktok_username: string;
+  name: string;
+  video_count: number;
+  cursor?: number;
+}
+
+export interface CollectionProcessingTaskResponse {
+  collection_id: string;
+  status: string;
+  message: string;
+  credits_deducted: number;
+  remaining_credits: number;
+  invalid_video_count?: number;
+}
+
+export interface CollectionStatusResponse {
+  collection_id: string;
+  status: string;
+  progress: number;
+  processed_count: number;
+  total_video_count: number;
+  message: string;
+  error_message?: string;
+}
+
+export interface Collection {
+  id: string;
+  user_id: string;
+  tiktok_collection_id: string;
+  tiktok_username: string;
+  name: string;
+  total_video_count: number;
+  current_cursor: number;
+  next_cursor?: number;
+  has_more: boolean;
+  status: string;
+  processed_count: number;
+  error_message?: string;
+  created_at: string;
+  started_at?: string;
+  completed_at?: string;
+}
+
+export interface CollectionWithSamples extends Collection {
+  samples: Sample[];
 }

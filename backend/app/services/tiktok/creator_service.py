@@ -7,6 +7,7 @@ from typing import Optional, Dict, Any
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.models.tiktok_creator import TikTokCreator
 from app.services.tiktok.downloader import TikTokDownloader
@@ -57,7 +58,19 @@ class CreatorService:
         if creator:
             creator = await self._update_creator(creator, creator_data)
         else:
-            creator = await self._create_creator(creator_data)
+            try:
+                creator = await self._create_creator(creator_data)
+            except IntegrityError:
+                # Race condition: another process created this creator
+                # Roll back and fetch the existing creator
+                await self.db.rollback()
+                logger.info(f"Creator @{username} already exists (race condition), fetching...")
+                stmt = select(TikTokCreator).where(TikTokCreator.username == username)
+                result = await self.db.execute(stmt)
+                creator = result.scalar_one_or_none()
+
+                if not creator:
+                    raise Exception(f"Failed to get/fetch creator @{username}")
 
         return creator
 

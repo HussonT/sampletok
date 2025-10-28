@@ -3,6 +3,7 @@
 import React, { useState, useMemo, useTransition, useOptimistic, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { SoundsTable } from '@/components/features/sounds-table';
+import { SamplesPagination } from '@/components/features/samples-pagination';
 import { ProcessingQueue, ProcessingTask } from '@/components/features/processing-queue';
 import { BottomPlayer } from '@/components/features/bottom-player';
 import { Download, Music } from 'lucide-react';
@@ -29,16 +30,15 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
   const [downloadedVideos, setDownloadedVideos] = useState<Set<string>>(new Set());
   const [credits, setCredits] = useState(10);
   const [processingTasks, setProcessingTasks] = useState<Map<string, ProcessingTask>>(new Map());
-  const [hasMore, setHasMore] = useState(initialSamples.length < totalSamples);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [skip, setSkip] = useState(initialSamples.length);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [isLoadingPage, setIsLoadingPage] = useState(false);
+  const itemsPerPage = 20;
 
   // Update samples when initialSamples changes (from server refresh)
   useEffect(() => {
     setSamples(initialSamples);
-    setSkip(initialSamples.length);
-    setHasMore(initialSamples.length < totalSamples);
-  }, [initialSamples, totalSamples]);
+    setCurrentPage(1); // Reset to page 1 when initial data changes
+  }, [initialSamples]);
 
   // Preload videos for current samples
   useEffect(() => {
@@ -54,31 +54,33 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
     });
   }, [samples]);
 
-  // Load more samples
-  const handleLoadMore = useCallback(async () => {
-    if (isLoadingMore || !hasMore) return;
+  // Handle page change
+  const handlePageChange = useCallback(async (page: number) => {
+    if (isLoadingPage) return;
 
-    setIsLoadingMore(true);
+    setIsLoadingPage(true);
+    setCurrentPage(page);
+
     try {
       const params = new URLSearchParams();
-      params.append('skip', skip.toString());
-      params.append('limit', '20');
+      params.append('skip', ((page - 1) * itemsPerPage).toString());
+      params.append('limit', itemsPerPage.toString());
 
       const response = await fetch(`/api/samples?${params.toString()}`);
-      if (!response.ok) throw new Error('Failed to load more samples');
+      if (!response.ok) throw new Error('Failed to load page');
 
       const data = await response.json();
+      setSamples(data.items);
 
-      setSamples(prev => [...prev, ...data.items]);
-      setSkip(prev => prev + data.items.length);
-      setHasMore(data.has_more);
+      // Scroll to top of content area
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (error) {
-      console.error('Failed to load more samples:', error);
-      toast.error('Failed to load more samples');
+      console.error('Failed to load page:', error);
+      toast.error('Failed to load page');
     } finally {
-      setIsLoadingMore(false);
+      setIsLoadingPage(false);
     }
-  }, [skip, hasMore, isLoadingMore]);
+  }, [isLoadingPage, itemsPerPage]);
 
   // Add a new processing task
   const addProcessingTask = useCallback((taskId: string, url: string) => {
@@ -237,10 +239,6 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
   };
 
 
-  const handleSectionChange = (section: string) => {
-    setActiveSection(section);
-  };
-
   const handlePlayerPlayPause = () => {
     setIsPlaying(!isPlaying);
   };
@@ -309,19 +307,23 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
       {/* Content */}
       <div className="flex-1 overflow-auto px-6 pb-6" style={{ paddingBottom: currentSample ? '100px' : '24px' }}>
           {activeSection === 'explore' && (
-            <SoundsTable
-              samples={filteredSamples}
-              currentSample={currentSample}
-              isPlaying={isPlaying}
-              downloadedSamples={downloadedSamples}
-              downloadedVideos={downloadedVideos}
-              onSamplePreview={handleSamplePreview}
-              onSampleDownload={handleSampleDownload}
-              onVideoDownload={handleVideoDownload}
-              onLoadMore={handleLoadMore}
-              hasMore={hasMore}
-              isLoadingMore={isLoadingMore}
-            />
+            <>
+              <SoundsTable
+                samples={filteredSamples}
+                currentSample={currentSample}
+                isPlaying={isPlaying}
+                downloadedSamples={downloadedSamples}
+                downloadedVideos={downloadedVideos}
+                onSamplePreview={handleSamplePreview}
+                onSampleDownload={handleSampleDownload}
+                onVideoDownload={handleVideoDownload}
+              />
+              <SamplesPagination
+                currentPage={currentPage}
+                totalPages={Math.ceil(totalSamples / itemsPerPage)}
+                onPageChange={handlePageChange}
+              />
+            </>
           )}
 
           {activeSection === 'library' && (

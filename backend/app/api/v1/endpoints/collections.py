@@ -27,6 +27,110 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+async def get_valid_video_count(tiktok_collection_id: str) -> tuple[int, int]:
+    """
+    Get the actual count of valid videos in a TikTok collection.
+    Only counts videos that can be processed (have video_id + author username).
+
+    Returns:
+        tuple[int, int]: (valid_count, invalid_count)
+    """
+    try:
+        collection_service = TikTokCollectionService()
+        result = await collection_service.fetch_collection_posts(
+            collection_id=tiktok_collection_id,
+            count=30,  # Max per request
+            cursor=0
+        )
+
+        data = result.get('data', {})
+        tiktok_videos = data.get('videos', [])
+
+        # Filter out invalid videos (only need video_id + username to build URL)
+        valid_videos = [
+            v for v in tiktok_videos
+            if (v.get('video_id') and
+                v.get('author', {}).get('unique_id'))
+        ]
+
+        valid_count = len(valid_videos)
+        invalid_count = len(tiktok_videos) - valid_count
+
+        logger.info(
+            f"Collection {tiktok_collection_id}: {len(tiktok_videos)} total videos, "
+            f"{valid_count} valid (can be processed), {invalid_count} invalid"
+        )
+
+        return valid_count, invalid_count
+
+    except Exception as e:
+        logger.exception(f"Error fetching valid video count for collection {tiktok_collection_id}: {e}")
+        return 0, 0
+
+
+async def get_new_videos_count(
+    collection_id: UUID,
+    tiktok_collection_id: str,
+    db: AsyncSession
+) -> tuple[int, int]:
+    """
+    Check how many new videos are in a TikTok collection compared to what we have.
+
+    Returns:
+        tuple[int, int]: (total_valid_videos_in_tiktok, new_videos_count)
+    """
+    try:
+        # Fetch current videos from TikTok
+        collection_service = TikTokCollectionService()
+        result = await collection_service.fetch_collection_posts(
+            collection_id=tiktok_collection_id,
+            count=30,  # Max per request
+            cursor=0
+        )
+
+        data = result.get('data', {})
+        tiktok_videos = data.get('videos', [])
+
+        # Filter out invalid videos (only need video_id + username to build URL)
+        valid_videos = [
+            v for v in tiktok_videos
+            if (v.get('video_id') and
+                v.get('author', {}).get('unique_id'))
+        ]
+        tiktok_video_ids = {v['video_id'] for v in valid_videos}
+
+        # Get existing video_ids from our database
+        query = (
+            select(CollectionSample)
+            .join(Sample, CollectionSample.sample_id == Sample.id)
+            .where(CollectionSample.collection_id == collection_id)
+        )
+        result = await db.execute(query)
+        collection_samples = result.scalars().all()
+
+        # Get the tiktok_ids from existing samples
+        existing_query = select(Sample.tiktok_id).where(
+            Sample.id.in_([cs.sample_id for cs in collection_samples])
+        )
+        result = await db.execute(existing_query)
+        existing_video_ids = {row[0] for row in result.all() if row[0]}
+
+        # Calculate new videos
+        new_video_ids = tiktok_video_ids - existing_video_ids
+
+        logger.info(
+            f"Collection {collection_id}: {len(tiktok_video_ids)} videos in TikTok, "
+            f"{len(existing_video_ids)} already imported, {len(new_video_ids)} new"
+        )
+
+        return len(tiktok_video_ids), len(new_video_ids)
+
+    except Exception as e:
+        logger.exception(f"Error checking new videos for collection {collection_id}: {e}")
+        # On error, assume all videos are new (conservative approach)
+        return 0, 0
+
+
 @router.get("/tiktok/{username}", response_model=TikTokCollectionListResponse)
 async def get_tiktok_user_collections(
     username: str,
@@ -100,6 +204,8 @@ async def process_collection(
     # Enforce max 30 videos per batch
     max_videos = 30
     videos_to_process = min(request.video_count - request.cursor, max_videos)
+    is_sync = False  # Track if this is a sync operation
+    invalid_video_count = None  # Track invalid videos for new collections
 
     # Check if user has enough credits (1 credit per video)
     if current_user.credits < videos_to_process:
@@ -143,13 +249,42 @@ async def process_collection(
         else:
             # cursor=0 means starting from beginning
             if existing_collection.status == CollectionStatus.completed and not existing_collection.has_more:
-                return CollectionProcessingTaskResponse(
-                    collection_id=existing_collection.id,
-                    status="completed",
-                    message="Collection fully imported",
-                    credits_deducted=0,
-                    remaining_credits=current_user.credits
+                # Check if there are new videos (smart sync)
+                total_videos, new_videos = await get_new_videos_count(
+                    existing_collection.id,
+                    existing_collection.tiktok_collection_id,
+                    db
                 )
+
+                if new_videos == 0:
+                    return CollectionProcessingTaskResponse(
+                        collection_id=existing_collection.id,
+                        status="completed",
+                        message="Collection is up to date - no new videos found",
+                        credits_deducted=0,
+                        remaining_credits=current_user.credits
+                    )
+
+                # New videos found - sync them
+                if current_user.credits < new_videos:
+                    raise HTTPException(
+                        status_code=402,
+                        detail=f"Insufficient credits. Need {new_videos} credits for {new_videos} new videos, but have {current_user.credits}"
+                    )
+
+                # Deduct credits only for new videos
+                current_user.credits -= new_videos
+                videos_to_process = new_videos  # Update for message generation
+
+                # Reset collection for sync
+                existing_collection.status = CollectionStatus.pending
+                existing_collection.current_cursor = 0
+                existing_collection.total_video_count = total_videos
+                await db.commit()
+
+                collection = existing_collection
+                is_sync = True
+
             elif existing_collection.status == CollectionStatus.processing:
                 return CollectionProcessingTaskResponse(
                     collection_id=existing_collection.id,
@@ -167,22 +302,45 @@ async def process_collection(
             await db.commit()
             collection = existing_collection
     else:
-        # Deduct credits
-        current_user.credits -= videos_to_process
+        # Get actual valid video count (filters out invalid videos)
+        valid_video_count, invalid_video_count = await get_valid_video_count(request.collection_id)
 
-        # Create new collection record
+        if valid_video_count == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="No valid videos found in this collection"
+            )
+
+        # Recalculate credits based on actual valid videos
+        actual_videos_to_process = min(valid_video_count, max_videos)
+        if current_user.credits < actual_videos_to_process:
+            raise HTTPException(
+                status_code=402,
+                detail=f"Insufficient credits. Need {actual_videos_to_process} credits for {actual_videos_to_process} videos, but have {current_user.credits}"
+            )
+
+        # Deduct credits for actual valid videos
+        current_user.credits -= actual_videos_to_process
+        videos_to_process = actual_videos_to_process
+
+        # Create new collection record with correct count
         collection = Collection(
             user_id=current_user.id,
             tiktok_collection_id=request.collection_id,
             tiktok_username=request.tiktok_username,
             name=request.name,
-            total_video_count=request.video_count,
+            total_video_count=valid_video_count,  # Use actual valid count
             current_cursor=request.cursor,
             status=CollectionStatus.pending
         )
         db.add(collection)
         await db.commit()
         await db.refresh(collection)
+
+        logger.info(
+            f"Created collection {collection.id}: {valid_video_count} valid videos "
+            f"(TikTok API reported {request.video_count}, {invalid_video_count} invalid)"
+        )
 
     # Send event to Inngest for async processing
     # Only send our internal collection ID - Inngest will fetch details from database
@@ -210,15 +368,20 @@ async def process_collection(
         )
 
     # Calculate batch info for message
-    start_video = request.cursor + 1
-    end_video = min(request.cursor + videos_to_process, request.video_count)
+    if is_sync:
+        message = f"Syncing collection: processing {videos_to_process} new videos"
+    else:
+        start_video = request.cursor + 1
+        end_video = min(request.cursor + videos_to_process, request.video_count)
+        message = f"Batch queued: videos {start_video}-{end_video} of {request.video_count}"
 
     return CollectionProcessingTaskResponse(
         collection_id=collection.id,
         status="pending",
-        message=f"Batch queued: videos {start_video}-{end_video} of {request.video_count}",
+        message=message,
         credits_deducted=videos_to_process,
-        remaining_credits=current_user.credits
+        remaining_credits=current_user.credits,
+        invalid_video_count=invalid_video_count
     )
 
 

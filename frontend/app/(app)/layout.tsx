@@ -47,6 +47,8 @@ export default function AppLayout({
       setActiveSection('downloads');
     } else if (pathname?.includes('/my-favorites')) {
       setActiveSection('favorites');
+    } else if (pathname?.includes('/tiktok-connect')) {
+      setActiveSection('tiktok-connect');
     }
   }, [pathname]);
 

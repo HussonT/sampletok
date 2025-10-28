@@ -2,11 +2,14 @@
 
 import React from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import {
   Music,
   Download,
   Home,
   Heart,
+  Link as LinkIcon,
+  FolderOpen,
 } from 'lucide-react';
 import {
   SignInButton,
@@ -24,8 +27,12 @@ interface AppSidebarProps {
   onProcessingStarted?: (taskId: string, url: string) => void;
 }
 
-export function AppSidebar({ activeSection = 'explore', onSectionChange, onProcessingStarted }: AppSidebarProps) {
+export function AppSidebar({ activeSection, onSectionChange, onProcessingStarted }: AppSidebarProps) {
   const { user, isLoaded, isSignedIn } = useUser();
+  const pathname = usePathname();
+
+  // Determine active section from pathname if not explicitly provided
+  const currentSection = activeSection || pathname;
 
   return (
     <div className="flex flex-col h-full">
@@ -49,7 +56,7 @@ export function AppSidebar({ activeSection = 'explore', onSectionChange, onProce
               <Link href="/" className="w-full">
                 <button
                   className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors ${
-                    activeSection === 'explore'
+                    currentSection === '/'
                       ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
                       : 'text-sidebar-foreground hover:bg-sidebar-accent/50'
                   }`}
@@ -67,11 +74,23 @@ export function AppSidebar({ activeSection = 'explore', onSectionChange, onProce
               <div className="px-2 py-1.5 text-xs font-semibold text-sidebar-foreground/60">
                 Create
               </div>
-              <div className="mt-1">
+              <div className="space-y-1 mt-1">
                 <AddSampleDialog
                   onProcessingStarted={onProcessingStarted}
                   variant="sidebar"
                 />
+                <Link href="/tiktok-connect" className="w-full">
+                  <button
+                    className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors ${
+                      currentSection === '/tiktok-connect'
+                        ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
+                        : 'text-sidebar-foreground hover:bg-sidebar-accent/50'
+                    }`}
+                  >
+                    <LinkIcon className="w-4 h-4" />
+                    <span>TikTok Connect</span>
+                  </button>
+                </Link>
               </div>
             </div>
           )}
@@ -86,7 +105,7 @@ export function AppSidebar({ activeSection = 'explore', onSectionChange, onProce
                 <Link href="/my-downloads" className="w-full">
                   <button
                     className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors ${
-                      activeSection === 'downloads'
+                      currentSection === '/my-downloads'
                         ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
                         : 'text-sidebar-foreground hover:bg-sidebar-accent/50'
                     }`}
@@ -95,10 +114,22 @@ export function AppSidebar({ activeSection = 'explore', onSectionChange, onProce
                     <span>My Downloads</span>
                   </button>
                 </Link>
+                <Link href="/my-collections" className="w-full">
+                  <button
+                    className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors ${
+                      currentSection === '/my-collections'
+                        ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
+                        : 'text-sidebar-foreground hover:bg-sidebar-accent/50'
+                    }`}
+                  >
+                    <FolderOpen className="w-4 h-4" />
+                    <span>My Collections</span>
+                  </button>
+                </Link>
                 <Link href="/my-favorites" className="w-full">
                   <button
                     className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors ${
-                      activeSection === 'favorites'
+                      currentSection === '/my-favorites'
                         ? 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
                         : 'text-sidebar-foreground hover:bg-sidebar-accent/50'
                     }`}
