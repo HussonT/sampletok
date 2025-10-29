@@ -214,7 +214,15 @@ When adding/modifying models:
 - `GET /samples/{id}` - Get sample details
 - `POST /samples/{id}/download` - Download sample MP3 (increments download count)
 - `GET /collections` - List sample collections/playlists (with rate limiting)
+- `POST /collections/{id}/reset` - User-facing endpoint to reset stuck collections and refund credits
 - `GET /test/inngest` - Test Inngest integration
+
+**Admin endpoints** (`/api/v1/admin/`, requires `X-Admin-Key` header):
+- `POST /admin/reset-user-collections?email={email}` - Reset all stuck collections for a user by email
+- `POST /admin/reset-collection/{collection_id}` - Reset a specific collection by ID and refund credits
+- `POST /admin/add-credits` - Add credits to a user by Clerk ID (request body: `{"clerk_id": "user_xxx", "credits": 100}`)
+
+All admin endpoints require the `X-Admin-Key` header matching the `SECRET_KEY` environment variable.
 
 Full API docs: http://localhost:8000/api/v1/docs
 
