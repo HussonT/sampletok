@@ -218,7 +218,7 @@ When adding/modifying models:
 - `GET /test/inngest` - Test Inngest integration
 
 **Admin endpoints** (`/api/v1/admin/`, requires `X-Admin-Key` header):
-- `POST /admin/reset-user-collections?email={email}` - Reset all stuck collections for a user by email
+- `POST /admin/reset-user-collections?clerk_id={clerk_id}` - Reset all stuck collections for a user by Clerk ID
 - `POST /admin/reset-collection/{collection_id}` - Reset a specific collection by ID and refund credits
 - `POST /admin/add-credits` - Add credits to a user by Clerk ID (request body: `{"clerk_id": "user_xxx", "credits": 100}`)
 

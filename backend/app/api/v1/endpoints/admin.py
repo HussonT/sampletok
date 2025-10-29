@@ -32,7 +32,7 @@ class AddCreditsRequest(BaseModel):
 
 @router.post("/reset-user-collections")
 async def reset_user_collections(
-    email: str,
+    clerk_id: str,
     x_admin_key: str = Header(..., description="Admin API key"),
     db: AsyncSession = Depends(get_db)
 ):
@@ -40,20 +40,24 @@ async def reset_user_collections(
     Emergency endpoint to reset all stuck collections for a user and refund credits.
 
     Requires X-Admin-Key header matching SECRET_KEY for security.
+
+    Example:
+        POST /api/v1/admin/reset-user-collections?clerk_id=user_2abc123def456
+        X-Admin-Key: your-secret-key
     """
     # Verify admin key
     if x_admin_key != settings.SECRET_KEY:
         raise HTTPException(status_code=403, detail="Invalid admin key")
 
-    logger.info(f"Admin: Resetting collections for user {email}")
+    logger.info(f"Admin: Resetting collections for Clerk ID {clerk_id}")
 
     # Get user
-    user_query = select(User).where(User.email == email)
+    user_query = select(User).where(User.clerk_user_id == clerk_id)
     user_result = await db.execute(user_query)
     user = user_result.scalar_one_or_none()
 
     if not user:
-        raise HTTPException(status_code=404, detail=f"User {email} not found")
+        raise HTTPException(status_code=404, detail=f"User with Clerk ID {clerk_id} not found")
 
     # Get stuck collections
     collections_query = select(Collection).where(
@@ -66,7 +70,8 @@ async def reset_user_collections(
     if not stuck_collections:
         return {
             "message": "No stuck collections found",
-            "user_email": email,
+            "clerk_id": clerk_id,
+            "user_email": user.email,
             "collections_reset": 0,
             "credits_refunded": 0,
             "current_credits": user.credits
@@ -104,13 +109,14 @@ async def reset_user_collections(
     await db.commit()
 
     logger.info(
-        f"Admin: Reset {len(stuck_collections)} collections for {email}, "
+        f"Admin: Reset {len(stuck_collections)} collections for Clerk ID {clerk_id}, "
         f"refunded {total_refund} credits, new balance: {user.credits}"
     )
 
     return {
         "message": f"Successfully reset {len(stuck_collections)} collections",
-        "user_email": email,
+        "clerk_id": clerk_id,
+        "user_email": user.email,
         "collections_reset": len(stuck_collections),
         "credits_refunded": total_refund,
         "current_credits": user.credits,
