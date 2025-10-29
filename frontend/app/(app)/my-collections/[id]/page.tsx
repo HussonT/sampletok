@@ -12,7 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { SoundsTable } from '@/components/features/sounds-table';
 import { useAudioPlayer } from '../../layout';
 import Link from 'next/link';
-import { PageLoader } from '@/components/ui/loading-skeletons';
+import { TableLoadingSkeleton } from '@/components/ui/loading-skeletons';
 
 export default function CollectionDetailPage() {
   const { getToken } = useAuth();
@@ -44,14 +44,6 @@ export default function CollectionDetailPage() {
     }
   };
 
-  if (loading) {
-    return <PageLoader message="Loading collection..." />;
-  }
-
-  if (!collection) {
-    return null;
-  }
-
   return (
     <>
       {/* Header */}
@@ -68,13 +60,17 @@ export default function CollectionDetailPage() {
             <FolderOpen className="w-6 h-6 text-primary" />
           </div>
           <div className="flex-1">
-            <h1 className="text-2xl font-bold mb-1">{collection.name}</h1>
+            <h1 className="text-2xl font-bold mb-1">{loading ? '...' : collection?.name}</h1>
             <div className="flex items-center gap-3 text-sm text-muted-foreground">
-              <span>@{collection.tiktok_username}</span>
-              <span>•</span>
-              <Badge variant="secondary">
-                {collection.samples.length} {collection.samples.length === 1 ? 'sample' : 'samples'}
-              </Badge>
+              <span>@{loading ? '...' : collection?.tiktok_username}</span>
+              {!loading && collection && (
+                <>
+                  <span>•</span>
+                  <Badge variant="secondary">
+                    {collection.samples.length} {collection.samples.length === 1 ? 'sample' : 'samples'}
+                  </Badge>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -82,7 +78,9 @@ export default function CollectionDetailPage() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-6 py-6">
-        {collection.samples.length > 0 ? (
+        {loading ? (
+          <TableLoadingSkeleton rows={6} />
+        ) : !collection ? null : collection.samples.length > 0 ? (
           <SoundsTable
             samples={collection.samples}
             currentSample={currentSample}

@@ -230,13 +230,15 @@ export function SoundsTable({
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <div className="text-sm font-medium text-foreground cursor-help">
-                                {sample.description
+                                {sample.title
+                                  ? `${sample.title.slice(0, 30)}...`
+                                  : sample.description
                                   ? `${sample.description.slice(0, 30)}...`
-                                  : 'No description'}
+                                  : 'No title'}
                               </div>
                             </TooltipTrigger>
                             <TooltipContent side="top" className="max-w-md">
-                              <p>{sample.description || 'No description'}</p>
+                              <p>{sample.title || sample.description || 'No title'}</p>
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>

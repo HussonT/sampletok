@@ -22,7 +22,7 @@ from sqlalchemy.exc import IntegrityError
 from app.services.tiktok.creator_service import CreatorService
 from app.services.tiktok.collection_service import TikTokCollectionService
 from app.services.credit_service import refund_credits_atomic
-from app.utils import extract_hashtags
+from app.utils import extract_hashtags, remove_hashtags
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -425,7 +425,9 @@ async def update_sample_complete(data: Dict[str, Any]) -> None:
             if not sample.tiktok_id and metadata.get("tiktok_id"):
                 sample.tiktok_id = metadata.get("tiktok_id")
             sample.aweme_id = metadata.get("aweme_id")
-            sample.title = metadata.get("title")
+            # Clean title by removing hashtags
+            raw_title = metadata.get("title") or ""
+            sample.title = remove_hashtags(raw_title)
             sample.region = metadata.get("region")
             sample.creator_username = metadata.get("creator_username")
             sample.creator_name = metadata.get("creator_name")

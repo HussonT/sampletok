@@ -118,7 +118,7 @@ export function AudioPlayer({
             <div className="flex-1 min-w-0">
               <p className="truncate font-medium text-foreground">@{sample.creatorUsername}</p>
               <p className="text-xs text-muted-foreground truncate">
-                {sample.description}
+                {sample.title || sample.description || 'Untitled'}
               </p>
             </div>
             <div className="flex items-center gap-1">

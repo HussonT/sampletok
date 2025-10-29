@@ -34,6 +34,15 @@ async def get_my_downloads(
         offset=offset
     )
 
+    # Get all favorited sample IDs for this user to efficiently check favorites
+    # (avoids N+1 queries)
+    from sqlalchemy import select
+    from app.models.user import UserFavorite
+    favorited_sample_ids_result = await db.execute(
+        select(UserFavorite.sample_id).where(UserFavorite.user_id == current_user.id)
+    )
+    favorited_sample_ids = set(favorited_sample_ids_result.scalars().all())
+
     # Convert to sample responses
     samples = []
     for download in downloads:
@@ -45,6 +54,8 @@ async def get_my_downloads(
             sample_dict['downloaded_at'] = download.downloaded_at.isoformat()
             sample_dict['download_type'] = download.download_type
             sample_dict['is_downloaded'] = True  # Mark as downloaded for UI
+            # Check if this sample is also favorited
+            sample_dict['is_favorited'] = sample.id in favorited_sample_ids
             samples.append(SampleResponse(**sample_dict))
 
     return samples

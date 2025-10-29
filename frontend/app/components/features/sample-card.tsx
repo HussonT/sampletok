@@ -115,7 +115,7 @@ export function SampleCard({ sample, onPreview, onDownload, isPlaying }: SampleC
           <div className="flex-1 min-w-0">
             <p className="truncate font-medium text-foreground">@{sample.creatorUsername}</p>
             <p className="text-xs text-muted-foreground truncate">
-              {sample.description}
+              {sample.title || sample.description || 'Untitled'}
             </p>
           </div>
           <Badge variant="secondary" className="shrink-0 bg-primary/20 text-primary border-primary/30">
