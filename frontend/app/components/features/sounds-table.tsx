@@ -11,7 +11,6 @@ import { VideoPreviewHover } from '@/components/features/video-preview-hover';
 import { DownloadButton } from '@/components/features/download-button';
 import { FavoriteButton } from '@/components/features/favorite-button';
 import { getAvatarWithFallback } from '@/lib/avatar';
-import { removeHashtags } from '@/lib/text-utils';
 import { toast } from 'sonner';
 import {
   Tooltip,
@@ -232,12 +231,12 @@ export function SoundsTable({
                             <TooltipTrigger asChild>
                               <div className="text-sm font-medium text-foreground cursor-help">
                                 {sample.description
-                                  ? `${removeHashtags(sample.description).slice(0, 30)}...`
+                                  ? `${sample.description.slice(0, 30)}...`
                                   : 'No description'}
                               </div>
                             </TooltipTrigger>
                             <TooltipContent side="top" className="max-w-md">
-                              <p>{removeHashtags(sample.description || '')|| 'No description'}</p>
+                              <p>{sample.description || 'No description'}</p>
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>

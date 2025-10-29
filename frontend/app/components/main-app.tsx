@@ -78,7 +78,8 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
         headers['Authorization'] = `Bearer ${token}`;
       }
 
-      const response = await fetch(`/api/samples?${params.toString()}`, { headers });
+      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const response = await fetch(`${backendUrl}/api/v1/samples?${params.toString()}`, { headers });
       if (!response.ok) throw new Error('Failed to load page');
 
       const data = await response.json();

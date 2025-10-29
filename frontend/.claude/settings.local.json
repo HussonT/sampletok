@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/tomhusson/sideprojects/sampletok/sampletok/backend/**)",
+      "Read(//Users/tomhusson/sideprojects/sampletok/sampletok/**)",
+      "Bash(python3:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
