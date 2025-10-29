@@ -569,3 +569,82 @@ async def get_collection_status(
         message=message,
         error_message=collection.error_message
     )
+
+
+@router.post("/{collection_id}/reset")
+async def reset_stuck_collection(
+    collection_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Reset a stuck collection and refund unprocessed credits.
+
+    Use this when a collection is stuck in 'pending' or 'processing' status
+    and hasn't made progress. This will:
+    1. Calculate how many videos were charged but not processed
+    2. Refund those credits
+    3. Reset the collection to allow re-processing
+
+    Args:
+        collection_id: UUID of the collection to reset
+
+    Returns:
+        Details about the reset operation
+    """
+    query = select(Collection).where(
+        and_(
+            Collection.id == collection_id,
+            Collection.user_id == current_user.id
+        )
+    )
+
+    result = await db.execute(query)
+    collection = result.scalars().first()
+
+    if not collection:
+        raise HTTPException(status_code=404, detail="Collection not found")
+
+    # Only allow resetting pending/processing/failed collections
+    if collection.status == CollectionStatus.completed:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot reset a completed collection. Use the sync feature instead."
+        )
+
+    # Calculate unprocessed videos that should be refunded
+    # For pending collections, all videos are unprocessed
+    # For processing collections, refund (total - processed)
+    total_videos = collection.total_video_count
+    processed_videos = collection.processed_count or 0
+    videos_to_refund = total_videos - processed_videos
+
+    # Refund credits
+    refunded = 0
+    if videos_to_refund > 0:
+        await refund_credits_atomic(db, current_user.id, videos_to_refund)
+        refunded = videos_to_refund
+        logger.info(f"Refunded {refunded} credits to user {current_user.id} for stuck collection {collection_id}")
+
+    # Reset collection to pending state
+    collection.status = CollectionStatus.pending
+    collection.processed_count = 0
+    collection.error_message = None
+    collection.current_cursor = 0
+    collection.started_at = None
+    collection.completed_at = None
+
+    await db.commit()
+
+    # Refresh user to get updated credit balance
+    await db.refresh(current_user)
+
+    return {
+        "collection_id": str(collection_id),
+        "status": "reset",
+        "message": f"Collection reset successfully. Refunded {refunded} credits.",
+        "credits_refunded": refunded,
+        "remaining_credits": current_user.credits,
+        "total_videos": total_videos,
+        "processed_videos": processed_videos
+    }

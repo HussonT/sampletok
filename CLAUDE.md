@@ -35,6 +35,8 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 ### Frontend (Next.js)
 
+**Requires Node.js >=22.0.0**
+
 ```bash
 cd frontend
 
@@ -47,6 +49,9 @@ npm run dev
 # Production build
 npm run build
 npm start
+
+# Linting
+npm run lint
 ```
 
 ## Architecture Overview
@@ -109,8 +114,17 @@ Configuration via `STORAGE_TYPE` env var. Handles upload, download, delete, publ
 
 ### Frontend Structure
 
-**Next.js 15 with App Router**
+**Next.js 15 with App Router + React 19**
 
+Key technologies:
+- **Authentication**: Clerk (@clerk/nextjs)
+- **State Management**: TanStack Query (@tanstack/react-query)
+- **UI Components**: Radix UI primitives + shadcn/ui patterns
+- **Styling**: Tailwind CSS with animations
+- **Icons**: Lucide React
+- **Theme**: next-themes for dark mode
+
+Directory structure:
 - `frontend/app/(routes)/` - Page routes
 - `frontend/app/components/` - React components
 - `frontend/app/api/` - API route handlers (server-side)
@@ -164,6 +178,13 @@ Uses RapidAPI's "TikTok Video No Watermark" service. Returns:
 - Original audio URL
 - Thumbnails and cover images
 
+### Rate Limiting
+
+Backend uses `slowapi` for rate limiting on specific endpoints:
+- Collections endpoint has rate limits to prevent abuse
+- Rate limiting is IP-based by default
+- Configure limits per endpoint in the route decorator
+
 ### Creator Service Caching
 
 `CreatorService.get_or_fetch_creator()` intelligently:
@@ -192,6 +213,7 @@ When adding/modifying models:
 - `GET /samples` - List samples (with pagination, filtering, search)
 - `GET /samples/{id}` - Get sample details
 - `POST /samples/{id}/download` - Download sample MP3 (increments download count)
+- `GET /collections` - List sample collections/playlists (with rate limiting)
 - `GET /test/inngest` - Test Inngest integration
 
 Full API docs: http://localhost:8000/api/v1/docs
@@ -258,10 +280,27 @@ See `DEPLOYMENT.md` for detailed deployment guides:
 - **Recommended**: Vercel (frontend) + GCP Cloud Run (backend)
 - Alternatives: Railway, DigitalOcean VPS, Docker Compose
 
+### Quick GCP Deployment
+
+**Manual deployment** via `deploy-image.sh`:
+```bash
+cd backend
+./deploy-image.sh [tag]  # Builds, pushes to Artifact Registry, and deploys to Cloud Run
+```
+
+**Automatic deployment** via GitHub Actions:
+- `.github/workflows/deploy-backend.yml` automatically deploys backend to Cloud Run on push to `main` branch (when backend files change)
+- Requires `GCP_SA_KEY` secret in GitHub repo
+- Includes health check verification after deployment
+
+### Deployment Checklist
+
 Key deployment considerations:
-- Backend migrations run automatically in Dockerfile startup script
-- Use Secret Manager (GCP) or environment variables for secrets
-- Configure CORS with production frontend URLs
+- Backend migrations run automatically in Dockerfile startup script (`runit.sh`)
+- Use GCP Secret Manager for production secrets (DATABASE_URL, API keys, etc.)
+- Configure CORS with production frontend URLs via `BACKEND_CORS_ORIGINS` secret
 - Set up Inngest webhook to backend `/api/inngest` endpoint (see Inngest Production Setup above)
-- Choose storage backend (AWS S3, Cloudflare R2, or GCS)
+- Choose storage backend (AWS S3, Cloudflare R2, or GCS) via `STORAGE_TYPE` env var
+- Cloud Run configured with: 2Gi memory, 2 CPU, 0-10 instances, 300s timeout
+- Backend connects to Cloud SQL PostgreSQL via Unix socket
 - No backwards compatibility or fallbacks in future implementations. Just implement the new solution cleanly and move forward.

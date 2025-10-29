@@ -531,131 +531,172 @@ async def process_collection(ctx: inngest.Context) -> Dict[str, Any]:
     """
     event_data = ctx.event.data
     collection_id = event_data.get("collection_id")
+    user_id = None
+    video_list = []
+    processed_count = 0
 
-    # Fetch collection details from database (single source of truth)
-    collection_data = await ctx.step.run(
-        f"fetch-collection-from-db-{collection_id}",
-        fetch_collection_from_db,
-        collection_id
-    )
-
-    tiktok_collection_id = collection_data["tiktok_collection_id"]
-    user_id = collection_data["user_id"]
-    cursor = collection_data["current_cursor"]
-    max_videos = settings.MAX_VIDEOS_PER_BATCH
-
-    logger.info(f"Processing collection {collection_id} (TikTok ID: {tiktok_collection_id}) for user {user_id} from cursor {cursor}")
-
-    # Step 1: Update collection status to processing
-    await ctx.step.run(
-        f"update-collection-status-processing-{collection_id}",
-        update_collection_status,
-        collection_id,
-        CollectionStatus.processing
-    )
-
-    # Step 2: Fetch videos from TikTok collection (with cursor for pagination)
-    fetch_result = await ctx.step.run(
-        f"fetch-collection-videos-{collection_id}-cursor{cursor}",
-        fetch_collection_videos_with_cursor,
-        tiktok_collection_id,
-        cursor,
-        max_videos
-    )
-
-    video_list = fetch_result["videos"]
-    next_cursor = fetch_result.get("next_cursor")
-    has_more = fetch_result.get("has_more", False)
-
-    logger.info(f"Fetched {len(video_list)} videos from collection {tiktok_collection_id}, has_more: {has_more}")
-
-    # Step 3: Update total video count if this is the first batch and count differs
-    # (This happens when invalid/deleted videos are filtered out)
-    if cursor == 0 and len(video_list) != collection_data["total_video_count"]:
-        await ctx.step.run(
-            f"update-total-video-count-{collection_id}",
-            update_collection_total_count,
-            collection_id,
-            len(video_list)
+    try:
+        # Fetch collection details from database (single source of truth)
+        collection_data = await ctx.step.run(
+            f"fetch-collection-from-db-{collection_id}",
+            fetch_collection_from_db,
+            collection_id
         )
 
-    # Step 4: Get current processed count from DB to accumulate correctly
-    collection_data_updated = await ctx.step.run(
-        f"get-current-processed-count-{collection_id}",
-        fetch_collection_from_db,
-        collection_id
-    )
-    existing_processed_count = collection_data_updated.get("processed_count", 0)
-    processed_count = existing_processed_count
+        tiktok_collection_id = collection_data["tiktok_collection_id"]
+        user_id = collection_data["user_id"]
+        cursor = collection_data["current_cursor"]
+        max_videos = settings.MAX_VIDEOS_PER_BATCH
 
-    # Process each video
-    for batch_position, video_data in enumerate(video_list):
-        try:
-            # Calculate absolute position in collection (cursor + batch position)
-            absolute_position = cursor + batch_position
+        logger.info(f"Processing collection {collection_id} (TikTok ID: {tiktok_collection_id}) for user {user_id} from cursor {cursor}")
 
-            aweme_id = video_data.get('aweme_id', f'unknown-{cursor}-{batch_position}')
-            logger.info(f"Processing video {batch_position + 1}/{len(video_list)} (absolute position {absolute_position}): {aweme_id}")
+        # Step 1: Update collection status to processing
+        await ctx.step.run(
+            f"update-collection-status-processing-{collection_id}",
+            update_collection_status,
+            collection_id,
+            CollectionStatus.processing
+        )
 
-            # CRITICAL: Include collection_id in step ID to prevent Inngest from reusing cached results
-            # when the same collection is imported multiple times
-            unique_step_id = f"process-video-{collection_id}-{aweme_id}" if aweme_id and aweme_id != f'unknown-{cursor}-{batch_position}' else f"process-video-{collection_id}-cursor{cursor}-pos{batch_position}"
+        # Step 2: Fetch videos from TikTok collection (with cursor for pagination)
+        fetch_result = await ctx.step.run(
+            f"fetch-collection-videos-{collection_id}-cursor{cursor}",
+            fetch_collection_videos_with_cursor,
+            tiktok_collection_id,
+            cursor,
+            max_videos
+        )
 
-            sample_id = await ctx.step.run(
-                unique_step_id,
-                process_collection_video,
+        video_list = fetch_result["videos"]
+        next_cursor = fetch_result.get("next_cursor")
+        has_more = fetch_result.get("has_more", False)
+
+        logger.info(f"Fetched {len(video_list)} videos from collection {tiktok_collection_id}, has_more: {has_more}")
+
+        # Step 3: Update total video count if this is the first batch and count differs
+        # (This happens when invalid/deleted videos are filtered out)
+        if cursor == 0 and len(video_list) != collection_data["total_video_count"]:
+            await ctx.step.run(
+                f"update-total-video-count-{collection_id}",
+                update_collection_total_count,
                 collection_id,
-                user_id,
-                video_data,
-                absolute_position  # Use absolute position, not batch position
+                len(video_list)
             )
 
-            if sample_id:
-                processed_count += 1
-                logger.info(f"Successfully processed video {batch_position + 1}, sample_id: {sample_id}, total processed: {processed_count}")
-                # Update processed count after each video
-                await ctx.step.run(
-                    f"update-processed-count-{collection_id}-cursor{cursor}-pos{batch_position}",
-                    update_collection_processed_count,
+        # Step 4: Get current processed count from DB to accumulate correctly
+        collection_data_updated = await ctx.step.run(
+            f"get-current-processed-count-{collection_id}",
+            fetch_collection_from_db,
+            collection_id
+        )
+        existing_processed_count = collection_data_updated.get("processed_count", 0)
+        processed_count = existing_processed_count
+
+        # Process each video
+        for batch_position, video_data in enumerate(video_list):
+            try:
+                # Calculate absolute position in collection (cursor + batch position)
+                absolute_position = cursor + batch_position
+
+                aweme_id = video_data.get('aweme_id', f'unknown-{cursor}-{batch_position}')
+                logger.info(f"Processing video {batch_position + 1}/{len(video_list)} (absolute position {absolute_position}): {aweme_id}")
+
+                # CRITICAL: Include collection_id in step ID to prevent Inngest from reusing cached results
+                # when the same collection is imported multiple times
+                unique_step_id = f"process-video-{collection_id}-{aweme_id}" if aweme_id and aweme_id != f'unknown-{cursor}-{batch_position}' else f"process-video-{collection_id}-cursor{cursor}-pos{batch_position}"
+
+                sample_id = await ctx.step.run(
+                    unique_step_id,
+                    process_collection_video,
                     collection_id,
-                    processed_count
+                    user_id,
+                    video_data,
+                    absolute_position  # Use absolute position, not batch position
                 )
-            else:
-                logger.warning(f"Video {batch_position + 1} returned None - check for errors")
+
+                if sample_id:
+                    processed_count += 1
+                    logger.info(f"Successfully processed video {batch_position + 1}, sample_id: {sample_id}, total processed: {processed_count}")
+                    # Update processed count after each video
+                    await ctx.step.run(
+                        f"update-processed-count-{collection_id}-cursor{cursor}-pos{batch_position}",
+                        update_collection_processed_count,
+                        collection_id,
+                        processed_count
+                    )
+                else:
+                    logger.warning(f"Video {batch_position + 1} returned None - check for errors")
+                    # Refund 1 credit for failed video
+                    await ctx.step.run(
+                        f"refund-credit-{collection_id}-cursor{cursor}-pos{batch_position}",
+                        refund_credit_for_failed_video,
+                        user_id
+                    )
+
+            except Exception as e:
+                logger.exception(f"Exception processing video at position {absolute_position} (batch {batch_position}): {str(e)}")
                 # Refund 1 credit for failed video
                 await ctx.step.run(
-                    f"refund-credit-{collection_id}-cursor{cursor}-pos{batch_position}",
+                    f"refund-credit-exception-{collection_id}-cursor{cursor}-pos{batch_position}",
                     refund_credit_for_failed_video,
                     user_id
                 )
+                # Continue with next video instead of failing entire collection
 
-        except Exception as e:
-            logger.exception(f"Exception processing video at position {absolute_position} (batch {batch_position}): {str(e)}")
-            # Refund 1 credit for failed video
+        # Step 5: Mark collection batch as completed and update pagination
+        await ctx.step.run(
+            f"mark-collection-completed-{collection_id}",
+            complete_collection,
+            collection_id,
+            next_cursor,
+            has_more
+        )
+
+        return {
+            "collection_id": collection_id,
+            "status": "completed",
+            "processed_count": processed_count,
+            "total_videos": len(video_list),
+            "has_more": has_more,
+            "next_cursor": next_cursor
+        }
+
+    except Exception as e:
+        # Critical failure - handle cleanup and refunds
+        error_message = f"Collection processing failed: {str(e)}"
+        logger.exception(f"CRITICAL: {error_message}")
+
+        # Calculate how many videos were charged but not processed
+        # If we fetched the video list, we know how many credits were charged
+        videos_charged = len(video_list)
+        videos_not_processed = videos_charged - processed_count
+
+        # Refund credits for unprocessed videos
+        if videos_not_processed > 0 and user_id:
+            try:
+                await ctx.step.run(
+                    f"refund-unprocessed-videos-{collection_id}",
+                    refund_credits_for_failed_collection,
+                    user_id,
+                    videos_not_processed
+                )
+                logger.info(f"Refunded {videos_not_processed} credits for collection {collection_id} after critical failure")
+            except Exception as refund_error:
+                logger.exception(f"Failed to refund credits after collection failure: {refund_error}")
+
+        # Mark collection as failed
+        try:
             await ctx.step.run(
-                f"refund-credit-exception-{collection_id}-cursor{cursor}-pos{batch_position}",
-                refund_credit_for_failed_video,
-                user_id
+                f"mark-collection-failed-{collection_id}",
+                mark_collection_failed,
+                collection_id,
+                error_message
             )
-            # Continue with next video instead of failing entire collection
+        except Exception as status_error:
+            logger.exception(f"Failed to mark collection as failed: {status_error}")
 
-    # Step 5: Mark collection batch as completed and update pagination
-    await ctx.step.run(
-        f"mark-collection-completed-{collection_id}",
-        complete_collection,
-        collection_id,
-        next_cursor,
-        has_more
-    )
-
-    return {
-        "collection_id": collection_id,
-        "status": "completed",
-        "processed_count": processed_count,
-        "total_videos": len(video_list),
-        "has_more": has_more,
-        "next_cursor": next_cursor
-    }
+        # Re-raise the exception so Inngest knows the function failed
+        raise
 
 
 async def fetch_collection_from_db(collection_id: str) -> Dict[str, Any]:
@@ -689,6 +730,33 @@ async def refund_credit_for_failed_video(user_id: str) -> None:
     except Exception as e:
         logger.exception(f"Error refunding credit to user {user_id}: {e}")
         # Don't raise - we don't want refund failure to stop collection processing
+
+
+async def refund_credits_for_failed_collection(user_id: str, credits_to_refund: int) -> None:
+    """Refund multiple credits to user when collection processing fails"""
+    try:
+        async with AsyncSessionLocal() as db:
+            await refund_credits_atomic(db, uuid.UUID(user_id), credits_to_refund)
+            logger.info(f"Refunded {credits_to_refund} credits to user {user_id} for failed collection")
+    except Exception as e:
+        logger.exception(f"Error refunding {credits_to_refund} credits to user {user_id}: {e}")
+        # Don't raise - we don't want refund failure to stop collection processing
+
+
+async def mark_collection_failed(collection_id: str, error_message: str) -> None:
+    """Mark collection as failed with error message"""
+    try:
+        async with AsyncSessionLocal() as db:
+            query = select(Collection).where(Collection.id == uuid.UUID(collection_id))
+            result = await db.execute(query)
+            collection = result.scalar_one()
+            collection.status = CollectionStatus.failed
+            collection.error_message = error_message
+            await db.commit()
+            logger.info(f"Marked collection {collection_id} as failed: {error_message}")
+    except Exception as e:
+        logger.exception(f"Error marking collection {collection_id} as failed: {e}")
+        # Don't raise - we've already logged the error
 
 
 async def update_collection_status(collection_id: str, status: CollectionStatus) -> None:

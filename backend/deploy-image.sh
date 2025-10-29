@@ -47,10 +47,46 @@ echo ""
 echo "Image available at:"
 echo "  ${IMAGE_PATH}"
 echo ""
-echo "To deploy to Cloud Run, use:"
-echo "  gcloud run deploy sampletok-backend \\"
-echo "    --image ${IMAGE_PATH} \\"
-echo "    --platform managed \\"
-echo "    --region ${REGION} \\"
-echo "    --project ${PROJECT_ID}"
+
+# Deploy to Cloud Run
+SERVICE_NAME="sampletok-backend"
+echo "Deploying to Cloud Run..."
+echo ""
+
+gcloud run deploy "${SERVICE_NAME}" \
+  --image "${IMAGE_PATH}" \
+  --platform managed \
+  --region "${REGION}" \
+  --project "${PROJECT_ID}" \
+  --allow-unauthenticated
+
+echo ""
+echo "============================================="
+echo "Deployment complete!"
+echo "============================================="
+echo ""
+echo "Service URL:"
+SERVICE_URL=$(gcloud run services describe "${SERVICE_NAME}" \
+  --region "${REGION}" \
+  --project "${PROJECT_ID}" \
+  --format="value(status.url)")
+echo "${SERVICE_URL}"
+echo ""
+
+# Sync Inngest functions
+echo "============================================="
+echo "Syncing Inngest functions..."
+echo "============================================="
+echo ""
+SYNC_RESPONSE=$(curl -s -X PUT "${SERVICE_URL}/api/inngest")
+echo "Sync response: ${SYNC_RESPONSE}"
+
+# Check if sync was successful
+if echo "${SYNC_RESPONSE}" | grep -q '"ok": true'; then
+  echo "✅ Inngest functions synced successfully!"
+else
+  echo "⚠️  Warning: Inngest sync may have failed. Please check manually."
+  echo "   You can manually sync by running:"
+  echo "   curl -X PUT ${SERVICE_URL}/api/inngest"
+fi
 echo ""
