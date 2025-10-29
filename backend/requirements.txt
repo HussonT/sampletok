@@ -1,49 +1,49 @@
 # Core
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
+fastapi==0.119.1
+uvicorn[standard]==0.38.0
 python-dotenv==1.0.0
-pydantic[email]==2.5.0
+pydantic[email]==2.12.2
 pydantic-settings==2.1.0
 email-validator==2.1.0
 
 # Database
-sqlalchemy==2.0.23
-alembic==1.12.1
-psycopg2-binary==2.9.9
-asyncpg==0.29.0
+sqlalchemy==2.0.44
+alembic==1.17.0
+psycopg2-binary==2.9.11
+asyncpg==0.30.0
 greenlet==3.2.4
 
 # Inngest
-inngest==0.4.0
+inngest==0.5.11
 
 # Authentication
-PyJWT==2.8.0
-cryptography==41.0.7
+PyJWT==2.10.1
+cryptography==46.0.3
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 python-multipart==0.0.6
 
 # AWS S3 / Storage
-boto3==1.33.0
+boto3==1.40.60
 python-magic==0.4.27
 
 # Audio Processing
 ffmpeg-python==0.2.0
 numpy==1.26.2
 scipy==1.14.1
-librosa==0.10.1
+librosa==0.11.0
 essentia==2.1b6.dev1389
-Pillow==11.0.0
+Pillow==12.0.0
 
 # HTTP Client
-httpx==0.25.2
+httpx==0.28.1
 aiofiles==23.2.1
 
 # Rate Limiting
 slowapi==0.1.9
 
 # Testing
-pytest==7.4.3
+pytest==8.4.2
 pytest-asyncio==0.21.1
 pytest-cov==4.1.0
 faker==20.1.0
