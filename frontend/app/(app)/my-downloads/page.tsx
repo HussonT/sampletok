@@ -3,27 +3,10 @@
 import { useState, useEffect } from 'react';
 import { Download } from 'lucide-react';
 import { SoundsTable } from '@/components/features/sounds-table';
-import { Skeleton } from '@/components/ui/skeleton';
+import { TableLoadingSkeleton } from '@/components/ui/loading-skeletons';
 import { Sample } from '@/types/api';
 import { useAuth } from '@clerk/nextjs';
 import { useAudioPlayer } from '../layout';
-
-function LoadingSkeleton() {
-  return (
-    <div className="space-y-4">
-      {[...Array(5)].map((_, i) => (
-        <div key={i} className="flex items-center space-x-4 p-4 border border-border rounded-lg">
-          <Skeleton className="h-20 w-48" />
-          <div className="flex-1 space-y-2">
-            <Skeleton className="h-4 w-3/4" />
-            <Skeleton className="h-3 w-1/2" />
-          </div>
-          <Skeleton className="h-10 w-24" />
-        </div>
-      ))}
-    </div>
-  );
-}
 
 export default function MyDownloadsPage() {
   const { getToken } = useAuth();
@@ -81,22 +64,20 @@ export default function MyDownloadsPage() {
   return (
     <>
       {/* Header */}
-      <div className="flex-none border-b border-border px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Download className="w-5 h-5" />
-            <h1 className="text-xl font-semibold">My Downloads</h1>
-          </div>
-          <div className="text-sm text-muted-foreground">
-            {isLoading ? '...' : `${uniqueSamples.length} unique ${uniqueSamples.length === 1 ? 'sample' : 'samples'}`}
-          </div>
+      <div className="flex-none border-b px-6 h-16 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Download className="w-5 h-5" />
+          <h1 className="text-xl font-semibold">My Downloads</h1>
+        </div>
+        <div className="text-sm text-muted-foreground">
+          {isLoading ? '...' : `${uniqueSamples.length} unique ${uniqueSamples.length === 1 ? 'sample' : 'samples'}`}
         </div>
       </div>
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-6 py-6">
         {isLoading ? (
-          <LoadingSkeleton />
+          <TableLoadingSkeleton rows={6} />
         ) : uniqueSamples.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
             <Download className="w-16 h-16 text-muted-foreground mb-4" />

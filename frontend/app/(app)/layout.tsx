@@ -47,6 +47,8 @@ export default function AppLayout({
       setActiveSection('downloads');
     } else if (pathname?.includes('/my-favorites')) {
       setActiveSection('favorites');
+    } else if (pathname?.includes('/tiktok-connect')) {
+      setActiveSection('tiktok-connect');
     }
   }, [pathname]);
 
@@ -103,7 +105,7 @@ export default function AppLayout({
       <AudioPlayerContext.Provider value={audioPlayerValue}>
         <div className="flex h-screen w-screen overflow-hidden">
           {/* Sidebar - Fixed width */}
-          <div className="w-64 flex-shrink-0 border-r border-border bg-sidebar">
+          <div className="w-64 flex-shrink-0 border-r bg-sidebar">
             <AppSidebar
               activeSection={activeSection}
               onSectionChange={setActiveSection}

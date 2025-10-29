@@ -1,4 +1,5 @@
 import { Suspense } from 'react';
+import { auth } from '@clerk/nextjs/server';
 import { getSamples } from '@/lib/data';
 import MainApp from '@/components/main-app';
 import { SampleFilters } from '@/types/api';
@@ -16,6 +17,10 @@ export default async function Home({ searchParams }: HomeProps) {
   // Await searchParams as required in Next.js 15
   const params = await searchParams;
 
+  // Get auth token from Clerk (server-side)
+  const { getToken } = await auth();
+  const authToken = await getToken();
+
   // Parse filters from URL search params
   const filters: SampleFilters = {
     search: params.search,
@@ -25,11 +30,11 @@ export default async function Home({ searchParams }: HomeProps) {
     limit: 20
   };
 
-  // Fetch data on the server with error handling
+  // Fetch data on the server with error handling (with auth token)
   let samplesData;
   try {
     console.log('[BUILD] BACKEND_URL:', process.env.BACKEND_URL || 'NOT SET');
-    samplesData = await getSamples(filters);
+    samplesData = await getSamples(filters, authToken);
     console.log('[BUILD] Successfully fetched', samplesData?.items?.length || 0, 'samples');
   } catch (error) {
     console.error('[BUILD] Failed to fetch samples:', error);

@@ -4,14 +4,13 @@ import React, { useState } from 'react';
 import Image from 'next/image';
 import { useAuth, useClerk } from '@clerk/nextjs';
 import { Button } from '@/components/ui/button';
-import { Play, Pause, Users, Video, ImageOff } from 'lucide-react';
-import { Sample } from '@/types/api';
+import { Play, Pause, Users, Video, ImageOff, Loader2 } from 'lucide-react';
+import { Sample, ProcessingStatus } from '@/types/api';
 import { CreatorHoverCard } from '@/components/features/creator-hover-card';
 import { VideoPreviewHover } from '@/components/features/video-preview-hover';
 import { DownloadButton } from '@/components/features/download-button';
 import { FavoriteButton } from '@/components/features/favorite-button';
 import { getAvatarWithFallback } from '@/lib/avatar';
-import { removeHashtags } from '@/lib/text-utils';
 import { toast } from 'sonner';
 import {
   Tooltip,
@@ -29,9 +28,7 @@ interface SoundsTableProps {
   onSamplePreview?: (sample: Sample) => void;
   onSampleDownload?: (sample: Sample) => void;
   onVideoDownload?: (sample: Sample) => void;
-  onLoadMore?: () => void;
-  hasMore?: boolean;
-  isLoadingMore?: boolean;
+  onFavoriteChange?: (sampleId: string, isFavorited: boolean) => void;
 }
 
 export function SoundsTable({
@@ -43,9 +40,7 @@ export function SoundsTable({
   onSamplePreview,
   onSampleDownload,
   onVideoDownload,
-  onLoadMore,
-  hasMore = false,
-  isLoadingMore = false
+  onFavoriteChange
 }: SoundsTableProps) {
   const { isSignedIn, getToken } = useAuth();
   const { openSignUp } = useClerk();
@@ -78,6 +73,10 @@ export function SoundsTable({
   const getCategories = (_sample: Sample): string[] => {
     // TODO: Implement proper category detection
     return [];
+  };
+
+  const isProcessing = (sample: Sample): boolean => {
+    return sample.status === ProcessingStatus.PENDING || sample.status === ProcessingStatus.PROCESSING;
   };
 
   const handleDragStart = (e: React.DragEvent, sample: Sample) => {
@@ -167,66 +166,97 @@ export function SoundsTable({
         <tbody>
           {samples.map((sample, index) => {
             const isCurrentPlaying = currentSample?.id === sample.id && isPlaying;
+            const processing = isProcessing(sample);
 
             return (
               <tr
                 key={sample.id}
-                className="border-b border-border hover:bg-secondary/20 transition-colors"
-                draggable
-                onDragStart={(e) => handleDragStart(e, sample)}
-                style={{ cursor: 'grab' }}
+                className={`border-b border-border transition-colors ${processing ? 'bg-secondary/10' : 'hover:bg-secondary/20'}`}
+                draggable={!processing}
+                onDragStart={(e) => !processing && handleDragStart(e, sample)}
+                style={{ cursor: processing ? 'default' : 'grab' }}
               >
                 <td className="py-3 px-4">
                   <div className="flex items-center gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="p-0 w-8 h-8 hover:bg-secondary/50"
-                      onClick={() => onSamplePreview?.(sample)}
-                    >
-                      {isCurrentPlaying ? (
-                        <Pause className="w-4 h-4" />
-                      ) : (
-                        <Play className="w-4 h-4" />
-                      )}
-                    </Button>
-                    <FavoriteButton
-                      sample={sample}
-                      variant="ghost"
-                      size="sm"
-                      className="p-0 w-8 h-8"
-                    />
+                    {processing ? (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="p-0 w-8 h-8 flex items-center justify-center">
+                              <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p className="text-xs">Processing sample...</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="p-0 w-8 h-8 hover:bg-secondary/50"
+                        onClick={() => onSamplePreview?.(sample)}
+                      >
+                        {isCurrentPlaying ? (
+                          <Pause className="w-4 h-4" />
+                        ) : (
+                          <Play className="w-4 h-4" />
+                        )}
+                      </Button>
+                    )}
+                    {!processing && (
+                      <FavoriteButton
+                        sample={sample}
+                        variant="ghost"
+                        size="sm"
+                        className="p-0 w-8 h-8"
+                        onFavoriteChange={(isFavorited) => onFavoriteChange?.(sample.id, isFavorited)}
+                      />
+                    )}
                   </div>
                 </td>
                 <td className="py-3 px-4">
                   <div className="space-y-1">
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <div className="text-sm font-medium text-foreground cursor-help">
-                            {sample.description
-                              ? `${removeHashtags(sample.description).slice(0, 30)}...`
-                              : 'No description'}
+                    {processing ? (
+                      <div className="flex items-center gap-2">
+                        <div className="text-sm font-medium text-muted-foreground italic">
+                          Processing sample...
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div className="text-sm font-medium text-foreground cursor-help">
+                                {sample.title
+                                  ? `${sample.title.slice(0, 30)}...`
+                                  : sample.description
+                                  ? `${sample.description.slice(0, 30)}...`
+                                  : 'No title'}
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" className="max-w-md">
+                              <p>{sample.title || sample.description || 'No title'}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                        <div className="flex items-center gap-3">
+                          <div className="flex gap-2">
+                            {getCategories(sample).map((cat) => (
+                              <span key={cat} className="bg-secondary text-secondary-foreground px-2 py-0.5 rounded text-xs">
+                                {cat}
+                              </span>
+                            ))}
                           </div>
-                        </TooltipTrigger>
-                        <TooltipContent side="top" className="max-w-md">
-                          <p>{removeHashtags(sample.description || '')|| 'No description'}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                    <div className="flex items-center gap-3">
-                      <div className="flex gap-2">
-                        {getCategories(sample).map((cat) => (
-                          <span key={cat} className="bg-secondary text-secondary-foreground px-2 py-0.5 rounded text-xs">
-                            {cat}
-                          </span>
-                        ))}
-                      </div>
-                      <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <Users className="w-3 h-3" />
-                        <span>{sample.view_count ? `${(sample.view_count / 1000).toFixed(0)}k views` : '0 views'}</span>
-                      </div>
-                    </div>
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <Users className="w-3 h-3" />
+                            <span>{sample.view_count ? `${(sample.view_count / 1000).toFixed(0)}k views` : '0 views'}</span>
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </td>
                 <td className="py-3 px-4">
@@ -330,7 +360,14 @@ export function SoundsTable({
                 </td>
                 <td className="py-3 px-4">
                   <div className="w-full h-16 relative">
-                    {sample.waveform_url && !waveformErrors.has(sample.id) ? (
+                    {processing ? (
+                      <div className="w-full h-full flex items-center justify-center bg-secondary/20 rounded-md border border-border/50">
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          <span className="text-[10px]">Generating...</span>
+                        </div>
+                      </div>
+                    ) : sample.waveform_url && !waveformErrors.has(sample.id) ? (
                       <Image
                         src={sample.waveform_url}
                         alt="Waveform"
@@ -379,40 +416,58 @@ export function SoundsTable({
                   </div>
                 </td>
                 <td className="py-3 px-4 text-sm text-muted-foreground">
-                  {formatDuration(sample.duration_seconds || 0)}
+                  {processing ? '--' : formatDuration(sample.duration_seconds || 0)}
                 </td>
-                <td className="py-3 px-4 text-sm">
-                  {getKey(sample)}
+                <td className="py-3 px-4 text-sm text-muted-foreground">
+                  {processing ? '--' : getKey(sample)}
                 </td>
-                <td className="py-3 px-4 text-sm">
-                  {formatBPM(sample)}
-                </td>
-                <td className="py-3 px-4">
-                  <VideoPreviewHover
-                    videoUrl={sample.video_url}
-                    tiktokUrl={sample.tiktok_url || '#'}
-                  />
+                <td className="py-3 px-4 text-sm text-muted-foreground">
+                  {processing ? '--' : formatBPM(sample)}
                 </td>
                 <td className="py-3 px-4">
-                  <DownloadButton
-                    sample={sample}
-                    format="wav"
-                    variant="ghost"
-                    size="sm"
-                    className="p-0 w-8 h-8"
-                  />
+                  {processing ? (
+                    <div className="flex items-center justify-center w-8 h-8">
+                      <span className="text-xs text-muted-foreground">--</span>
+                    </div>
+                  ) : (
+                    <VideoPreviewHover
+                      videoUrl={sample.video_url}
+                      tiktokUrl={sample.tiktok_url || '#'}
+                    />
+                  )}
                 </td>
                 <td className="py-3 px-4">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className={`p-0 w-8 h-8 ${downloadedVideos?.has(sample.id) ? 'text-primary' : ''}`}
-                    onClick={() => handleVideoDownload(sample)}
-                    title={downloadedVideos?.has(sample.id) ? "Download video (already purchased)" : "Download video (1 credit)"}
-                    disabled={!sample.video_url}
-                  >
-                    <Video className="w-4 h-4" />
-                  </Button>
+                  {processing ? (
+                    <div className="flex items-center justify-center w-8 h-8">
+                      <span className="text-xs text-muted-foreground">--</span>
+                    </div>
+                  ) : (
+                    <DownloadButton
+                      sample={sample}
+                      format="wav"
+                      variant="ghost"
+                      size="sm"
+                      className="p-0 w-8 h-8"
+                    />
+                  )}
+                </td>
+                <td className="py-3 px-4">
+                  {processing ? (
+                    <div className="flex items-center justify-center w-8 h-8">
+                      <span className="text-xs text-muted-foreground">--</span>
+                    </div>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className={`p-0 w-8 h-8 ${downloadedVideos?.has(sample.id) ? 'text-primary' : ''}`}
+                      onClick={() => handleVideoDownload(sample)}
+                      title={downloadedVideos?.has(sample.id) ? "Download video (already purchased)" : "Download video (1 credit)"}
+                      disabled={!sample.video_url}
+                    >
+                      <Video className="w-4 h-4" />
+                    </Button>
+                  )}
                 </td>
               </tr>
             );
@@ -420,26 +475,6 @@ export function SoundsTable({
         </tbody>
       </table>
 
-      {/* Load More Button */}
-      {hasMore && onLoadMore && (
-        <div className="flex justify-center py-8">
-          <Button
-            onClick={onLoadMore}
-            disabled={isLoadingMore}
-            variant="outline"
-            size="lg"
-          >
-            {isLoadingMore ? 'Loading...' : 'Load More Samples'}
-          </Button>
-        </div>
-      )}
-
-      {/* End of results message */}
-      {!hasMore && samples.length > 0 && (
-        <div className="flex justify-center py-8 text-sm text-muted-foreground">
-          No more samples to load
-        </div>
-      )}
     </div>
   );
 }

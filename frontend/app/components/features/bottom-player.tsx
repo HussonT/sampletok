@@ -133,7 +133,7 @@ export function BottomPlayer({
           </Avatar>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium text-foreground truncate">
-              {sample.description}
+              {sample.title || sample.description || 'Untitled'}
             </p>
             <div className="flex items-center gap-2">
               <p className="text-xs text-muted-foreground truncate">

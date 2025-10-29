@@ -227,6 +227,7 @@ class PaginatedResponse(BaseModel):
     skip: int
     limit: int
     has_more: bool
+    next_cursor: Optional[str] = None  # For cursor-based pagination
 
 
 class SamplesListResponse(BaseModel):
@@ -250,3 +251,111 @@ class ReprocessResponse(BaseModel):
     message: str
     total_samples: int
     status: str = "started"  # started, dry_run, or error
+
+
+# Collection Schemas
+class TikTokCollectionItem(BaseModel):
+    """Schema for a single collection from TikTok API"""
+    id: str
+    name: str
+    state: int
+    video_count: int
+
+
+class TikTokCollectionListResponse(BaseModel):
+    """Response from TikTok API for collection list"""
+    collection_list: List[TikTokCollectionItem]
+    cursor: int
+    hasMore: bool
+
+
+class ProcessCollectionRequest(BaseModel):
+    """Request to process a TikTok collection"""
+    collection_id: str = Field(..., description="TikTok collection ID")
+    tiktok_username: str = Field(..., description="TikTok username who owns the collection")
+    name: str = Field(..., description="Collection name")
+    video_count: int = Field(..., description="Total videos in collection", gt=0)
+    cursor: int = Field(default=0, description="Cursor for pagination (default 0 for first batch)")
+
+    @validator('collection_id')
+    def validate_collection_id(cls, v):
+        """Validate TikTok collection ID format"""
+        if not v or not v.strip():
+            raise ValueError('Collection ID cannot be empty')
+        # Collection IDs should be numeric strings (typically 19 digits)
+        if not v.isdigit():
+            raise ValueError('Collection ID must be numeric')
+        if len(v) < 10 or len(v) > 30:
+            raise ValueError('Collection ID length must be between 10 and 30 characters')
+        return v.strip()
+
+    @validator('tiktok_username')
+    def validate_tiktok_username(cls, v):
+        """Validate TikTok username format"""
+        if not v or not v.strip():
+            raise ValueError('Username cannot be empty')
+        v = v.strip()
+        # TikTok usernames: 1-30 chars, alphanumeric + underscore + period
+        if len(v) < 1 or len(v) > 30:
+            raise ValueError('Username must be between 1 and 30 characters')
+        if not re.match(r'^[a-zA-Z0-9_.]+$', v):
+            raise ValueError('Username can only contain letters, numbers, underscores, and periods')
+        return v
+
+    @validator('name')
+    def validate_name(cls, v):
+        """Validate collection name"""
+        if not v or not v.strip():
+            raise ValueError('Collection name cannot be empty')
+        v = v.strip()
+        if len(v) > 200:
+            raise ValueError('Collection name must be 200 characters or less')
+        return v
+
+
+class CollectionResponse(BaseModel):
+    """Response model for a collection"""
+    id: UUID
+    user_id: UUID
+    tiktok_collection_id: str
+    tiktok_username: str
+    name: str
+    total_video_count: int
+    current_cursor: int
+    next_cursor: Optional[int] = None
+    has_more: bool
+    status: str
+    processed_count: int
+    error_message: Optional[str] = None
+    created_at: datetime
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class CollectionWithSamplesResponse(CollectionResponse):
+    """Collection with associated samples"""
+    samples: List[SampleResponse] = []
+
+
+class CollectionStatusResponse(BaseModel):
+    """Status of collection processing"""
+    collection_id: UUID
+    status: str
+    progress: int  # Percentage (0-100)
+    processed_count: int
+    total_video_count: int
+    message: str
+    error_message: Optional[str] = None
+
+
+class CollectionProcessingTaskResponse(BaseModel):
+    """Response after submitting collection for processing"""
+    collection_id: UUID
+    status: str
+    message: str
+    credits_deducted: int
+    remaining_credits: int
+    invalid_video_count: Optional[int] = None  # Number of videos that couldn't be processed

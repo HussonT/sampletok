@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks, Body
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, and_
 from sqlalchemy.orm import selectinload
 from typing import List, Optional
 from uuid import UUID
@@ -181,7 +181,8 @@ async def get_samples(
         total=total,
         skip=skip,
         limit=limit,
-        has_more=(skip + limit) < total
+        has_more=(skip + limit) < total,
+        next_cursor=None
     )
 
 

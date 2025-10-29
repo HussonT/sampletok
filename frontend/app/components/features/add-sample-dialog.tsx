@@ -16,7 +16,6 @@ import { Label } from '@/components/ui/label';
 import { processTikTokUrl } from '@/actions/samples';
 import { toast } from 'sonner';
 import { Loader2, Plus, Link2 } from 'lucide-react';
-import { useRouter } from 'next/navigation';
 
 interface AddSampleDialogProps {
   onProcessingStarted?: (taskId: string, url: string) => void;
@@ -27,7 +26,6 @@ export function AddSampleDialog({ onProcessingStarted, variant = 'default' }: Ad
   const [open, setOpen] = useState(false);
   const [url, setUrl] = useState('');
   const [isPending, startTransition] = useTransition();
-  const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,10 +61,10 @@ export function AddSampleDialog({ onProcessingStarted, variant = 'default' }: Ad
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         {variant === 'sidebar' ? (
-          <Button className="w-full justify-start bg-primary/20 hover:bg-primary text-foreground hover:text-primary-foreground transition-all">
-            <Plus className="mr-2 h-4 w-4" />
-            Sample a Tiktok
-          </Button>
+          <button className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors text-sidebar-foreground hover:bg-sidebar-accent/50">
+            <Plus className="w-4 h-4" />
+            <span>Sample a Tiktok</span>
+          </button>
         ) : (
           <Button>
             <Plus className="mr-2 h-4 w-4" />

@@ -98,11 +98,11 @@ class AudioProcessor:
 
         try:
             # Use ffmpeg to generate normalized waveform with pink to purple gradient
-            # scale=lin ensures consistent visual amplitude across all waveforms
+            # scale=sqrt compresses dynamic range so all waveforms appear similar in size
             cmd = [
                 'ffmpeg', '-i', str(audio_path),
                 '-filter_complex',
-                f'[0:a]showwavespic=s={settings.WAVEFORM_WIDTH}x{settings.WAVEFORM_HEIGHT}:colors=#EC4899|#8B5CF6:scale=lin',
+                f'[0:a]showwavespic=s={settings.WAVEFORM_WIDTH}x{settings.WAVEFORM_HEIGHT}:colors=#EC4899|#8B5CF6:scale=sqrt',
                 '-frames:v', '1',
                 '-y',
                 str(waveform_path)

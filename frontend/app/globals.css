@@ -101,3 +101,17 @@
   background-color: hsl(var(--card)) !important;
   color: hsl(var(--card-foreground)) !important;
 }
+
+/* Loading animations */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 1.5s infinite;
+}

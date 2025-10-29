@@ -1,13 +1,25 @@
 "use client";
 
 import React, { useState, useRef } from 'react';
-import { ExternalLink, Volume2, VolumeX } from 'lucide-react';
+import { Volume2, VolumeX } from 'lucide-react';
 import {
   HoverCard,
   HoverCardContent,
   HoverCardTrigger,
 } from '@/components/ui/hover-card';
 import { Button } from '@/components/ui/button';
+
+// TikTok icon component
+const TikTokIcon = ({ className }: { className?: string }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    className={className}
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <path d="M19.59 6.69a4.83 4.83 0 0 1-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 0 1-5.2 1.74 2.89 2.89 0 0 1 2.31-4.64 2.93 2.93 0 0 1 .88.13V9.4a6.84 6.84 0 0 0-1-.05A6.33 6.33 0 0 0 5 20.1a6.34 6.34 0 0 0 10.86-4.43v-7a8.16 8.16 0 0 0 4.77 1.52v-3.4a4.85 4.85 0 0 1-1-.1z"/>
+  </svg>
+);
 
 interface VideoPreviewHoverProps {
   videoUrl?: string;
@@ -51,17 +63,17 @@ export function VideoPreviewHover({ videoUrl, tiktokUrl }: VideoPreviewHoverProp
     }
   };
 
-  // If no video URL, just render the regular link
+  // If no video URL, just render the regular icon button
   if (!videoUrl) {
     return (
       <a
         href={tiktokUrl || '#'}
         target="_blank"
         rel="noopener noreferrer"
-        className="text-primary hover:text-primary/80 underline text-sm flex items-center gap-1"
+        className="flex items-center justify-center w-8 h-8 hover:bg-secondary/50 rounded-md transition-colors group"
+        title="View on TikTok"
       >
-        View on TikTok
-        <ExternalLink className="w-3 h-3" />
+        <TikTokIcon className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
       </a>
     );
   }
@@ -73,7 +85,8 @@ export function VideoPreviewHover({ videoUrl, tiktokUrl }: VideoPreviewHoverProp
           href={tiktokUrl || '#'}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-primary hover:text-primary/80 underline text-sm flex items-center gap-1"
+          className="flex items-center justify-center w-8 h-8 hover:bg-secondary/50 rounded-md transition-colors group"
+          title="View on TikTok"
           onMouseEnter={() => setIsOpen(true)}
           onMouseLeave={(e) => {
             // Only close if not moving to the content
@@ -83,8 +96,7 @@ export function VideoPreviewHover({ videoUrl, tiktokUrl }: VideoPreviewHoverProp
             }
           }}
         >
-          View on TikTok
-          <ExternalLink className="w-3 h-3" />
+          <TikTokIcon className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
         </a>
       </HoverCardTrigger>
       <HoverCardContent

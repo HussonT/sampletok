@@ -1,40 +1,43 @@
 import { unstable_cache } from 'next/cache';
 import { Sample, PaginatedResponse, SampleFilters } from '@/types/api';
 
-// Fetch samples with caching
-export const getSamples = unstable_cache(
-  async (filters?: SampleFilters): Promise<PaginatedResponse<Sample>> => {
-    const params = new URLSearchParams();
+// Fetch samples with optional authentication
+export async function getSamples(filters?: SampleFilters, authToken?: string | null): Promise<PaginatedResponse<Sample>> {
+  const params = new URLSearchParams();
 
-    if (filters) {
-      Object.entries(filters).forEach(([key, value]) => {
-        if (value !== undefined && value !== null) {
-          params.append(key, String(value));
-        }
-      });
-    }
-
-    const url = `${process.env.BACKEND_URL}/api/v1/samples${params.toString() ? `?${params}` : ''}`;
-
-    const response = await fetch(url, {
-      next: {
-        revalidate: 5, // Revalidate every 5 seconds for fresh data
-        tags: ['samples']
+  if (filters) {
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        params.append(key, String(value));
       }
     });
-
-    if (!response.ok) {
-      throw new Error('Failed to fetch samples');
-    }
-
-    return response.json();
-  },
-  ['samples'], // Cache key
-  {
-    revalidate: 5,
-    tags: ['samples']
   }
-);
+
+  const url = `${process.env.BACKEND_URL}/api/v1/samples${params.toString() ? `?${params}` : ''}`;
+
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+  };
+
+  // Include auth token if provided
+  if (authToken) {
+    headers['Authorization'] = `Bearer ${authToken}`;
+  }
+
+  const response = await fetch(url, {
+    headers,
+    next: {
+      revalidate: 5, // Revalidate every 5 seconds for fresh data
+      tags: ['samples']
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch samples');
+  }
+
+  return response.json();
+}
 
 // Fetch single sample with caching
 export const getSampleById = unstable_cache(

@@ -78,4 +78,5 @@ class Sample(Base):
     tiktok_creator = relationship("TikTokCreator", back_populates="samples")
     user_downloads = relationship("UserDownload", back_populates="sample", cascade="all, delete-orphan")
     user_favorites = relationship("UserFavorite", back_populates="sample", cascade="all, delete-orphan")
+    collection_samples = relationship("CollectionSample", back_populates="sample", cascade="all, delete-orphan")
     
