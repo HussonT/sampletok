@@ -1,17 +1,6 @@
 import React from 'react';
 import { SampleCard } from './sample-card';
-
-interface Sample {
-  id: string;
-  tiktokUrl: string;
-  creatorUsername: string;
-  viewCount: number;
-  description: string;
-  duration: number;
-  audioUrl: string;
-  waveformUrl: string;
-  createdAt: string;
-}
+import { Sample } from '@/types/api';
 
 interface SampleGridProps {
   samples: Sample[];

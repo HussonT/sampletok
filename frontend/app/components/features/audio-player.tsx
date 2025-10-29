@@ -14,19 +14,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
-
-interface Sample {
-  id: string;
-  tiktokUrl: string;
-  creatorUsername: string;
-  creatorAvatarUrl?: string;
-  viewCount: number;
-  description: string;
-  duration: number;
-  audioUrl: string;
-  waveformUrl: string;
-  createdAt: string;
-}
+import { Sample } from '@/types/api';
 
 interface AudioPlayerProps {
   sample: Sample | null;
@@ -99,7 +87,7 @@ export function AudioPlayer({
       {/* Hidden audio element */}
       <audio
         ref={audioRef}
-        src={sample.audioUrl}
+        src={sample.audio_url_mp3 || sample.audio_url_wav}
         onTimeUpdate={handleTimeUpdate}
         onEnded={() => onNext()}
       />
@@ -110,26 +98,29 @@ export function AudioPlayer({
           {/* Sample Info */}
           <div className="flex items-center gap-4 mb-3">
             <Avatar className="w-12 h-12 shrink-0">
-              <AvatarImage src={sample.creatorAvatarUrl} alt={sample.creatorUsername} />
+              <AvatarImage
+                src={sample.tiktok_creator?.avatar_thumb || sample.thumbnail_url}
+                alt={sample.creator_username || 'Creator'}
+              />
               <AvatarFallback>
-                {sample.creatorUsername.substring(0, 2).toUpperCase()}
+                {(sample.creator_username || 'U').substring(0, 2).toUpperCase()}
               </AvatarFallback>
             </Avatar>
             <div className="flex-1 min-w-0">
-              <p className="truncate font-medium text-foreground">@{sample.creatorUsername}</p>
+              <p className="truncate font-medium text-foreground">@{sample.creator_username}</p>
               <p className="text-xs text-muted-foreground truncate">
                 {sample.title || sample.description || 'Untitled'}
               </p>
             </div>
             <div className="flex items-center gap-1">
               <Badge variant="secondary" className="text-xs bg-primary/20 text-primary border-primary/30">
-                {formatViewCount(sample.viewCount)} views
+                {formatViewCount(sample.view_count)} views
               </Badge>
               <Button
                 size="sm"
                 variant="ghost"
                 className="w-8 h-8"
-                onClick={() => window.open(sample.tiktokUrl, '_blank')}
+                onClick={() => window.open(sample.tiktok_url, '_blank')}
               >
                 <ExternalLink className="w-4 h-4" />
               </Button>
@@ -151,13 +142,13 @@ export function AudioPlayer({
             </span>
             <Slider
               value={[currentTime]}
-              max={sample.duration}
+              max={sample.duration_seconds || 0}
               step={0.1}
               onValueChange={handleSeek}
               className="flex-1"
             />
             <span className="text-xs text-muted-foreground min-w-[40px]">
-              {formatTime(sample.duration)}
+              {formatTime(sample.duration_seconds || 0)}
             </span>
           </div>
 

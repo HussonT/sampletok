@@ -3,18 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Play, Pause, Download, Heart } from 'lucide-react';
-
-interface Sample {
-  id: string;
-  tiktokUrl: string;
-  creatorUsername: string;
-  viewCount: number;
-  description: string;
-  duration: number;
-  audioUrl: string;
-  waveformUrl: string;
-  createdAt: string;
-}
+import { Sample } from '@/types/api';
 
 interface SampleCardProps {
   sample: Sample;
@@ -113,21 +102,21 @@ export function SampleCard({ sample, onPreview, onDownload, isPlaying }: SampleC
       <div className="p-3 space-y-2">
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1 min-w-0">
-            <p className="truncate font-medium text-foreground">@{sample.creatorUsername}</p>
+            <p className="truncate font-medium text-foreground">@{sample.creator_username}</p>
             <p className="text-xs text-muted-foreground truncate">
               {sample.title || sample.description || 'Untitled'}
             </p>
           </div>
           <Badge variant="secondary" className="shrink-0 bg-primary/20 text-primary border-primary/30">
-            {formatDuration(sample.duration)}
+            {formatDuration(sample.duration_seconds || 0)}
           </Badge>
         </div>
 
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span>{formatViewCount(sample.viewCount)} views</span>
+            <span>{formatViewCount(sample.view_count)} views</span>
             <span>•</span>
-            <span>{new Date(sample.createdAt).toLocaleDateString()}</span>
+            <span>{new Date(sample.created_at).toLocaleDateString()}</span>
           </div>
           <Button
             size="sm"
