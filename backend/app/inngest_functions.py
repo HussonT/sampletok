@@ -18,8 +18,10 @@ from app.models import Sample, ProcessingStatus, TikTokCreator, Collection, Coll
 from app.models.user import UserDownload
 from app.core.database import AsyncSessionLocal
 from sqlalchemy import select, or_
+from sqlalchemy.exc import IntegrityError
 from app.services.tiktok.creator_service import CreatorService
 from app.services.tiktok.collection_service import TikTokCollectionService
+from app.services.credit_service import refund_credits_atomic
 from app.utils import extract_hashtags
 from datetime import datetime
 
@@ -618,9 +620,21 @@ async def process_collection(ctx: inngest.Context) -> Dict[str, Any]:
                 )
             else:
                 logger.warning(f"Video {batch_position + 1} returned None - check for errors")
+                # Refund 1 credit for failed video
+                await ctx.step.run(
+                    f"refund-credit-{collection_id}-cursor{cursor}-pos{batch_position}",
+                    refund_credit_for_failed_video,
+                    user_id
+                )
 
         except Exception as e:
             logger.exception(f"Exception processing video at position {absolute_position} (batch {batch_position}): {str(e)}")
+            # Refund 1 credit for failed video
+            await ctx.step.run(
+                f"refund-credit-exception-{collection_id}-cursor{cursor}-pos{batch_position}",
+                refund_credit_for_failed_video,
+                user_id
+            )
             # Continue with next video instead of failing entire collection
 
     # Step 5: Mark collection batch as completed and update pagination
@@ -664,6 +678,17 @@ async def fetch_collection_from_db(collection_id: str) -> Dict[str, Any]:
         raise
 
 
+async def refund_credit_for_failed_video(user_id: str) -> None:
+    """Refund 1 credit to user when a video fails to process"""
+    try:
+        async with AsyncSessionLocal() as db:
+            await refund_credits_atomic(db, uuid.UUID(user_id), 1)
+            logger.info(f"Refunded 1 credit to user {user_id} for failed video")
+    except Exception as e:
+        logger.exception(f"Error refunding credit to user {user_id}: {e}")
+        # Don't raise - we don't want refund failure to stop collection processing
+
+
 async def update_collection_status(collection_id: str, status: CollectionStatus) -> None:
     """Update collection processing status"""
     try:
@@ -697,11 +722,12 @@ async def fetch_collection_videos_with_cursor(
         logger.info(f"Fetching videos for collection_id={tiktok_collection_id}, cursor={cursor}, max_videos={max_videos}")
         collection_service = TikTokCollectionService()
 
-        # Retry up to 3 times to handle API inconsistencies
+        # Retry multiple times to handle API inconsistencies
         best_result = None
         max_video_count = 0
+        max_attempts = settings.TIKTOK_API_RETRY_ATTEMPTS
 
-        for attempt in range(3):
+        for attempt in range(max_attempts):
             try:
                 result = await collection_service.fetch_collection_posts(
                     collection_id=tiktok_collection_id,
@@ -713,7 +739,7 @@ async def fetch_collection_videos_with_cursor(
                 videos = data.get('videos', [])
                 video_count = len(videos)
 
-                logger.info(f"Attempt {attempt + 1}/3: Got {video_count} videos")
+                logger.info(f"Attempt {attempt + 1}/{max_attempts}: Got {video_count} videos")
 
                 # Keep the result with the most videos
                 if video_count > max_video_count:
@@ -722,12 +748,12 @@ async def fetch_collection_videos_with_cursor(
                     logger.info(f"New best result: {video_count} videos")
 
                 # Small delay between retries
-                if attempt < 2:
+                if attempt < max_attempts - 1:
                     await asyncio.sleep(0.5)
 
             except Exception as e:
                 logger.warning(f"Attempt {attempt + 1} failed: {e}")
-                if attempt == 2:  # Last attempt
+                if attempt == max_attempts - 1:  # Last attempt
                     raise
 
         if best_result is None:
@@ -817,12 +843,38 @@ async def process_collection_video(
                 )
                 db.add(sample)
                 logger.info(f"Sample added to session, about to commit...")
-                await db.commit()
-                logger.info(f"Sample committed to database")
-                await db.refresh(sample)
-                logger.info(f"Sample refreshed, ID: {sample.id}, aweme_id: {sample.aweme_id}, status: {sample.status.value}")
 
-                sample_id = sample.id
+                try:
+                    await db.commit()
+                    logger.info(f"Sample committed to database")
+                    await db.refresh(sample)
+                    logger.info(f"Sample refreshed, ID: {sample.id}, aweme_id: {sample.aweme_id}, status: {sample.status.value}")
+                    sample_id = sample.id
+                except IntegrityError:
+                    # Race condition: another process created this sample
+                    # Roll back and fetch the existing sample
+                    await db.rollback()
+                    logger.info(f"Sample already exists (race condition) for video_id {video_id}, fetching...")
+
+                    # Re-query to get the existing sample
+                    if aweme_id:
+                        refetch_query = select(Sample).where(
+                            or_(
+                                Sample.tiktok_id == video_id,
+                                Sample.aweme_id == aweme_id
+                            )
+                        )
+                    else:
+                        refetch_query = select(Sample).where(Sample.tiktok_id == video_id)
+
+                    refetch_result = await db.execute(refetch_query)
+                    existing_sample = refetch_result.scalars().first()
+
+                    if not existing_sample:
+                        raise Exception(f"Failed to create or fetch sample for video_id {video_id}")
+
+                    logger.info(f"Found existing sample: {existing_sample.id}")
+                    sample_id = existing_sample.id
 
                 # Verify the sample was actually committed by querying it again
                 verify_query = select(Sample).where(Sample.id == sample_id)

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, update
 from sqlalchemy.orm import selectinload
@@ -21,75 +21,13 @@ from app.models.schemas import (
 )
 from app.api.deps import get_current_user
 from app.services.tiktok.collection_service import TikTokCollectionService
+from app.services.credit_service import deduct_credits_atomic, refund_credits_atomic
 from app.inngest_functions import inngest_client
+from app.core.rate_limit import limiter
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-async def deduct_credits_atomic(
-    db: AsyncSession,
-    user_id: UUID,
-    credits_needed: int
-) -> bool:
-    """
-    Atomically deduct credits from user account using database-level atomic operation.
-    This prevents race conditions when multiple requests try to deduct credits simultaneously.
-
-    Args:
-        db: Database session
-        user_id: UUID of the user
-        credits_needed: Number of credits to deduct
-
-    Returns:
-        True if credits were successfully deducted, False if insufficient credits
-    """
-    result = await db.execute(
-        update(User)
-        .where(and_(
-            User.id == user_id,
-            User.credits >= credits_needed
-        ))
-        .values(credits=User.credits - credits_needed)
-    )
-
-    # If rowcount is 0, it means either user doesn't exist or insufficient credits
-    if result.rowcount == 0:
-        # Check if user exists to give better error message
-        user_check = await db.execute(select(User).where(User.id == user_id))
-        user = user_check.scalars().first()
-        if not user:
-            logger.error(f"User {user_id} not found during credit deduction")
-            return False
-        logger.warning(f"Insufficient credits for user {user_id}: has {user.credits}, needs {credits_needed}")
-        return False
-
-    await db.commit()
-    logger.info(f"Atomically deducted {credits_needed} credits from user {user_id}")
-    return True
-
-
-async def refund_credits_atomic(
-    db: AsyncSession,
-    user_id: UUID,
-    credits_to_refund: int
-) -> None:
-    """
-    Atomically refund credits to user account.
-
-    Args:
-        db: Database session
-        user_id: UUID of the user
-        credits_to_refund: Number of credits to refund
-    """
-    await db.execute(
-        update(User)
-        .where(User.id == user_id)
-        .values(credits=User.credits + credits_to_refund)
-    )
-    await db.commit()
-    logger.info(f"Refunded {credits_to_refund} credits to user {user_id}")
 
 
 async def get_valid_video_count(tiktok_collection_id: str) -> tuple[int, int]:
@@ -164,20 +102,13 @@ async def get_new_videos_count(
         ]
         tiktok_video_ids = {v['video_id'] for v in valid_videos}
 
-        # Get existing video_ids from our database
+        # Get existing video_ids from our database (single query to avoid N+1)
         query = (
-            select(CollectionSample)
-            .join(Sample, CollectionSample.sample_id == Sample.id)
+            select(Sample.tiktok_id)
+            .join(CollectionSample, Sample.id == CollectionSample.sample_id)
             .where(CollectionSample.collection_id == collection_id)
         )
         result = await db.execute(query)
-        collection_samples = result.scalars().all()
-
-        # Get the tiktok_ids from existing samples
-        existing_query = select(Sample.tiktok_id).where(
-            Sample.id.in_([cs.sample_id for cs in collection_samples])
-        )
-        result = await db.execute(existing_query)
         existing_video_ids = {row[0] for row in result.all() if row[0]}
 
         # Calculate new videos
@@ -197,7 +128,9 @@ async def get_new_videos_count(
 
 
 @router.get("/tiktok/{username}", response_model=TikTokCollectionListResponse)
+@limiter.limit(f"{settings.COLLECTIONS_LIST_RATE_LIMIT_PER_MINUTE}/minute")
 async def get_tiktok_user_collections(
+    request: Request,
     username: str,
     count: int = Query(default=settings.MAX_COLLECTIONS_PER_REQUEST, ge=1, le=settings.MAX_COLLECTIONS_PER_REQUEST, description="Number of collections to fetch"),
     cursor: int = Query(default=0, ge=0, description="Pagination cursor")
@@ -249,7 +182,9 @@ async def get_tiktok_user_collections(
 
 
 @router.post("/process", response_model=CollectionProcessingTaskResponse)
+@limiter.limit(f"{settings.COLLECTION_RATE_LIMIT_PER_MINUTE}/minute")
 async def process_collection(
+    fastapi_request: Request,
     request: ProcessCollectionRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -271,13 +206,6 @@ async def process_collection(
     videos_to_process = min(request.video_count - request.cursor, max_videos)
     is_sync = False  # Track if this is a sync operation
     invalid_video_count = None  # Track invalid videos for new collections
-
-    # Check if user has enough credits (1 credit per video)
-    if current_user.credits < videos_to_process:
-        raise HTTPException(
-            status_code=402,
-            detail=f"Insufficient credits. Need {videos_to_process} credits, but have {current_user.credits}"
-        )
 
     # Check if collection already exists for this user
     existing_query = select(Collection).where(
@@ -456,13 +384,19 @@ async def process_collection(
         # Rollback any uncommitted changes
         await db.rollback()
 
-        # Mark collection as failed and refund credits
+        # Refund credits FIRST (before marking collection as failed)
+        await refund_credits_atomic(db, current_user.id, videos_to_process)
+
+        # Re-fetch the collection after rollback to ensure it's attached to the session
+        refetch_query = select(Collection).where(Collection.id == collection.id)
+        refetch_result = await db.execute(refetch_query)
+        collection = refetch_result.scalar_one()
+
+        # Now mark collection as failed and commit
         collection.status = CollectionStatus.failed
         collection.error_message = f"Failed to queue processing: {str(e)}"
         await db.commit()
 
-        # Refund credits atomically
-        await refund_credits_atomic(db, current_user.id, videos_to_process)
         # Refresh user to get updated balance
         await db.refresh(current_user)
 
@@ -490,7 +424,9 @@ async def process_collection(
 
 
 @router.get("", response_model=List[CollectionResponse])
+@limiter.limit(f"{settings.COLLECTIONS_LIST_RATE_LIMIT_PER_MINUTE}/minute")
 async def list_user_collections(
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
     skip: int = Query(default=0, ge=0),
@@ -521,7 +457,9 @@ async def list_user_collections(
 
 
 @router.get("/{collection_id}", response_model=CollectionWithSamplesResponse)
+@limiter.limit(f"{settings.COLLECTIONS_LIST_RATE_LIMIT_PER_MINUTE}/minute")
 async def get_collection_details(
+    request: Request,
     collection_id: UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -578,7 +516,9 @@ async def get_collection_details(
 
 
 @router.get("/{collection_id}/status", response_model=CollectionStatusResponse)
+@limiter.limit(f"{settings.COLLECTIONS_LIST_RATE_LIMIT_PER_MINUTE}/minute")
 async def get_collection_status(
+    request: Request,
     collection_id: UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)

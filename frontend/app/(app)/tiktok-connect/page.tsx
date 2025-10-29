@@ -16,6 +16,7 @@ import { Loader2, Search, FolderOpen, Check, Download, AlertCircle, Coins } from
 import { toast } from 'sonner';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
+import { MAX_VIDEOS_PER_BATCH, getPollingInterval } from '@/lib/constants';
 
 export default function TikTokConnectPage() {
   const { getToken, isSignedIn } = useAuth();
@@ -56,7 +57,7 @@ export default function TikTokConnectPage() {
         } else {
           // Schedule next poll with exponential backoff
           pollCount++;
-          const nextDelay = getPollingDelay(pollCount);
+          const nextDelay = getPollingInterval(pollCount);
           if (intervalId) clearInterval(intervalId);
           intervalId = setTimeout(pollStatus, nextDelay);
         }
@@ -64,7 +65,7 @@ export default function TikTokConnectPage() {
         console.error('Error polling status:', error);
         // On error, retry with current backoff schedule
         pollCount++;
-        const nextDelay = getPollingDelay(pollCount);
+        const nextDelay = getPollingInterval(pollCount);
         if (intervalId) clearInterval(intervalId);
         intervalId = setTimeout(pollStatus, nextDelay);
       }
@@ -79,12 +80,6 @@ export default function TikTokConnectPage() {
   }, [processingCollectionId, getToken]);
 
   // Exponential backoff: 3s → 5s → 10s → 30s (then stays at 30s)
-  const getPollingDelay = (pollCount: number): number => {
-    if (pollCount <= 5) return 3000;      // First 5 polls: 3s
-    if (pollCount <= 10) return 5000;     // Next 5 polls: 5s
-    if (pollCount <= 15) return 10000;    // Next 5 polls: 10s
-    return 30000;                         // After that: 30s
-  };
 
   // Fetch user credits if signed in
   useEffect(() => {
@@ -141,7 +136,7 @@ export default function TikTokConnectPage() {
 
     // Calculate how many videos will be in this batch
     const remainingVideos = collection.video_count - cursor;
-    const batchSize = Math.min(remainingVideos, 30);
+    const batchSize = Math.min(remainingVideos, MAX_VIDEOS_PER_BATCH);
 
     // Check credits
     if (userCredits !== null && userCredits < batchSize) {
@@ -189,7 +184,7 @@ export default function TikTokConnectPage() {
     }
   };
 
-  const getCreditsRequired = (videoCount: number) => Math.min(videoCount, 30);
+  const getCreditsRequired = (videoCount: number) => Math.min(videoCount, MAX_VIDEOS_PER_BATCH);
 
   return (
     <div className="flex-1 overflow-y-auto">
@@ -313,7 +308,7 @@ export default function TikTokConnectPage() {
                           <span className="flex items-center gap-1">
                             <Coins className="w-3 h-3" />
                             {creditsRequired} credit{creditsRequired !== 1 ? 's' : ''}
-                            {collection.video_count > 30 && ' (max 30 videos)'}
+                            {collection.video_count > MAX_VIDEOS_PER_BATCH && ` (max ${MAX_VIDEOS_PER_BATCH} videos)`}
                           </span>
                         </div>
 
@@ -373,7 +368,7 @@ export default function TikTokConnectPage() {
                     <li>Enter a TikTok username to browse their collections</li>
                     <li>Review collections and credit costs (1 credit per video)</li>
                     <li>Click &quot;Import Collection&quot; to start processing</li>
-                    <li>Track progress in real-time (max 30 videos per collection)</li>
+                    <li>Track progress in real-time (max {MAX_VIDEOS_PER_BATCH} videos per collection)</li>
                     <li>All videos will be added to your downloads automatically</li>
                   </ol>
                 </div>

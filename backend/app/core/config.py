@@ -57,6 +57,13 @@ class Settings(BaseSettings):
     MAX_VIDEOS_PER_BATCH: int = 30  # Maximum videos to process in one batch
     MAX_COLLECTIONS_PER_REQUEST: int = 35  # Maximum collections to fetch in one request
     TIKTOK_API_MAX_PER_REQUEST: int = 30  # TikTok API limit per request
+    TIKTOK_API_RETRY_ATTEMPTS: int = 3  # Number of retry attempts for inconsistent TikTok API responses
+    TIKTOK_API_TIMEOUT_SECONDS: int = 30  # HTTP timeout for TikTok API requests
+    CREATOR_CACHE_TTL_HOURS: int = 24  # How long to cache TikTok creator info
+
+    # Rate Limiting
+    COLLECTION_RATE_LIMIT_PER_MINUTE: int = 10  # Max collection processing requests per minute per user
+    COLLECTIONS_LIST_RATE_LIMIT_PER_MINUTE: int = 60  # Max collection list requests per minute per user
 
     # Audio Processing
     AUDIO_SAMPLE_RATE: int = 48000

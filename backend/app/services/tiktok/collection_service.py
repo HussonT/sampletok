@@ -61,7 +61,7 @@ class TikTokCollectionService:
         }
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=float(settings.TIKTOK_API_TIMEOUT_SECONDS)) as client:
                 logger.info(f"Fetching collections for user: {username}")
                 response = await client.get(api_url, headers=self.headers, params=params)
                 response.raise_for_status()
@@ -130,7 +130,7 @@ class TikTokCollectionService:
         }
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=float(settings.TIKTOK_API_TIMEOUT_SECONDS)) as client:
                 logger.info(f"Fetching posts for collection: {collection_id}")
                 response = await client.get(api_url, headers=self.headers, params=params)
                 response.raise_for_status()

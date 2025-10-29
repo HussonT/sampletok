@@ -12,11 +12,12 @@ from sqlalchemy.exc import IntegrityError
 from app.models.tiktok_creator import TikTokCreator
 from app.services.tiktok.downloader import TikTokDownloader
 from app.services.storage.s3 import S3Storage
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Cache TTL: 24 hours
-CREATOR_CACHE_TTL = timedelta(hours=24)
+# Cache TTL from config
+CREATOR_CACHE_TTL = timedelta(hours=settings.CREATOR_CACHE_TTL_HOURS)
 
 
 class CreatorService:

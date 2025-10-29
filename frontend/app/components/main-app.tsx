@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo, useTransition, useOptimistic, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '@clerk/nextjs';
 import { SoundsTable } from '@/components/features/sounds-table';
 import { SamplesPagination } from '@/components/features/samples-pagination';
 import { ProcessingQueue, ProcessingTask } from '@/components/features/processing-queue';
@@ -20,6 +21,7 @@ interface MainAppProps {
 
 export default function MainApp({ initialSamples, totalSamples, currentFilters }: MainAppProps) {
   const router = useRouter();
+  const { getToken } = useAuth();
   const { registerProcessingHandler, unregisterProcessingHandler } = useProcessing();
   const [isPending, startTransition] = useTransition();
   const [samples, setSamples] = useState<Sample[]>(initialSamples);
@@ -66,7 +68,16 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
       params.append('skip', ((page - 1) * itemsPerPage).toString());
       params.append('limit', itemsPerPage.toString());
 
-      const response = await fetch(`/api/samples?${params.toString()}`);
+      // Get auth token for authenticated requests
+      const token = await getToken();
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+      };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
+      const response = await fetch(`/api/samples?${params.toString()}`, { headers });
       if (!response.ok) throw new Error('Failed to load page');
 
       const data = await response.json();
@@ -80,7 +91,7 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
     } finally {
       setIsLoadingPage(false);
     }
-  }, [isLoadingPage, itemsPerPage]);
+  }, [isLoadingPage, itemsPerPage, getToken]);
 
   // Add a new processing task
   const addProcessingTask = useCallback((taskId: string, url: string) => {

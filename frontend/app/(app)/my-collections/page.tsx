@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import { MAX_VIDEOS_PER_BATCH } from '@/lib/constants';
 
 export default function MyCollectionsPage() {
   const { getToken } = useAuth();
@@ -50,7 +51,7 @@ export default function MyCollectionsPage() {
     if (!collection.next_cursor) return;
 
     const remainingVideos = collection.total_video_count - collection.next_cursor;
-    const batchSize = Math.min(remainingVideos, 30);
+    const batchSize = Math.min(remainingVideos, MAX_VIDEOS_PER_BATCH);
 
     if (userCredits !== null && userCredits < batchSize) {
       toast.error(`Insufficient credits. Need ${batchSize} credits, but have ${userCredits}`);
