@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { MAX_VIDEOS_PER_BATCH } from '@/lib/constants';
+import { PageLoader, CardSkeleton } from '@/components/ui/loading-skeletons';
 
 export default function MyCollectionsPage() {
   const { getToken } = useAuth();
@@ -125,14 +126,6 @@ export default function MyCollectionsPage() {
     );
   };
 
-  if (loading) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
   return (
     <div className="flex-1 overflow-y-auto">
       <div className="container mx-auto px-4 py-8 max-w-4xl">
@@ -145,7 +138,9 @@ export default function MyCollectionsPage() {
         </div>
 
         {/* Collections List */}
-        {collections.length > 0 ? (
+        {loading ? (
+          <CardSkeleton count={3} />
+        ) : collections.length > 0 ? (
           <div className="grid gap-4">
             {collections.map((collection) => (
               <Card key={collection.id} className="hover:border-primary/50 transition-colors">

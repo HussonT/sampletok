@@ -12,6 +12,7 @@ import { Sample, SampleFilters, ProcessingStatus } from '@/types/api';
 import { processTikTokUrl, deleteSample, getProcessingStatus } from '@/actions/samples';
 import { toast } from 'sonner';
 import { useProcessing } from '@/contexts/processing-context';
+import { TableLoadingSkeleton, LoadingBar } from '@/components/ui/loading-skeletons';
 
 interface MainAppProps {
   initialSamples: Sample[];
@@ -307,6 +308,9 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
         </div>
       </div>
 
+      {/* Loading bar */}
+      {isLoadingPage && <LoadingBar />}
+
       {/* Processing Queue */}
       <ProcessingQueue
         tasks={Array.from(processingTasks.values())}
@@ -317,21 +321,27 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
       <div className="flex-1 overflow-auto px-6 pb-6" style={{ paddingBottom: currentSample ? '100px' : '24px' }}>
           {activeSection === 'explore' && (
             <>
-              <SoundsTable
-                samples={filteredSamples}
-                currentSample={currentSample}
-                isPlaying={isPlaying}
-                downloadedSamples={downloadedSamples}
-                downloadedVideos={downloadedVideos}
-                onSamplePreview={handleSamplePreview}
-                onSampleDownload={handleSampleDownload}
-                onVideoDownload={handleVideoDownload}
-              />
-              <SamplesPagination
-                currentPage={currentPage}
-                totalPages={Math.ceil(totalSamples / itemsPerPage)}
-                onPageChange={handlePageChange}
-              />
+              {isLoadingPage ? (
+                <TableLoadingSkeleton rows={8} />
+              ) : (
+                <>
+                  <SoundsTable
+                    samples={filteredSamples}
+                    currentSample={currentSample}
+                    isPlaying={isPlaying}
+                    downloadedSamples={downloadedSamples}
+                    downloadedVideos={downloadedVideos}
+                    onSamplePreview={handleSamplePreview}
+                    onSampleDownload={handleSampleDownload}
+                    onVideoDownload={handleVideoDownload}
+                  />
+                  <SamplesPagination
+                    currentPage={currentPage}
+                    totalPages={Math.ceil(totalSamples / itemsPerPage)}
+                    onPageChange={handlePageChange}
+                  />
+                </>
+              )}
             </>
           )}
 

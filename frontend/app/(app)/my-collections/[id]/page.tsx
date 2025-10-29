@@ -5,13 +5,14 @@ import { useAuth } from '@clerk/nextjs';
 import { useParams, useRouter } from 'next/navigation';
 import { createAuthenticatedClient } from '@/lib/api-client';
 import { CollectionWithSamples } from '@/types/api';
-import { Loader2, FolderOpen, ChevronLeft, Music } from 'lucide-react';
+import { FolderOpen, ChevronLeft, Music } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { SoundsTable } from '@/components/features/sounds-table';
 import { useAudioPlayer } from '../../layout';
 import Link from 'next/link';
+import { PageLoader } from '@/components/ui/loading-skeletons';
 
 export default function CollectionDetailPage() {
   const { getToken } = useAuth();
@@ -44,11 +45,7 @@ export default function CollectionDetailPage() {
   };
 
   if (loading) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <PageLoader message="Loading collection..." />;
   }
 
   if (!collection) {

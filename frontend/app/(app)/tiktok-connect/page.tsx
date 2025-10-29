@@ -17,6 +17,7 @@ import { toast } from 'sonner';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { MAX_VIDEOS_PER_BATCH, getPollingInterval } from '@/lib/constants';
+import { CardSkeleton } from '@/components/ui/loading-skeletons';
 
 export default function TikTokConnectPage() {
   const { getToken, isSignedIn } = useAuth();
@@ -279,7 +280,11 @@ export default function TikTokConnectPage() {
           </div>
         )}
 
-        {collections.length > 0 && (
+        {loading && fetchedUsername && (
+          <CardSkeleton count={2} />
+        )}
+
+        {!loading && collections.length > 0 && (
           <div className="grid gap-4">
             {collections.map((collection) => {
               const creditsRequired = getCreditsRequired(collection.video_count);
