@@ -36,7 +36,8 @@
       "Bash(gh api:*)",
       "Bash(npm run build:*)",
       "Bash(grep:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(gcloud secrets versions add:*)"
     ],
     "deny": [],
     "ask": []
