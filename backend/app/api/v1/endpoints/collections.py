@@ -184,8 +184,8 @@ async def get_tiktok_user_collections(
 @router.post("/process", response_model=CollectionProcessingTaskResponse)
 @limiter.limit(f"{settings.COLLECTION_RATE_LIMIT_PER_MINUTE}/minute")
 async def process_collection(
-    fastapi_request: Request,
-    request: ProcessCollectionRequest,
+    request: Request,
+    payload: ProcessCollectionRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -195,7 +195,7 @@ async def process_collection(
     Requires authentication and sufficient credits (1 credit per video, max 30 videos)
 
     Args:
-        request: Collection details (collection_id, username, name, video_count)
+        payload: Collection details (collection_id, username, name, video_count)
         current_user: Authenticated user
 
     Returns:
@@ -203,7 +203,7 @@ async def process_collection(
     """
     # Enforce max videos per batch
     max_videos = settings.MAX_VIDEOS_PER_BATCH
-    videos_to_process = min(request.video_count - request.cursor, max_videos)
+    videos_to_process = min(payload.video_count - payload.cursor, max_videos)
     is_sync = False  # Track if this is a sync operation
     invalid_video_count = None  # Track invalid videos for new collections
 
@@ -211,7 +211,7 @@ async def process_collection(
     existing_query = select(Collection).where(
         and_(
             Collection.user_id == current_user.id,
-            Collection.tiktok_collection_id == request.collection_id
+            Collection.tiktok_collection_id == payload.collection_id
         )
     )
     result = await db.execute(existing_query)
@@ -219,7 +219,7 @@ async def process_collection(
 
     if existing_collection:
         # If collection exists, check if we're importing a new batch
-        if request.cursor > 0:
+        if payload.cursor > 0:
             # This is a continuation - update the collection for next batch
             if existing_collection.status == CollectionStatus.processing:
                 return CollectionProcessingTaskResponse(
@@ -241,7 +241,7 @@ async def process_collection(
 
             # Update collection to pending for new batch
             existing_collection.status = CollectionStatus.pending
-            existing_collection.current_cursor = request.cursor
+            existing_collection.current_cursor = payload.cursor
             await db.commit()
 
             # Refresh user to get updated credit balance
@@ -323,7 +323,7 @@ async def process_collection(
             collection = existing_collection
     else:
         # Get actual valid video count (filters out invalid videos)
-        valid_video_count, invalid_video_count = await get_valid_video_count(request.collection_id)
+        valid_video_count, invalid_video_count = await get_valid_video_count(payload.collection_id)
 
         if valid_video_count == 0:
             raise HTTPException(
@@ -348,11 +348,11 @@ async def process_collection(
         # Create new collection record with correct count
         collection = Collection(
             user_id=current_user.id,
-            tiktok_collection_id=request.collection_id,
-            tiktok_username=request.tiktok_username,
-            name=request.name,
+            tiktok_collection_id=payload.collection_id,
+            tiktok_username=payload.tiktok_username,
+            name=payload.name,
             total_video_count=valid_video_count,  # Use actual valid count
-            current_cursor=request.cursor,
+            current_cursor=payload.cursor,
             status=CollectionStatus.pending
         )
         db.add(collection)
@@ -363,7 +363,7 @@ async def process_collection(
 
         logger.info(
             f"Created collection {collection.id}: {valid_video_count} valid videos "
-            f"(TikTok API reported {request.video_count}, {invalid_video_count} invalid)"
+            f"(TikTok API reported {payload.video_count}, {invalid_video_count} invalid)"
         )
 
     # Send event to Inngest for async processing
@@ -409,9 +409,9 @@ async def process_collection(
     if is_sync:
         message = f"Syncing collection: processing {videos_to_process} new videos"
     else:
-        start_video = request.cursor + 1
-        end_video = min(request.cursor + videos_to_process, request.video_count)
-        message = f"Batch queued: videos {start_video}-{end_video} of {request.video_count}"
+        start_video = payload.cursor + 1
+        end_video = min(payload.cursor + videos_to_process, payload.video_count)
+        message = f"Batch queued: videos {start_video}-{end_video} of {payload.video_count}"
 
     return CollectionProcessingTaskResponse(
         collection_id=collection.id,
