@@ -1,5 +1,4 @@
 import { Skeleton } from '@/components/ui/skeleton';
-import { Loader2, Music } from 'lucide-react';
 
 export default function Loading() {
   return (
@@ -46,14 +45,36 @@ export default function Loading() {
           />
         </div>
 
-        {/* Content area with centered loader */}
-        <div className="flex-1 flex items-center justify-center">
-          <div className="flex flex-col items-center gap-4">
-            <div className="relative">
-              <Music className="w-16 h-16 text-primary/20" />
-              <Loader2 className="w-16 h-16 text-primary animate-spin absolute inset-0" />
-            </div>
-            <p className="text-sm text-muted-foreground animate-pulse">Loading samples...</p>
+        {/* Content area with table skeleton */}
+        <div className="flex-1 overflow-auto px-6 pt-6">
+          <div className="space-y-4">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div
+                key={i}
+                className="flex items-center gap-4 p-4 border border-border rounded-lg bg-card/50 animate-in fade-in-50"
+                style={{ animationDelay: `${i * 50}ms` }}
+              >
+                {/* Waveform */}
+                <Skeleton className="h-20 w-48 rounded" />
+
+                {/* Content */}
+                <div className="flex-1 space-y-2.5">
+                  <Skeleton className="h-5 w-3/4" />
+                  <div className="flex gap-2">
+                    <Skeleton className="h-4 w-20" />
+                    <Skeleton className="h-4 w-16" />
+                    <Skeleton className="h-4 w-24" />
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-2">
+                  <Skeleton className="h-10 w-10 rounded-full" />
+                  <Skeleton className="h-10 w-10 rounded-full" />
+                  <Skeleton className="h-10 w-10 rounded-full" />
+                </div>
+              </div>
+            ))}
           </div>
         </div>
 
