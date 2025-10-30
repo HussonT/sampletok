@@ -319,7 +319,7 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
       />
 
       {/* Content */}
-      <div className="flex-1 overflow-auto px-6 pb-6" style={{ paddingBottom: currentSample ? '100px' : '24px' }}>
+      <div className="flex-1 overflow-auto px-6 pb-6" style={{ paddingBottom: currentSample ? '160px' : '24px' }}>
           {activeSection === 'explore' && (
             <>
               {isLoadingPage ? (

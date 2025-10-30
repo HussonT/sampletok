@@ -37,7 +37,10 @@
       "Bash(npm run build:*)",
       "Bash(grep:*)",
       "Bash(find:*)",
-      "Bash(gcloud secrets versions add:*)"
+      "Bash(gcloud secrets versions add:*)",
+      "Bash(jobs:*)",
+      "Bash(awk:*)",
+      "Bash(xargs:*)"
     ],
     "deny": [],
     "ask": []
