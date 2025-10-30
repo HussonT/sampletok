@@ -13,7 +13,7 @@ export async function getSamples(filters?: SampleFilters, authToken?: string | n
     });
   }
 
-  const url = `${process.env.NEXT_PUBLIC_API_URL}/api/v1/samples${params.toString() ? `?${params}` : ''}`;
+  const url = `${process.env.NEXT_PUBLIC_API_URL}/api/v1/samples/${params.toString() ? `?${params}` : ''}`;
 
   const headers: HeadersInit = {
     'Content-Type': 'application/json',

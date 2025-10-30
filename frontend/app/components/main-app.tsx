@@ -70,7 +70,7 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
       const apiClient = createAuthenticatedClient(getToken);
 
       // Fetch paginated samples (sorted by newest first)
-      const data = await apiClient.get<PaginatedResponse<Sample>>('/samples', {
+      const data = await apiClient.get<PaginatedResponse<Sample>>('/samples/', {
         skip: (page - 1) * itemsPerPage,
         limit: itemsPerPage,
         sort_by: 'recent'
