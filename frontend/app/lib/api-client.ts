@@ -116,6 +116,7 @@ export function createAuthenticatedClient(
   getToken: () => Promise<string | null>
 ): ApiClient {
   const baseUrl = process.env.NEXT_PUBLIC_API_URL;
+  console.log('[ApiClient] Creating client with NEXT_PUBLIC_API_URL:', baseUrl);
   if (!baseUrl) {
     throw new Error('NEXT_PUBLIC_API_URL environment variable is not set. Please configure it in your .env.local file.');
   }

@@ -69,10 +69,11 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
       // Create authenticated API client
       const apiClient = createAuthenticatedClient(getToken);
 
-      // Fetch paginated samples
+      // Fetch paginated samples (sorted by newest first)
       const data = await apiClient.get<PaginatedResponse<Sample>>('/samples', {
         skip: (page - 1) * itemsPerPage,
         limit: itemsPerPage,
+        sort_by: 'recent'
       });
 
       setSamples(data.items);
