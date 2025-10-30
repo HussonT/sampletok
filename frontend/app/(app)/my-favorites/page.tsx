@@ -7,6 +7,7 @@ import { TableLoadingSkeleton } from '@/components/ui/loading-skeletons';
 import { Sample } from '@/types/api';
 import { useAuth } from '@clerk/nextjs';
 import { useAudioPlayer } from '../layout';
+import { createAuthenticatedClient } from '@/lib/api-client';
 
 export default function MyFavoritesPage() {
   const { getToken } = useAuth();
@@ -23,21 +24,9 @@ export default function MyFavoritesPage() {
         return;
       }
 
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-      const response = await fetch(`${apiUrl}/api/v1/users/me/favorites?limit=50`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        console.error('Failed to fetch favorites:', response.status, response.statusText);
-        setIsLoading(false);
-        return;
-      }
-
-      const data = await response.json();
+      // Use ApiClient for proper URL handling
+      const apiClient = createAuthenticatedClient(getToken);
+      const data = await apiClient.get<Sample[]>('/users/me/favorites', { limit: 50 });
       setFavorites(data);
     } catch (error) {
       console.error('Error fetching favorites:', error);
@@ -49,6 +38,7 @@ export default function MyFavoritesPage() {
   // Fetch favorites on mount
   useEffect(() => {
     fetchFavorites();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [getToken]);
 
   // Handle favorite removal

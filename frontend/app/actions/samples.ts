@@ -2,7 +2,7 @@
 
 import { revalidatePath, revalidateTag } from 'next/cache';
 import { backendApi } from '@/lib/api-client';
-import { Sample, SampleUpdate, ProcessingTaskResponse, TikTokURLInput } from '@/types/api';
+import { Sample, SampleUpdate, ProcessingTaskResponse, ProcessingStatusResponse, TikTokURLInput } from '@/types/api';
 
 export async function processTikTokUrl(url: string) {
   try {
@@ -68,16 +68,11 @@ export async function deleteSample(id: string) {
   }
 }
 
-export async function getProcessingStatus(taskId: string) {
+export async function getProcessingStatus(taskId: string): Promise<ProcessingStatusResponse | null> {
   try {
-    const response = await fetch(
-      `${process.env.BACKEND_URL}/api/v1/process/status/${taskId}`,
-      { next: { revalidate: 1 } } // Revalidate every second
-    );
-
-    if (!response.ok) throw new Error('Failed to fetch status');
-
-    return await response.json();
+    // Note: backendApi doesn't support Next.js cache options, but this is
+    // called frequently so we want fresh data anyway
+    return await backendApi.get<ProcessingStatusResponse>(`/process/status/${taskId}`);
   } catch (error) {
     console.error('Failed to get processing status:', error);
     return null;

@@ -51,9 +51,15 @@ export function DownloadButton({
       setIsDownloading(true);
       toast.loading('Starting download...', { id: 'download' });
 
+      // Ensure API URL is configured
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+      if (!apiUrl) {
+        throw new Error('API URL not configured. Please set NEXT_PUBLIC_API_URL environment variable.');
+      }
+
       // Call the download endpoint (uses Clerk ID from JWT for authentication)
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1/samples/${sample.id}/download`,
+        `${apiUrl}/api/v1/samples/${sample.id}/download`,
         {
           method: 'POST',
           headers: {

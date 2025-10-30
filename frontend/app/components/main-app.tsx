@@ -8,11 +8,12 @@ import { SamplesPagination } from '@/components/features/samples-pagination';
 import { ProcessingQueue, ProcessingTask } from '@/components/features/processing-queue';
 import { BottomPlayer } from '@/components/features/bottom-player';
 import { Download, Music } from 'lucide-react';
-import { Sample, SampleFilters, ProcessingStatus } from '@/types/api';
+import { Sample, SampleFilters, ProcessingStatus, PaginatedResponse } from '@/types/api';
 import { processTikTokUrl, deleteSample, getProcessingStatus } from '@/actions/samples';
 import { toast } from 'sonner';
 import { useProcessing } from '@/contexts/processing-context';
 import { TableLoadingSkeleton, LoadingBar } from '@/components/ui/loading-skeletons';
+import { createAuthenticatedClient } from '@/lib/api-client';
 
 interface MainAppProps {
   initialSamples: Sample[];
@@ -65,24 +66,15 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
     setCurrentPage(page);
 
     try {
-      const params = new URLSearchParams();
-      params.append('skip', ((page - 1) * itemsPerPage).toString());
-      params.append('limit', itemsPerPage.toString());
+      // Create authenticated API client
+      const apiClient = createAuthenticatedClient(getToken);
 
-      // Get auth token for authenticated requests
-      const token = await getToken();
-      const headers: HeadersInit = {
-        'Content-Type': 'application/json',
-      };
-      if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-      }
+      // Fetch paginated samples
+      const data = await apiClient.get<PaginatedResponse<Sample>>('/samples', {
+        skip: (page - 1) * itemsPerPage,
+        limit: itemsPerPage,
+      });
 
-      const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-      const response = await fetch(`${backendUrl}/api/v1/samples?${params.toString()}`, { headers });
-      if (!response.ok) throw new Error('Failed to load page');
-
-      const data = await response.json();
       setSamples(data.items);
 
       // Scroll to top of content area

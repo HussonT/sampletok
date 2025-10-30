@@ -108,11 +108,20 @@ export const backendApi = new ApiClient(
 export function createAuthenticatedClient(
   getToken: () => Promise<string | null>
 ): ApiClient {
-  const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL;
+  if (!baseUrl) {
+    throw new Error('NEXT_PUBLIC_API_URL environment variable is not set. Please configure it in your .env.local file.');
+  }
   return new ApiClient(`${baseUrl}/api/v1`, getToken);
 }
 
 // Unauthenticated client for public endpoints (for use in React components)
-export const publicApi = new ApiClient(
-  `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/v1`
-);
+const getPublicApiUrl = () => {
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL;
+  if (!baseUrl) {
+    throw new Error('NEXT_PUBLIC_API_URL environment variable is not set. Please configure it in your .env.local file.');
+  }
+  return `${baseUrl}/api/v1`;
+};
+
+export const publicApi = new ApiClient(getPublicApiUrl());
