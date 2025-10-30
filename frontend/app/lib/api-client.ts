@@ -98,9 +98,16 @@ export class ApiClient {
 }
 
 // Server-side API client for Next.js API routes
-export const backendApi = new ApiClient(
-  `${process.env.BACKEND_URL}/api/${process.env.API_VERSION || 'v1'}`
-);
+// Note: Using NEXT_PUBLIC_API_URL works on both server and client
+const getBackendApiUrl = () => {
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL;
+  if (!baseUrl) {
+    throw new Error('NEXT_PUBLIC_API_URL environment variable is not set. Please configure it in your .env.local file.');
+  }
+  return `${baseUrl}/api/v1`;
+};
+
+export const backendApi = new ApiClient(getBackendApiUrl());
 
 // Helper to create an authenticated API client for use in React components
 // Usage: const api = createAuthenticatedClient(getToken);
