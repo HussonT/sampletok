@@ -40,7 +40,8 @@
       "Bash(gcloud secrets versions add:*)",
       "Bash(jobs:*)",
       "Bash(awk:*)",
-      "Bash(xargs:*)"
+      "Bash(xargs:*)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []

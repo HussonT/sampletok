@@ -24,6 +24,7 @@ from app.services.tiktok.collection_service import TikTokCollectionService
 from app.services.credit_service import refund_credits_atomic
 from app.utils import extract_hashtags, remove_hashtags
 from datetime import datetime
+from typing import List, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -97,12 +98,14 @@ async def process_tiktok_video(ctx: inngest.Context) -> Dict[str, Any]:
     )
 
     # Step 4: Upload thumbnails/covers to our storage
+    # Use origin_cover_url if available (higher quality), otherwise fall back to thumbnail_url
+    cover_url_to_use = video_metadata.get("origin_cover_url") or video_metadata.get("thumbnail_url")
     media_urls = await ctx.step.run(
         "upload-media",
         upload_media_to_storage,
         sample_id,
         video_metadata.get("thumbnail_url"),
-        video_metadata.get("origin_cover_url")
+        cover_url_to_use
     )
 
     # Step 5: Extract audio (creates WAV and MP3, uploads to R2, returns URLs)
@@ -592,18 +595,48 @@ async def process_collection(ctx: inngest.Context) -> Dict[str, Any]:
         existing_processed_count = collection_data_updated.get("processed_count", 0)
         processed_count = existing_processed_count
 
-        # Process each video
-        for batch_position, video_data in enumerate(video_list):
-            try:
-                # Calculate absolute position in collection (cursor + batch position)
-                absolute_position = cursor + batch_position
+        # Step 4.5: Filter out videos that are already in this collection (OPTIMIZATION)
+        filtered_result = await ctx.step.run(
+            f"filter-new-videos-{collection_id}-cursor{cursor}",
+            filter_new_videos_for_collection,
+            collection_id,
+            video_list,
+            cursor
+        )
+        new_videos, new_positions = filtered_result
 
-                aweme_id = video_data.get('aweme_id', f'unknown-{cursor}-{batch_position}')
-                logger.info(f"Processing video {batch_position + 1}/{len(video_list)} (absolute position {absolute_position}): {aweme_id}")
+        logger.info(f"After filtering: {len(new_videos)} new videos to process (out of {len(video_list)} fetched)")
+
+        # If no new videos, mark as completed and return early
+        if len(new_videos) == 0:
+            logger.info(f"No new videos found for collection {collection_id}, completing batch")
+            await ctx.step.run(
+                f"mark-collection-completed-early-{collection_id}",
+                complete_collection,
+                collection_id,
+                next_cursor,
+                has_more
+            )
+            return {
+                "collection_id": collection_id,
+                "status": "completed",
+                "processed_count": 0,
+                "total_videos": len(video_list),
+                "new_videos": 0,
+                "has_more": has_more,
+                "next_cursor": next_cursor,
+                "message": "No new videos found - all videos already in collection"
+            }
+
+        # Process each NEW video (optimized loop)
+        for idx, (video_data, absolute_position) in enumerate(zip(new_videos, new_positions)):
+            try:
+                aweme_id = video_data.get('aweme_id', f'unknown-{absolute_position}')
+                logger.info(f"Processing NEW video {idx + 1}/{len(new_videos)} (absolute position {absolute_position}): {aweme_id}")
 
                 # CRITICAL: Include collection_id in step ID to prevent Inngest from reusing cached results
                 # when the same collection is imported multiple times
-                unique_step_id = f"process-video-{collection_id}-{aweme_id}" if aweme_id and aweme_id != f'unknown-{cursor}-{batch_position}' else f"process-video-{collection_id}-cursor{cursor}-pos{batch_position}"
+                unique_step_id = f"process-video-{collection_id}-{aweme_id}" if aweme_id and aweme_id != f'unknown-{absolute_position}' else f"process-video-{collection_id}-pos{absolute_position}"
 
                 sample_id = await ctx.step.run(
                     unique_step_id,
@@ -611,33 +644,33 @@ async def process_collection(ctx: inngest.Context) -> Dict[str, Any]:
                     collection_id,
                     user_id,
                     video_data,
-                    absolute_position  # Use absolute position, not batch position
+                    absolute_position
                 )
 
                 if sample_id:
                     processed_count += 1
-                    logger.info(f"Successfully processed video {batch_position + 1}, sample_id: {sample_id}, total processed: {processed_count}")
+                    logger.info(f"Successfully processed NEW video {idx + 1}, sample_id: {sample_id}, total processed: {processed_count}")
                     # Update processed count after each video
                     await ctx.step.run(
-                        f"update-processed-count-{collection_id}-cursor{cursor}-pos{batch_position}",
+                        f"update-processed-count-{collection_id}-pos{absolute_position}",
                         update_collection_processed_count,
                         collection_id,
                         processed_count
                     )
                 else:
-                    logger.warning(f"Video {batch_position + 1} returned None - check for errors")
+                    logger.warning(f"NEW video {idx + 1} returned None - check for errors")
                     # Refund 1 credit for failed video
                     await ctx.step.run(
-                        f"refund-credit-{collection_id}-cursor{cursor}-pos{batch_position}",
+                        f"refund-credit-{collection_id}-pos{absolute_position}",
                         refund_credit_for_failed_video,
                         user_id
                     )
 
             except Exception as e:
-                logger.exception(f"Exception processing video at position {absolute_position} (batch {batch_position}): {str(e)}")
+                logger.exception(f"Exception processing NEW video at position {absolute_position} (index {idx}): {str(e)}")
                 # Refund 1 credit for failed video
                 await ctx.step.run(
-                    f"refund-credit-exception-{collection_id}-cursor{cursor}-pos{batch_position}",
+                    f"refund-credit-exception-{collection_id}-pos{absolute_position}",
                     refund_credit_for_failed_video,
                     user_id
                 )
@@ -652,13 +685,16 @@ async def process_collection(ctx: inngest.Context) -> Dict[str, Any]:
             has_more
         )
 
+        new_videos_count = len(new_videos)
         return {
             "collection_id": collection_id,
             "status": "completed",
             "processed_count": processed_count,
             "total_videos": len(video_list),
+            "new_videos": new_videos_count,
             "has_more": has_more,
-            "next_cursor": next_cursor
+            "next_cursor": next_cursor,
+            "message": f"Processed {new_videos_count} new video{'s' if new_videos_count != 1 else ''}"
         }
 
     except Exception as e:
@@ -697,6 +733,108 @@ async def process_collection(ctx: inngest.Context) -> Dict[str, Any]:
 
         # Re-raise the exception so Inngest knows the function failed
         raise
+
+
+async def filter_new_videos_for_collection(
+    collection_id: str,
+    video_list: List[Dict[str, Any]],
+    cursor: int
+) -> Tuple[List[Dict[str, Any]], List[int]]:
+    """
+    Filter out videos that are already linked to this collection.
+    Returns: (new_videos, new_positions) - lists of videos and their positions that need processing
+
+    This is a critical optimization that prevents re-processing existing videos during sync.
+    """
+    try:
+        async with AsyncSessionLocal() as db:
+            # Extract all video_ids from the batch
+            video_ids = []
+            aweme_ids = []
+            for video_data in video_list:
+                video_id = video_data.get('video_id')
+                aweme_id = video_data.get('aweme_id')
+                if video_id:
+                    video_ids.append(video_id)
+                if aweme_id:
+                    aweme_ids.append(aweme_id)
+
+            if not video_ids and not aweme_ids:
+                logger.warning("No valid video IDs found in batch")
+                return [], []
+
+            # Step 1: Bulk query to find all samples that exist for these video_ids/aweme_ids
+            existing_samples_query = select(Sample.id, Sample.tiktok_id, Sample.aweme_id).where(
+                or_(
+                    Sample.tiktok_id.in_(video_ids) if video_ids else False,
+                    Sample.aweme_id.in_(aweme_ids) if aweme_ids else False
+                )
+            )
+            result = await db.execute(existing_samples_query)
+            existing_samples = result.all()
+
+            # Create lookup sets for fast checking
+            existing_video_ids = {s.tiktok_id for s in existing_samples if s.tiktok_id}
+            existing_aweme_ids = {s.aweme_id for s in existing_samples if s.aweme_id}
+            existing_sample_ids = {s.id for s in existing_samples}
+
+            logger.info(f"Found {len(existing_samples)} existing samples for {len(video_ids)} videos")
+
+            # Step 2: Bulk query to find which of these samples are already linked to this collection
+            if existing_sample_ids:
+                linked_samples_query = select(CollectionSample.sample_id).where(
+                    (CollectionSample.collection_id == uuid.UUID(collection_id)) &
+                    (CollectionSample.sample_id.in_(existing_sample_ids))
+                )
+                linked_result = await db.execute(linked_samples_query)
+                linked_samples = linked_result.scalars().all()
+                linked_sample_ids = set(linked_samples)
+
+                # Map video_ids/aweme_ids to sample_ids for quick lookup
+                video_id_to_sample_id = {s.tiktok_id: s.id for s in existing_samples if s.tiktok_id}
+                aweme_id_to_sample_id = {s.aweme_id: s.id for s in existing_samples if s.aweme_id}
+            else:
+                linked_sample_ids = set()
+                video_id_to_sample_id = {}
+                aweme_id_to_sample_id = {}
+
+            logger.info(f"Found {len(linked_sample_ids)} samples already linked to collection")
+
+            # Step 3: Filter videos to only include new ones
+            new_videos = []
+            new_positions = []
+
+            for batch_position, video_data in enumerate(video_list):
+                absolute_position = cursor + batch_position
+                video_id = video_data.get('video_id')
+                aweme_id = video_data.get('aweme_id')
+
+                # Check if this video is already linked to the collection
+                is_linked = False
+
+                if video_id and video_id in video_id_to_sample_id:
+                    sample_id = video_id_to_sample_id[video_id]
+                    if sample_id in linked_sample_ids:
+                        is_linked = True
+
+                if aweme_id and aweme_id in aweme_id_to_sample_id:
+                    sample_id = aweme_id_to_sample_id[aweme_id]
+                    if sample_id in linked_sample_ids:
+                        is_linked = True
+
+                if not is_linked:
+                    new_videos.append(video_data)
+                    new_positions.append(absolute_position)
+                else:
+                    logger.info(f"Skipping video at position {absolute_position} (already in collection)")
+
+            logger.info(f"Filtered to {len(new_videos)} new videos out of {len(video_list)} total")
+            return new_videos, new_positions
+
+    except Exception as e:
+        logger.exception(f"Error filtering videos for collection: {e}")
+        # On error, return all videos to be safe (fallback to old behavior)
+        return video_list, list(range(cursor, cursor + len(video_list)))
 
 
 async def fetch_collection_from_db(collection_id: str) -> Dict[str, Any]:

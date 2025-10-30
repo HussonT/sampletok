@@ -170,6 +170,9 @@ export interface Collection {
   has_more: boolean;
   status: string;
   processed_count: number;
+  sample_count: number;  // Actual number of samples in collection
+  cover_image_url?: string;  // Cover image from first sample
+  cover_images: string[];  // Array of cover images for cycling display
   error_message?: string;
   created_at: string;
   started_at?: string;

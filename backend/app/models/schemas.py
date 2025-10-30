@@ -326,6 +326,9 @@ class CollectionResponse(BaseModel):
     has_more: bool
     status: str
     processed_count: int
+    sample_count: int = 0  # Actual number of samples in this collection
+    cover_image_url: Optional[str] = None  # Cover image from first sample
+    cover_images: List[str] = []  # Array of cover images from first 10 samples
     error_message: Optional[str] = None
     created_at: datetime
     started_at: Optional[datetime] = None

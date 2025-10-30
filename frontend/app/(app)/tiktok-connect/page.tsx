@@ -51,7 +51,7 @@ export default function TikTokConnectPage() {
           setProcessingCollectionId(null);
           setProcessingStatus(null);  // Clear the status to hide the card
           if (status.status === 'completed') {
-            toast.success(`Collection processed! ${status.processed_count} videos ready.`);
+            toast.success(`Collection processed! ${status.processed_count} toks ready.`);
           } else {
             toast.error(`Processing failed: ${status.error_message || 'Unknown error'}`);
           }
@@ -135,7 +135,7 @@ export default function TikTokConnectPage() {
       return;
     }
 
-    // Calculate how many videos will be in this batch
+    // Calculate how many toks will be in this batch
     const remainingVideos = collection.video_count - cursor;
     const batchSize = Math.min(remainingVideos, MAX_VIDEOS_PER_BATCH);
 
@@ -160,10 +160,10 @@ export default function TikTokConnectPage() {
 
       toast.success(response.message);
 
-      // Show warning if there are invalid videos
+      // Show warning if there are invalid toks
       if (response.invalid_video_count && response.invalid_video_count > 0) {
         toast.warning(
-          `Note: ${response.invalid_video_count} video${response.invalid_video_count > 1 ? 's' : ''} in this collection could not be processed (deleted or private)`
+          `Note: ${response.invalid_video_count} tok${response.invalid_video_count > 1 ? 's' : ''} in this collection could not be processed (deleted or private)`
         );
       }
 
@@ -217,7 +217,7 @@ export default function TikTokConnectPage() {
                     <span className="font-medium">Processing Collection</span>
                   </div>
                   <span className="text-sm text-muted-foreground">
-                    {processingStatus.processed_count} / {processingStatus.total_video_count} videos
+                    {processingStatus.processed_count} / {processingStatus.total_video_count} toks
                   </span>
                 </div>
                 <Progress value={processingStatus.progress} />
@@ -308,12 +308,12 @@ export default function TikTokConnectPage() {
                         </div>
 
                         <div className="flex items-center gap-4 text-sm text-muted-foreground mb-3">
-                          <span>{collection.video_count} videos</span>
+                          <span>{collection.video_count} toks</span>
                           <span>•</span>
                           <span className="flex items-center gap-1">
                             <Coins className="w-3 h-3" />
                             {creditsRequired} credit{creditsRequired !== 1 ? 's' : ''}
-                            {collection.video_count > MAX_VIDEOS_PER_BATCH && ` (max ${MAX_VIDEOS_PER_BATCH} videos)`}
+                            {collection.video_count > MAX_VIDEOS_PER_BATCH && ` (max ${MAX_VIDEOS_PER_BATCH} toks)`}
                           </span>
                         </div>
 
@@ -371,10 +371,10 @@ export default function TikTokConnectPage() {
                   <h3 className="font-semibold mb-2">How it works</h3>
                   <ol className="text-sm text-muted-foreground space-y-2 list-decimal list-inside">
                     <li>Enter a TikTok username to browse their collections</li>
-                    <li>Review collections and credit costs (1 credit per video)</li>
+                    <li>Review collections and credit costs (1 credit per tok)</li>
                     <li>Click &quot;Import Collection&quot; to start processing</li>
-                    <li>Track progress in real-time (max {MAX_VIDEOS_PER_BATCH} videos per collection)</li>
-                    <li>All videos will be added to your downloads automatically</li>
+                    <li>Track progress in real-time (max {MAX_VIDEOS_PER_BATCH} toks per collection)</li>
+                    <li>All toks will be added to your downloads automatically</li>
                   </ol>
                 </div>
               </div>

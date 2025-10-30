@@ -440,8 +440,10 @@ async def list_user_collections(
         limit: Number of collections to return
 
     Returns:
-        List of user's collections
+        List of user's collections with sample counts
     """
+    from sqlalchemy import func
+
     query = (
         select(Collection)
         .where(Collection.user_id == current_user.id)
@@ -453,7 +455,92 @@ async def list_user_collections(
     result = await db.execute(query)
     collections = result.scalars().all()
 
-    return [CollectionResponse.model_validate(c) for c in collections]
+    # Get sample counts for all collections in one query
+    collection_ids = [c.id for c in collections]
+    if collection_ids:
+        count_query = (
+            select(
+                CollectionSample.collection_id,
+                func.count(CollectionSample.sample_id).label('count')
+            )
+            .where(CollectionSample.collection_id.in_(collection_ids))
+            .group_by(CollectionSample.collection_id)
+        )
+        count_result = await db.execute(count_query)
+        counts_dict = {row.collection_id: row.count for row in count_result.all()}
+
+        # Get cover images (first sample's cover) for all collections
+        # Use ROW_NUMBER to get the first sample by position for each collection
+        from sqlalchemy import func as sql_func
+        from sqlalchemy.sql import select as sql_select
+
+        # Subquery to get first sample per collection (lowest position)
+        cover_query = (
+            select(
+                CollectionSample.collection_id,
+                Sample.cover_url
+            )
+            .join(Sample, Sample.id == CollectionSample.sample_id)
+            .where(CollectionSample.collection_id.in_(collection_ids))
+            .distinct(CollectionSample.collection_id)
+            .order_by(CollectionSample.collection_id, CollectionSample.position)
+        )
+        cover_result = await db.execute(cover_query)
+        covers_dict = {row.collection_id: row.cover_url for row in cover_result.all()}
+
+        # Get multiple cover images (first 10) for the card swap component
+        covers_array_query = (
+            select(
+                CollectionSample.collection_id,
+                Sample.cover_url
+            )
+            .join(Sample, Sample.id == CollectionSample.sample_id)
+            .where(
+                (CollectionSample.collection_id.in_(collection_ids)) &
+                (Sample.cover_url.isnot(None))
+            )
+            .order_by(CollectionSample.collection_id, CollectionSample.position)
+        )
+        covers_array_result = await db.execute(covers_array_query)
+
+        # Group covers by collection_id, limit to 10 per collection
+        covers_arrays_dict = {}
+        for row in covers_array_result.all():
+            if row.collection_id not in covers_arrays_dict:
+                covers_arrays_dict[row.collection_id] = []
+            if len(covers_arrays_dict[row.collection_id]) < 10:
+                covers_arrays_dict[row.collection_id].append(row.cover_url)
+    else:
+        counts_dict = {}
+        covers_dict = {}
+        covers_arrays_dict = {}
+
+    # Build response with sample counts and cover images
+    response_list = []
+    for c in collections:
+        collection_dict = {
+            'id': c.id,
+            'user_id': c.user_id,
+            'tiktok_collection_id': c.tiktok_collection_id,
+            'tiktok_username': c.tiktok_username,
+            'name': c.name,
+            'total_video_count': c.total_video_count,
+            'current_cursor': c.current_cursor,
+            'next_cursor': c.next_cursor,
+            'has_more': c.has_more,
+            'status': c.status.value if hasattr(c.status, 'value') else c.status,
+            'processed_count': c.processed_count,
+            'sample_count': counts_dict.get(c.id, 0),
+            'cover_image_url': covers_dict.get(c.id),
+            'cover_images': covers_arrays_dict.get(c.id, []),
+            'error_message': c.error_message,
+            'created_at': c.created_at,
+            'started_at': c.started_at,
+            'completed_at': c.completed_at
+        }
+        response_list.append(CollectionResponse(**collection_dict))
+
+    return response_list
 
 
 @router.get("/{collection_id}", response_model=CollectionWithSamplesResponse)

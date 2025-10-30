@@ -16,6 +16,10 @@ const nextConfig = {
         protocol: 'https',
         hostname: '**.tiktokcdn.com',
       },
+      {
+        protocol: 'https',
+        hostname: '**.r2.dev',
+      },
     ],
   },
   experimental: {
