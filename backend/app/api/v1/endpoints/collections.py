@@ -220,7 +220,7 @@ async def process_collection(
     if existing_collection:
         # If collection exists, check if we're importing a new batch
         if payload.cursor > 0:
-            # This is a continuation - update the collection for next batch
+            # This is a continuation - NO credit deduction (already deducted upfront)
             if existing_collection.status == CollectionStatus.processing:
                 return CollectionProcessingTaskResponse(
                     collection_id=existing_collection.id,
@@ -230,23 +230,15 @@ async def process_collection(
                     remaining_credits=current_user.credits
                 )
 
-            # Deduct credits for the new batch atomically
-            if not await deduct_credits_atomic(db, current_user.id, videos_to_process):
-                # Refresh user to get current credit balance for error message
-                await db.refresh(current_user)
-                raise HTTPException(
-                    status_code=402,
-                    detail=f"Insufficient credits. Need {videos_to_process} credits, but have {current_user.credits}"
-                )
-
-            # Update collection to pending for new batch
+            # Update collection to pending for next batch (no credit deduction)
             existing_collection.status = CollectionStatus.pending
             existing_collection.current_cursor = payload.cursor
             await db.commit()
 
-            # Refresh user to get updated credit balance
+            # Refresh user to get current credit balance
             await db.refresh(current_user)
             collection = existing_collection
+            videos_to_process = 0  # No credits deducted for continuation batches
         else:
             # cursor=0 means starting from beginning
             if existing_collection.status == CollectionStatus.completed and not existing_collection.has_more:
@@ -331,19 +323,16 @@ async def process_collection(
                 detail="No valid videos found in this collection"
             )
 
-        # Recalculate credits based on actual valid videos
-        actual_videos_to_process = min(valid_video_count, max_videos)
-
-        # Deduct credits for actual valid videos atomically
-        if not await deduct_credits_atomic(db, current_user.id, actual_videos_to_process):
+        # Deduct credits for ALL videos upfront (automatic processing will handle all batches)
+        if not await deduct_credits_atomic(db, current_user.id, valid_video_count):
             # Refresh user to get current credit balance for error message
             await db.refresh(current_user)
             raise HTTPException(
                 status_code=402,
-                detail=f"Insufficient credits. Need {actual_videos_to_process} credits for {actual_videos_to_process} videos, but have {current_user.credits}"
+                detail=f"Insufficient credits. Need {valid_video_count} credits for the full collection, but have {current_user.credits}"
             )
 
-        videos_to_process = actual_videos_to_process
+        videos_to_process = valid_video_count  # All credits deducted upfront
 
         # Create new collection record with correct count
         collection = Collection(
@@ -408,10 +397,12 @@ async def process_collection(
     # Calculate batch info for message
     if is_sync:
         message = f"Syncing collection: processing {videos_to_process} new videos"
+    elif payload.cursor > 0:
+        # Continuation batch (no credits deducted)
+        message = "Collection processing will continue automatically"
     else:
-        start_video = payload.cursor + 1
-        end_video = min(payload.cursor + videos_to_process, payload.video_count)
-        message = f"Batch queued: videos {start_video}-{end_video} of {payload.video_count}"
+        # New collection - all credits deducted upfront
+        message = f"Collection queued: {videos_to_process} videos will be processed automatically in batches"
 
     return CollectionProcessingTaskResponse(
         collection_id=collection.id,

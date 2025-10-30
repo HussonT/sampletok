@@ -685,10 +685,32 @@ async def process_collection(ctx: inngest.Context) -> Dict[str, Any]:
             has_more
         )
 
+        # If there are more videos to process, automatically trigger the next batch
+        if has_more and next_cursor is not None:
+            logger.info(f"Collection {collection_id} has more videos. Auto-triggering next batch from cursor {next_cursor}")
+
+            # Update current_cursor for the next batch
+            await ctx.step.run(
+                f"update-cursor-for-next-batch-{collection_id}",
+                update_collection_cursor,
+                collection_id,
+                next_cursor
+            )
+
+            # Trigger the next batch processing
+            await ctx.step.send_event(
+                f"trigger-next-batch-{collection_id}-{next_cursor}",
+                inngest.Event(
+                    name="collection/import.submitted",
+                    data={"collection_id": collection_id}
+                )
+            )
+            logger.info(f"Triggered next batch for collection {collection_id} from cursor {next_cursor}")
+
         new_videos_count = len(new_videos)
         return {
             "collection_id": collection_id,
-            "status": "completed",
+            "status": "completed" if not has_more else "processing",
             "processed_count": processed_count,
             "total_videos": len(video_list),
             "new_videos": new_videos_count,
@@ -1187,6 +1209,25 @@ async def complete_collection(
             logger.info(f"Marked collection {collection_id} batch as completed (has_more: {has_more})")
     except Exception as e:
         logger.exception(f"Error completing collection: {e}")
+        raise
+
+
+async def update_collection_cursor(
+    collection_id: str,
+    cursor: int
+) -> None:
+    """Update collection's current_cursor for next batch processing"""
+    try:
+        async with AsyncSessionLocal() as db:
+            query = select(Collection).where(Collection.id == uuid.UUID(collection_id))
+            result = await db.execute(query)
+            collection = result.scalar_one()
+            collection.current_cursor = cursor
+            collection.status = CollectionStatus.pending  # Reset to pending for next batch
+            await db.commit()
+            logger.info(f"Updated collection {collection_id} cursor to {cursor} for next batch")
+    except Exception as e:
+        logger.exception(f"Error updating collection cursor: {e}")
         raise
 
 

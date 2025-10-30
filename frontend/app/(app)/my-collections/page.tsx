@@ -5,12 +5,11 @@ import { useAuth, useUser } from '@clerk/nextjs';
 import { createAuthenticatedClient } from '@/lib/api-client';
 import { Collection, CollectionProcessingTaskResponse, CollectionStatusResponse } from '@/types/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, FolderOpen, CheckCircle, XCircle, ChevronRight, Download, RefreshCw } from 'lucide-react';
+import { Loader2, FolderOpen, CheckCircle, XCircle, ChevronRight, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import Image from 'next/image';
-import { MAX_VIDEOS_PER_BATCH } from '@/lib/constants';
 import { PageLoader, CardSkeleton } from '@/components/ui/loading-skeletons';
 import CardSwap from '@/components/CardSwap';
 
@@ -19,7 +18,6 @@ export default function MyCollectionsPage() {
   const { user } = useUser();
   const [collections, setCollections] = useState<Collection[]>([]);
   const [loading, setLoading] = useState(true);
-  const [processingId, setProcessingId] = useState<string | null>(null);
   const [syncingId, setSyncingId] = useState<string | null>(null);
   const [userCredits, setUserCredits] = useState<number | null>(null);
 
@@ -47,56 +45,6 @@ export default function MyCollectionsPage() {
       toast.error('Failed to load collections');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleImportNextBatch = async (collection: Collection) => {
-    if (!collection.next_cursor) return;
-
-    const remainingVideos = collection.total_video_count - collection.next_cursor;
-    const batchSize = Math.min(remainingVideos, MAX_VIDEOS_PER_BATCH);
-
-    if (userCredits !== null && userCredits < batchSize) {
-      toast.error(`Insufficient credits. Need ${batchSize} credits, but have ${userCredits}`);
-      return;
-    }
-
-    try {
-      setProcessingId(collection.id);
-      const api = createAuthenticatedClient(getToken);
-      const response = await api.post<CollectionProcessingTaskResponse>(
-        '/collections/process',
-        {
-          collection_id: collection.tiktok_collection_id,
-          tiktok_username: collection.tiktok_username,
-          name: collection.name,
-          video_count: collection.total_video_count,
-          cursor: collection.next_cursor
-        }
-      );
-
-      toast.success(response.message);
-
-      // Show warning if there are invalid toks
-      if (response.invalid_video_count && response.invalid_video_count > 0) {
-        toast.warning(
-          `Note: ${response.invalid_video_count} tok${response.invalid_video_count > 1 ? 's' : ''} in this collection could not be processed (deleted or private)`
-        );
-      }
-
-      if (userCredits !== null) {
-        setUserCredits(response.remaining_credits);
-      }
-
-      // Refresh collections after a delay
-      setTimeout(() => {
-        fetchCollections();
-        setProcessingId(null);
-      }, 2000);
-    } catch (error) {
-      console.error('Error importing next batch:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to import batch');
-      setProcessingId(null);
     }
   };
 
@@ -199,7 +147,6 @@ export default function MyCollectionsPage() {
           <div className="grid gap-4">
             {collections.map((collection) => {
               const isSyncing = syncingId === collection.id;
-              const isImporting = processingId === collection.id;
               const isProcessing = collection.status === 'processing' && !isSyncing;
 
               return (
@@ -234,7 +181,7 @@ export default function MyCollectionsPage() {
                       {collection.status === 'completed' && (
                         <button
                           onClick={() => handleSync(collection)}
-                          disabled={isSyncing || isImporting}
+                          disabled={isSyncing}
                           className="absolute -top-2 -left-2 z-10 p-2 rounded-full bg-background/90 backdrop-blur-sm border border-border shadow-lg hover:shadow-xl hover:bg-background transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                           style={{
                             boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
@@ -316,26 +263,6 @@ export default function MyCollectionsPage() {
                               <ChevronRight className="w-4 h-4 ml-1" />
                             </Button>
                           </Link>
-                        )}
-
-                        {collection.has_more && collection.status === 'completed' && collection.next_cursor && (
-                          <Button
-                            size="sm"
-                            onClick={() => handleImportNextBatch(collection)}
-                            disabled={isImporting || isSyncing}
-                          >
-                            {isImporting ? (
-                              <>
-                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                                Processing...
-                              </>
-                            ) : (
-                              <>
-                                <Download className="w-4 h-4 mr-2" />
-                                Import Next 30
-                              </>
-                            )}
-                          </Button>
                         )}
                       </div>
                     </div>
