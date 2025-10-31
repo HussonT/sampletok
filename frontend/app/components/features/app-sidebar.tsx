@@ -10,6 +10,7 @@ import {
   Heart,
   Link as LinkIcon,
   FolderOpen,
+  User,
 } from 'lucide-react';
 import {
   SignInButton,
@@ -20,6 +21,7 @@ import {
   useUser,
 } from '@clerk/nextjs';
 import { AddSampleDialog } from './add-sample-dialog';
+import { CreditBalance } from './credit-balance';
 
 interface AppSidebarProps {
   activeSection?: string;
@@ -143,11 +145,26 @@ export function AppSidebar({ activeSection, onSectionChange, onProcessingStarted
                     <span>My Favorites</span>
                   </button>
                 </Link>
+                <Link href="/account" className="w-full">
+                  <button
+                    className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors ${
+                      isActive('/account')
+                        ? 'bg-primary text-primary-foreground font-semibold shadow-sm'
+                        : 'text-sidebar-foreground hover:bg-sidebar-accent/50'
+                    }`}
+                  >
+                    <User className="w-4 h-4" />
+                    <span>Account</span>
+                  </button>
+                </Link>
               </div>
             </div>
           </SignedIn>
         </div>
       </div>
+
+      {/* Credit Balance */}
+      <CreditBalance />
 
       {/* Auth Section */}
       <div className="px-4 py-3 border-t">

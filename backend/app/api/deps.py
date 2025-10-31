@@ -107,3 +107,69 @@ async def get_current_user_optional(
         return user
     except Exception:
         return None
+
+
+async def require_active_subscription(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+) -> User:
+    """
+    Dependency that enforces active subscription requirement.
+
+    Use this dependency on any endpoint that requires a paid subscription.
+    Returns the user if they have an active subscription, otherwise raises 403.
+
+    Args:
+        current_user: Authenticated user from get_current_user
+        db: Database session
+
+    Returns:
+        User object (with active subscription)
+
+    Raises:
+        HTTPException 403: If user has no active subscription
+
+    Example:
+        @router.post("/process")
+        async def process_collection(
+            user: User = Depends(require_active_subscription)
+        ):
+            # This endpoint requires active subscription
+            ...
+    """
+    # Load subscription relationship if not already loaded
+    await db.refresh(current_user, ["subscription"])
+
+    # Check if user has a subscription
+    if not current_user.subscription:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Active subscription required to access this feature. Please subscribe to continue."
+        )
+
+    # Check if subscription is active
+    if not current_user.subscription.is_active:
+        subscription_status = current_user.subscription.status
+
+        if subscription_status == "cancelled":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Your subscription has been cancelled. Please renew your subscription to continue."
+            )
+        elif subscription_status == "past_due":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Your subscription payment is past due. Please update your payment method to continue."
+            )
+        elif subscription_status == "incomplete":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Your subscription setup is incomplete. Please complete the payment process."
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Active subscription required. Current subscription status: {subscription_status}"
+            )
+
+    return current_user

@@ -362,3 +362,125 @@ class CollectionProcessingTaskResponse(BaseModel):
     credits_deducted: int
     remaining_credits: int
     invalid_video_count: Optional[int] = None  # Number of videos that couldn't be processed
+
+
+# Subscription Schemas
+class CreateCheckoutRequest(BaseModel):
+    """Request to create a Stripe checkout session"""
+    tier: str = Field(..., description="Subscription tier: basic, pro, or ultimate")
+    billing_interval: str = Field(..., description="Billing interval: month or year")
+
+    @validator('tier')
+    def validate_tier(cls, v):
+        if v not in ['basic', 'pro', 'ultimate']:
+            raise ValueError('Tier must be basic, pro, or ultimate')
+        return v
+
+    @validator('billing_interval')
+    def validate_billing_interval(cls, v):
+        if v not in ['month', 'year']:
+            raise ValueError('Billing interval must be month or year')
+        return v
+
+
+class CheckoutSessionResponse(BaseModel):
+    """Response containing Stripe checkout session URL"""
+    session_id: str
+    checkout_url: str
+
+
+class SubscriptionResponse(BaseModel):
+    """User's current subscription details"""
+    id: UUID
+    user_id: UUID
+    tier: str
+    billing_interval: str
+    monthly_credits: int
+    status: str
+    current_period_start: datetime
+    current_period_end: datetime
+    amount_cents: int
+    currency: str
+    cancel_at_period_end: bool
+    is_active: bool
+    is_renewable: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class CancelSubscriptionRequest(BaseModel):
+    """Request to cancel subscription"""
+    cancel_at_period_end: bool = Field(
+        default=True,
+        description="If true, cancel at period end. If false, cancel immediately."
+    )
+
+
+class UpgradeSubscriptionRequest(BaseModel):
+    """Request to upgrade/downgrade subscription"""
+    new_tier: str = Field(..., description="New tier: basic, pro, or ultimate")
+
+    @validator('new_tier')
+    def validate_tier(cls, v):
+        if v not in ['basic', 'pro', 'ultimate']:
+            raise ValueError('Tier must be basic, pro, or ultimate')
+        return v
+
+
+# Credit Schemas
+class CreditBalanceResponse(BaseModel):
+    """User's current credit balance"""
+    credits: int
+    has_subscription: bool
+    subscription_tier: Optional[str] = None
+    monthly_credits: Optional[int] = None
+    next_renewal: Optional[datetime] = None
+
+
+class CreditTransactionResponse(BaseModel):
+    """Credit transaction details"""
+    id: UUID
+    transaction_type: str
+    credits_amount: int
+    previous_balance: int
+    new_balance: int
+    description: str
+    created_at: datetime
+    stripe_invoice_id: Optional[str] = None
+    top_up_package: Optional[str] = None
+    amount_cents: Optional[int] = None
+
+    class Config:
+        from_attributes = True
+
+
+class CreditTransactionListResponse(BaseModel):
+    """List of credit transactions with pagination"""
+    items: List[CreditTransactionResponse]
+    total: int
+    skip: int
+    limit: int
+    has_more: bool
+
+
+class TopUpRequest(BaseModel):
+    """Request to purchase top-up credits"""
+    package: str = Field(..., description="Package size: small, medium, or large")
+
+    @validator('package')
+    def validate_package(cls, v):
+        if v not in ['small', 'medium', 'large']:
+            raise ValueError('Package must be small, medium, or large')
+        return v
+
+
+class TopUpResponse(BaseModel):
+    """Response containing Stripe payment session URL"""
+    session_id: str
+    checkout_url: str
+    package: str
+    credits: int
+    price_cents: int
+    discount_percent: float

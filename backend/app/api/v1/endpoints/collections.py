@@ -19,7 +19,7 @@ from app.models.schemas import (
     CollectionProcessingTaskResponse,
     SampleResponse
 )
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_active_subscription
 from app.services.tiktok.collection_service import TikTokCollectionService
 from app.services.credit_service import deduct_credits_atomic, refund_credits_atomic
 from app.inngest_functions import inngest_client
@@ -187,19 +187,22 @@ async def process_collection(
     request: Request,
     payload: ProcessCollectionRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_active_subscription)
 ):
     """
     Process a TikTok collection - downloads all videos and adds them to user's downloads
 
-    Requires authentication and sufficient credits (1 credit per video, max 30 videos)
+    Requires ACTIVE SUBSCRIPTION and sufficient credits (1 credit per video, max 30 videos)
 
     Args:
         payload: Collection details (collection_id, username, name, video_count)
-        current_user: Authenticated user
+        current_user: Authenticated user with active subscription
 
     Returns:
         Task response with collection_id for status tracking
+
+    Raises:
+        403: If user has no active subscription
     """
     # Enforce max videos per batch
     max_videos = settings.MAX_VIDEOS_PER_BATCH

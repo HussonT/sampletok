@@ -17,7 +17,11 @@ class User(Base):
     hashed_password = Column(String, nullable=True)  # Not used for Clerk users
     is_active = Column(Boolean, default=True)
     is_superuser = Column(Boolean, default=False)
-    credits = Column(Integer, default=10)
+    credits = Column(Integer, default=0)  # No free credits - subscription required
+
+    # Soft delete for users with active subscriptions
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    deleted_at = Column(DateTime, nullable=True)
 
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -28,9 +32,20 @@ class User(Base):
     favorites = relationship("UserFavorite", back_populates="user", cascade="all, delete-orphan")
     collections = relationship("Collection", back_populates="user", cascade="all, delete-orphan")
 
+    # Subscription relationships (1:1)
+    subscription = relationship("Subscription", back_populates="user", uselist=False, cascade="all, delete-orphan")
+    stripe_customer = relationship("StripeCustomer", back_populates="user", uselist=False, cascade="all, delete-orphan")
+    credit_transactions = relationship("CreditTransaction", back_populates="user", cascade="all, delete-orphan")
+
     # Constraints
     __table_args__ = (
         CheckConstraint('credits >= 0', name='check_credits_non_negative'),
+        # Constraint: deleted_at must be set if is_deleted is true
+        CheckConstraint(
+            '(is_deleted = false) OR (is_deleted = true AND deleted_at IS NOT NULL)',
+            name='check_deleted_at'
+        ),
+        Index('idx_users_is_deleted', 'is_deleted'),
     )
 
 

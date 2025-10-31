@@ -261,8 +261,9 @@ async def download_sample(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Download a sample audio file (WAV or MP3) - requires authentication.
+    Download a sample audio file (WAV or MP3) - requires authentication, active subscription, and 1 credit.
     Records the download in user history and increments download count.
+    Deducts 1 credit from user account.
     """
     # Validate download_type
     if request.download_type not in ["wav", "mp3"]:
@@ -278,6 +279,38 @@ async def download_sample(
 
     if not sample:
         raise HTTPException(status_code=404, detail="Sample not found")
+
+    # Check if user has active subscription
+    await db.refresh(current_user, ["subscription"])
+    if not current_user.subscription or not current_user.subscription.is_active:
+        raise HTTPException(
+            status_code=403,
+            detail="Active subscription required to download samples. Please subscribe at /pricing"
+        )
+
+    # Check if user has sufficient credits (need 1 credit for download)
+    if current_user.credits < 1:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Insufficient credits. You need 1 credit to download but have {current_user.credits}. Purchase a top-up at /top-up"
+        )
+
+    # Deduct 1 credit atomically
+    from app.services.credit_service import CreditService
+    credit_service = CreditService(db)
+    success = await credit_service.deduct_credits_atomic(
+        user_id=current_user.id,
+        credits_needed=1,
+        transaction_type="sample_download",
+        description=f"Downloaded {request.download_type.upper()} sample: {sample.creator_username or 'unknown'}",
+        sample_id=sample_id
+    )
+
+    if not success:
+        raise HTTPException(
+            status_code=403,
+            detail="Failed to deduct credits. Please try again or contact support."
+        )
 
     # Get appropriate audio URL
     if request.download_type == "wav":
@@ -335,8 +368,9 @@ async def download_video(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Download the TikTok video file - requires authentication.
+    Download the TikTok video file - requires authentication, active subscription, and 1 credit.
     Records the download in user history and increments download count.
+    Deducts 1 credit from user account.
     """
     # Get sample
     query = select(Sample).where(Sample.id == sample_id)
@@ -345,6 +379,38 @@ async def download_video(
 
     if not sample:
         raise HTTPException(status_code=404, detail="Sample not found")
+
+    # Check if user has active subscription
+    await db.refresh(current_user, ["subscription"])
+    if not current_user.subscription or not current_user.subscription.is_active:
+        raise HTTPException(
+            status_code=403,
+            detail="Active subscription required to download videos. Please subscribe at /pricing"
+        )
+
+    # Check if user has sufficient credits (need 1 credit for download)
+    if current_user.credits < 1:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Insufficient credits. You need 1 credit to download but have {current_user.credits}. Purchase a top-up at /top-up"
+        )
+
+    # Deduct 1 credit atomically
+    from app.services.credit_service import CreditService
+    credit_service = CreditService(db)
+    success = await credit_service.deduct_credits_atomic(
+        user_id=current_user.id,
+        credits_needed=1,
+        transaction_type="video_download",
+        description=f"Downloaded video: {sample.creator_username or 'unknown'}",
+        sample_id=sample_id
+    )
+
+    if not success:
+        raise HTTPException(
+            status_code=403,
+            detail="Failed to deduct credits. Please try again or contact support."
+        )
 
     # Get video URL from our storage
     video_url = sample.video_url

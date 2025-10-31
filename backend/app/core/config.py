@@ -84,6 +84,29 @@ class Settings(BaseSettings):
     RAPIDAPI_KEY: str  # Required - no default for security
     RAPIDAPI_HOST: str = "tiktok-video-no-watermark2.p.rapidapi.com"
 
+    # Stripe Settings
+    STRIPE_SECRET_KEY: Optional[str] = None  # Required for production
+    STRIPE_WEBHOOK_SECRET: Optional[str] = None  # Required for webhook verification
+    STRIPE_PUBLISHABLE_KEY: Optional[str] = None  # For frontend
+
+    # Stripe Price IDs - Subscription Plans
+    STRIPE_PRICE_BASIC_MONTHLY: Optional[str] = None
+    STRIPE_PRICE_BASIC_ANNUAL: Optional[str] = None
+    STRIPE_PRICE_PRO_MONTHLY: Optional[str] = None
+    STRIPE_PRICE_PRO_ANNUAL: Optional[str] = None
+    STRIPE_PRICE_ULTIMATE_MONTHLY: Optional[str] = None
+    STRIPE_PRICE_ULTIMATE_ANNUAL: Optional[str] = None
+
+    # Stripe Price IDs - Top-Up Packs
+    STRIPE_PRICE_TOPUP_SMALL: Optional[str] = None  # 50 credits
+    STRIPE_PRICE_TOPUP_MEDIUM: Optional[str] = None  # 150 credits
+    STRIPE_PRICE_TOPUP_LARGE: Optional[str] = None  # 500 credits
+
+    # Subscription URLs
+    SUBSCRIPTION_SUCCESS_URL: str = "http://localhost:3000/subscription/success"
+    SUBSCRIPTION_CANCEL_URL: str = "http://localhost:3000/pricing"
+    FRONTEND_URL: Optional[str] = "http://localhost:3000"  # For Stripe Customer Portal return URL
+
     class Config:
         env_file = ".env"
         case_sensitive = True

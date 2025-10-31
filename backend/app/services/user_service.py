@@ -72,7 +72,7 @@ async def get_or_create_user_from_clerk(
         hashed_password=None,  # No password for Clerk users
         is_active=True,
         is_superuser=False,
-        credits=10  # Default credits for new users
+        credits=0  # No free credits - users must subscribe
     )
 
     db.add(user)
