@@ -126,7 +126,6 @@ export const TOPUP_PACKAGES = {
     credits: 150,
     basePrice: 17.99,
     description: 'Great for burst projects',
-    popular: true,
   },
   LARGE: {
     name: 'Large Pack',
@@ -134,6 +133,7 @@ export const TOPUP_PACKAGES = {
     credits: 500,
     basePrice: 49.99,
     description: 'Maximum value for heavy users',
+    popular: true,
   },
 } as const;
 

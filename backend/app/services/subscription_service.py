@@ -250,7 +250,7 @@ class SubscriptionService:
             old_tier = subscription.tier
             subscription.tier = new_tier
             subscription.stripe_price_id = new_price_id
-            subscription.monthly_credits = self.TIER_CREDITS.get(new_tier, 0)
+            subscription.monthly_credits = self._get_tier_credits(new_tier)
 
             await self.db.commit()
             await self.db.refresh(subscription)
@@ -676,6 +676,9 @@ class SubscriptionService:
             discount_applied=discount_percent,
             amount_cents=amount_paid
         )
+
+        # Commit the transaction (CRITICAL: without this, credits aren't actually saved!)
+        await self.db.commit()
 
         if result["duplicate"]:
             logger.info(f"Duplicate top-up payment {payment_intent_id} - credits already granted")

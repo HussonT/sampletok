@@ -126,6 +126,44 @@ async def get_credit_transactions(
     )
 
 
+@router.get("/transaction/session/{session_id}", response_model=CreditTransactionResponse)
+async def get_transaction_by_session(
+    session_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get transaction details by Stripe checkout session ID.
+
+    This is useful for the success page to show how many credits were just added.
+
+    Args:
+        session_id: Stripe checkout session ID
+
+    Returns:
+        Transaction details including previous_balance, new_balance, and credits_amount
+
+    Raises:
+        404: Transaction not found for this session
+    """
+    result = await db.execute(
+        select(CreditTransaction)
+        .where(
+            CreditTransaction.user_id == current_user.id,
+            CreditTransaction.stripe_session_id == session_id
+        )
+    )
+    transaction = result.scalar_one_or_none()
+
+    if not transaction:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Transaction not found for this session"
+        )
+
+    return CreditTransactionResponse.model_validate(transaction)
+
+
 @router.post("/top-up", response_model=TopUpResponse)
 async def purchase_top_up(
     request: TopUpRequest,

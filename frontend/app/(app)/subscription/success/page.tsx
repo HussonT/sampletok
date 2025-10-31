@@ -15,12 +15,22 @@ interface CreditBalanceData {
   monthly_credits: number | null;
 }
 
+interface TransactionData {
+  id: string;
+  credits_amount: number;
+  previous_balance: number;
+  new_balance: number;
+  transaction_type: string;
+  description: string;
+}
+
 export default function SubscriptionSuccessPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { getToken } = useAuth();
   const [loading, setLoading] = useState(true);
   const [creditData, setCreditData] = useState<CreditBalanceData | null>(null);
+  const [transactionData, setTransactionData] = useState<TransactionData | null>(null);
   const [countdown, setCountdown] = useState(5);
 
   // Trigger confetti animation
@@ -61,9 +71,9 @@ export default function SubscriptionSuccessPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // Fetch credit balance
+  // Fetch credit balance and transaction details
   useEffect(() => {
-    const fetchCredits = async () => {
+    const fetchData = async () => {
       try {
         const token = await getToken();
         if (!token) {
@@ -71,18 +81,32 @@ export default function SubscriptionSuccessPage() {
           return;
         }
 
+        const sessionId = searchParams.get('session_id');
         const api = createAuthenticatedClient(async () => token);
-        const data = await api.get<CreditBalanceData>('/credits/balance');
-        setCreditData(data);
+
+        // Fetch current credit balance
+        const balanceData = await api.get<CreditBalanceData>('/credits/balance');
+        setCreditData(balanceData);
+
+        // If session_id is present, try to fetch transaction details
+        if (sessionId) {
+          try {
+            const txData = await api.get<TransactionData>(`/credits/transaction/session/${sessionId}`);
+            setTransactionData(txData);
+          } catch (err) {
+            console.error('Failed to fetch transaction details:', err);
+            // Not critical - we can still show the balance
+          }
+        }
       } catch (err) {
-        console.error('Failed to fetch credit balance:', err);
+        console.error('Failed to fetch credit data:', err);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchCredits();
-  }, [getToken]);
+    fetchData();
+  }, [getToken, searchParams]);
 
   // Countdown timer
   useEffect(() => {
@@ -140,9 +164,16 @@ export default function SubscriptionSuccessPage() {
           <div className="bg-gradient-to-br from-primary/10 to-primary/5 rounded-lg p-6 mb-6 border border-primary/20">
             <div className="flex items-center justify-center gap-3 mb-2">
               <Coins className="w-8 h-8 text-primary" />
-              <span className="text-5xl font-bold text-primary">
-                {creditData.credits.toLocaleString()}
-              </span>
+              <div className="flex items-baseline gap-2">
+                <span className="text-5xl font-bold text-primary">
+                  {creditData.credits.toLocaleString()}
+                </span>
+                {transactionData && transactionData.credits_amount > 0 && (
+                  <span className="text-2xl font-semibold text-green-500">
+                    (+{transactionData.credits_amount.toLocaleString()})
+                  </span>
+                )}
+              </div>
             </div>
             <p className="text-sm font-semibold text-muted-foreground">
               {creditData.subscription_tier && (
@@ -152,6 +183,11 @@ export default function SubscriptionSuccessPage() {
                 <span> • {creditData.monthly_credits} credits/month</span>
               )}
             </p>
+            {transactionData && (
+              <p className="text-xs text-muted-foreground mt-2">
+                {transactionData.description}
+              </p>
+            )}
           </div>
         ) : (
           <div className="py-6 text-sm text-muted-foreground">
