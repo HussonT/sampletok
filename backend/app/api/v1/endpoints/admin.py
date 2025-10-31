@@ -6,11 +6,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
 from typing import Optional
 from pydantic import BaseModel
+from uuid import UUID
 import logging
 
 from app.core.database import get_db
 from app.core.config import settings
 from app.models import Collection, CollectionStatus, User
+from app.services.credit_service import CreditService
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +28,24 @@ class AddCreditsRequest(BaseModel):
             "example": {
                 "clerk_id": "user_2abc123def456",
                 "credits": 100
+            }
+        }
+
+
+class RefundCreditsRequest(BaseModel):
+    clerk_id: str
+    credits: int
+    reason: str
+    collection_id: Optional[str] = None
+    sample_id: Optional[str] = None
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "clerk_id": "user_2abc123def456",
+                "credits": 50,
+                "reason": "Refund for failed collection processing",
+                "collection_id": "2a3960d1-f762-4947-8f50-f2a736dd1bf6"
             }
         }
 
@@ -263,3 +283,102 @@ async def add_credits(
         "previous_balance": old_credits,
         "new_balance": user.credits
     }
+
+
+@router.post("/refund-credits")
+async def refund_credits(
+    request: RefundCreditsRequest,
+    x_admin_key: str = Header(..., description="Admin API key"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Manual credit refund endpoint with full audit trail.
+
+    Creates a proper CreditTransaction record for tracking and reconciliation.
+    Use this for manual refunds when automated systems fail.
+
+    Requires X-Admin-Key header matching SECRET_KEY for security.
+
+    Args:
+        clerk_id: User's Clerk ID
+        credits: Number of credits to refund (positive integer)
+        reason: Human-readable reason for the refund
+        collection_id: Optional collection reference for audit trail
+        sample_id: Optional sample reference for audit trail
+
+    Example:
+        POST /api/v1/admin/refund-credits
+        X-Admin-Key: your-secret-key
+        {
+            "clerk_id": "user_2abc123def456",
+            "credits": 50,
+            "reason": "Refund for failed collection processing",
+            "collection_id": "2a3960d1-f762-4947-8f50-f2a736dd1bf6"
+        }
+    """
+    # Verify admin key
+    if x_admin_key != settings.SECRET_KEY:
+        raise HTTPException(status_code=403, detail="Invalid admin key")
+
+    if request.credits <= 0:
+        raise HTTPException(status_code=400, detail="Credits must be positive")
+
+    logger.info(
+        f"Admin: Manual refund of {request.credits} credits to Clerk ID {request.clerk_id}. "
+        f"Reason: {request.reason}"
+    )
+
+    # Find user by Clerk ID
+    user_query = select(User).where(User.clerk_user_id == request.clerk_id)
+    user_result = await db.execute(user_query)
+    user = user_result.scalar_one_or_none()
+
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail=f"User with Clerk ID {request.clerk_id} not found"
+        )
+
+    # Convert collection_id and sample_id to UUID if provided
+    collection_uuid = UUID(request.collection_id) if request.collection_id else None
+    sample_uuid = UUID(request.sample_id) if request.sample_id else None
+
+    # Use CreditService for atomic refund with audit trail
+    credit_service = CreditService(db)
+
+    try:
+        await credit_service.refund_credits_atomic(
+            user_id=user.id,
+            credits_to_refund=request.credits,
+            description=f"Admin manual refund: {request.reason}",
+            collection_id=collection_uuid,
+            sample_id=sample_uuid
+        )
+
+        # Commit the transaction
+        await db.commit()
+
+        # Refresh user to get updated balance
+        await db.refresh(user)
+
+        logger.info(
+            f"Admin: Successfully refunded {request.credits} credits to user {user.clerk_user_id}. "
+            f"New balance: {user.credits}"
+        )
+
+        return {
+            "message": f"Successfully refunded {request.credits} credits",
+            "user_email": user.email,
+            "clerk_id": user.clerk_user_id,
+            "credits_refunded": request.credits,
+            "new_balance": user.credits,
+            "reason": request.reason,
+            "audit_trail": "CreditTransaction created with type='refund'"
+        }
+
+    except Exception as e:
+        logger.error(f"Admin: Error refunding credits: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to refund credits: {str(e)}"
+        )

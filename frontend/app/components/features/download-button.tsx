@@ -122,7 +122,9 @@ export function DownloadButton({
 
       toast.success('Download complete!', {
         id: 'download',
-        description: `${format.toUpperCase()} file saved to your downloads`,
+        description: sample.is_downloaded
+          ? `${format.toUpperCase()} file saved to your downloads (Free re-download)`
+          : `${format.toUpperCase()} file saved to your downloads (1 credit used)`,
       });
 
       onDownloadComplete?.();
@@ -159,9 +161,9 @@ export function DownloadButton({
       return 'Sign in to download';
     }
     if (sample.is_downloaded) {
-      return `Download ${format.toUpperCase()} again`;
+      return `Download ${format.toUpperCase()} again (Free - Already purchased)`;
     }
-    return `Download ${format.toUpperCase()}`;
+    return `Download ${format.toUpperCase()} (1 credit)`;
   };
 
   const getButtonText = () => {

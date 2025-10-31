@@ -49,7 +49,12 @@
       "mcp__linear-server__list_projects",
       "mcp__linear-server__get_team",
       "Bash(alembic heads:*)",
-      "Bash(alembic stamp:*)"
+      "Bash(alembic stamp:*)",
+      "Bash(stripe --version:*)",
+      "Bash(stripe login:*)",
+      "Bash(stripe trigger:*)",
+      "Bash(stripe events:*)",
+      "Bash(stripe checkout sessions retrieve:*)"
     ],
     "deny": [],
     "ask": []

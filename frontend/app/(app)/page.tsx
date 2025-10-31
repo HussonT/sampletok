@@ -34,9 +34,7 @@ export default async function Home({ searchParams }: HomeProps) {
   // Fetch data on the server with error handling (with auth token)
   let samplesData;
   try {
-    console.log('[BUILD] NEXT_PUBLIC_API_URL:', process.env.NEXT_PUBLIC_API_URL || 'NOT SET');
     samplesData = await getSamples(filters, authToken);
-    console.log('[BUILD] Successfully fetched', samplesData?.items?.length || 0, 'samples');
   } catch (error) {
     console.error('[BUILD] Failed to fetch samples:', error);
     // Return empty data if backend is unavailable

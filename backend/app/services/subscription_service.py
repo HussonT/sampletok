@@ -15,11 +15,13 @@ from datetime import datetime
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.core.config import settings
 from app.models.user import User
 from app.models.subscription import Subscription
 from app.models.stripe_customer import StripeCustomer
+from app.models.credit_transaction import CreditTransaction
 
 # Initialize Stripe with secret key
 if settings.STRIPE_SECRET_KEY:
@@ -36,18 +38,23 @@ class SubscriptionService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    # Tier configuration
-    TIER_CREDITS = {
-        "basic": 100,
-        "pro": 400,
-        "ultimate": 1500
-    }
+    def _get_tier_credits(self, tier: str) -> int:
+        """Get monthly credit allowance for a tier from config."""
+        tier_map = {
+            "basic": settings.TIER_CREDITS_BASIC,
+            "pro": settings.TIER_CREDITS_PRO,
+            "ultimate": settings.TIER_CREDITS_ULTIMATE
+        }
+        return tier_map.get(tier, 0)
 
-    TIER_DISCOUNTS = {
-        "basic": 0.0,
-        "pro": 0.10,
-        "ultimate": 0.20
-    }
+    def _get_tier_discount(self, tier: str) -> float:
+        """Get top-up discount percentage for a tier from config."""
+        tier_map = {
+            "basic": settings.TIER_DISCOUNT_BASIC,
+            "pro": settings.TIER_DISCOUNT_PRO,
+            "ultimate": settings.TIER_DISCOUNT_ULTIMATE
+        }
+        return tier_map.get(tier, 0.0)
 
     async def create_checkout_session(
         self,
@@ -305,16 +312,9 @@ class SubscriptionService:
             logger.error(f"Stripe error creating customer: {e}")
             raise RuntimeError(f"Failed to create Stripe customer: {str(e)}")
 
-    def _get_monthly_credits_for_tier(self, tier: str) -> int:
-        """Get monthly credit allowance for a tier."""
-        return self.TIER_CREDITS.get(tier, 0)
-
-    def _get_discount_for_tier(self, tier: str) -> float:
-        """Get top-up discount percentage for a tier."""
-        return self.TIER_DISCOUNTS.get(tier, 0.0)
 
     # ============================================================================
-    # WEBHOOK HANDLERS - Called by Inngest workers
+    # WEBHOOK HANDLERS - Called directly by FastAPI webhook endpoint
     # ============================================================================
 
     async def handle_subscription_created(self, stripe_subscription_dict: Dict[str, Any]) -> Subscription:
@@ -331,6 +331,7 @@ class SubscriptionService:
         # Get user ID from metadata
         user_id_str = stripe_subscription_dict["metadata"].get("user_id")
         if not user_id_str:
+            logger.error("user_id not found in subscription metadata")
             raise ValueError("user_id not found in subscription metadata")
 
         user_id = UUID(user_id_str)
@@ -341,50 +342,105 @@ class SubscriptionService:
         )
         user = result.scalar_one()
 
+        # Check if user already has a subscription (duplicate webhook or race condition)
+        existing_sub_result = await self.db.execute(
+            select(Subscription).where(Subscription.user_id == user_id)
+        )
+        existing_sub = existing_sub_result.scalar_one_or_none()
+
+        if existing_sub:
+            logger.warning(
+                f"User {user_id} already has subscription {existing_sub.id}. "
+                f"Skipping duplicate subscription.created webhook for {stripe_subscription_dict['id']}"
+            )
+            # Return existing subscription - this is a duplicate webhook
+            return existing_sub
+
         # Extract subscription details
         price_data = stripe_subscription_dict["items"]["data"][0]["price"]
         tier = stripe_subscription_dict["metadata"].get("tier")
-        monthly_credits = self._get_monthly_credits_for_tier(tier)
+        monthly_credits = self._get_tier_credits(tier)
 
         # Create subscription record
-        subscription = Subscription(
-            user_id=user.id,
-            stripe_subscription_id=stripe_subscription_dict["id"],
-            stripe_customer_id=stripe_subscription_dict["customer"],
-            stripe_price_id=price_data["id"],  # CRITICAL: Track which price
-            tier=tier,
-            billing_interval=price_data["recurring"]["interval"],
-            monthly_credits=monthly_credits,
-            status=stripe_subscription_dict["status"],
-            current_period_start=datetime.fromtimestamp(stripe_subscription_dict["current_period_start"]),
-            current_period_end=datetime.fromtimestamp(stripe_subscription_dict["current_period_end"]),
-            amount_cents=price_data["unit_amount"],
-            currency=price_data["currency"].upper(),
-            cancel_at_period_end=stripe_subscription_dict.get("cancel_at_period_end", False)
-        )
+        # Note: Use billing_cycle_anchor as fallback for current_period_start
+        period_start = stripe_subscription_dict.get("current_period_start") or stripe_subscription_dict.get("billing_cycle_anchor") or stripe_subscription_dict.get("start_date")
+        period_end = stripe_subscription_dict.get("current_period_end")
 
-        self.db.add(subscription)
-        await self.db.flush()
+        # Calculate period_end if not provided (happens with incomplete subscriptions)
+        if not period_end and period_start:
+            from dateutil.relativedelta import relativedelta
+            start_dt = datetime.fromtimestamp(period_start)
+            billing_interval = price_data["recurring"]["interval"]
+            if billing_interval == "month":
+                end_dt = start_dt + relativedelta(months=1)
+            elif billing_interval == "year":
+                end_dt = start_dt + relativedelta(years=1)
+            else:
+                # Default to 30 days if unknown interval
+                end_dt = start_dt + relativedelta(days=30)
+            period_end = int(end_dt.timestamp())
 
-        # Grant initial monthly credits using CreditService
-        from app.services.credit_service import CreditService
-        credit_service = CreditService(self.db)
+        try:
+            subscription = Subscription(
+                user_id=user.id,
+                stripe_subscription_id=stripe_subscription_dict["id"],
+                stripe_customer_id=stripe_subscription_dict["customer"],
+                stripe_price_id=price_data["id"],  # CRITICAL: Track which price
+                tier=tier,
+                billing_interval=price_data["recurring"]["interval"],
+                monthly_credits=monthly_credits,
+                status=stripe_subscription_dict["status"],
+                current_period_start=datetime.fromtimestamp(period_start) if period_start else datetime.utcnow(),
+                current_period_end=datetime.fromtimestamp(period_end) if period_end else datetime.utcnow() + relativedelta(months=1),
+                amount_cents=price_data["unit_amount"],
+                currency=price_data["currency"].upper(),
+                cancel_at_period_end=stripe_subscription_dict.get("cancel_at_period_end", False)
+            )
 
-        await credit_service.add_credits_atomic(
-            user_id=user.id,
-            credits=monthly_credits,
-            transaction_type="subscription_grant",
-            description=f"Initial credits for {tier} subscription",
-            subscription_id=subscription.id,
-            stripe_invoice_id=None  # Initial grant doesn't have invoice yet
-        )
+            self.db.add(subscription)
+            await self.db.flush()
 
-        await self.db.commit()
-        await self.db.refresh(subscription)
+            # Grant initial monthly credits using CreditService
+            from app.services.credit_service import CreditService
+            credit_service = CreditService(self.db)
 
-        logger.info(f"✅ Subscription created: {subscription.id} for user {user.id}, granted {monthly_credits} credits")
+            await credit_service.add_credits_atomic(
+                user_id=user.id,
+                credits=monthly_credits,
+                transaction_type="subscription_grant",
+                description=f"Initial credits for {tier} subscription",
+                subscription_id=subscription.id,
+                stripe_invoice_id=None  # Initial grant doesn't have invoice yet
+            )
 
-        return subscription
+            await self.db.commit()
+            await self.db.refresh(subscription)
+
+            logger.info(f"Subscription created: {subscription.id} for user {user.id}, granted {monthly_credits} credits")
+
+            return subscription
+
+        except IntegrityError as e:
+            # Race condition: subscription was created between our check and insert
+            await self.db.rollback()
+            logger.warning(
+                f"IntegrityError creating subscription for user {user_id}. "
+                f"Likely duplicate webhook or race condition. Error: {e}"
+            )
+
+            # Fetch the existing subscription
+            result = await self.db.execute(
+                select(Subscription).where(Subscription.user_id == user_id)
+            )
+            existing_sub = result.scalar_one_or_none()
+
+            if existing_sub:
+                logger.info(f"Returning existing subscription {existing_sub.id} for user {user_id}")
+                return existing_sub
+            else:
+                # This shouldn't happen, but re-raise if we can't find the subscription
+                logger.error(f"IntegrityError occurred but no subscription found for user {user_id}")
+                raise
 
     async def handle_invoice_paid(self, stripe_invoice_dict: Dict[str, Any]) -> None:
         """
@@ -433,19 +489,25 @@ class SubscriptionService:
             )
 
             if result["duplicate"]:
-                logger.info(f"⚠️ Duplicate invoice {stripe_invoice_dict['id']} - credits already granted")
+                logger.info(f"Duplicate invoice {stripe_invoice_dict['id']} - credits already granted")
             else:
-                logger.info(f"✅ Monthly credits granted: {subscription.monthly_credits} for subscription {subscription.id}")
+                logger.info(f"Monthly credits granted: {subscription.monthly_credits} for subscription {subscription.id}")
 
-        # Update period dates from Stripe
-        try:
-            stripe_sub = stripe.Subscription.retrieve(subscription.stripe_subscription_id)
-            subscription.current_period_start = datetime.fromtimestamp(stripe_sub.current_period_start)
-            subscription.current_period_end = datetime.fromtimestamp(stripe_sub.current_period_end)
-            subscription.status = stripe_sub.status
-            await self.db.commit()
-        except stripe.error.StripeError as e:
-            logger.error(f"Error updating subscription periods: {e}")
+        # Update period dates from invoice line items (no separate API call needed)
+        # Invoice contains the billing period information
+        if stripe_invoice_dict.get("lines") and stripe_invoice_dict["lines"].get("data"):
+            line_item = stripe_invoice_dict["lines"]["data"][0]
+            if line_item.get("period"):
+                period = line_item["period"]
+                subscription.current_period_start = datetime.fromtimestamp(period["start"])
+                subscription.current_period_end = datetime.fromtimestamp(period["end"])
+                logger.info(
+                    f"Updated subscription {subscription.id} period: "
+                    f"{subscription.current_period_start} to {subscription.current_period_end}"
+                )
+
+        # Commit all changes together (credits grant + period update)
+        await self.db.commit()
 
     async def handle_subscription_updated(self, stripe_subscription_dict: Dict[str, Any]) -> None:
         """
@@ -476,7 +538,7 @@ class SubscriptionService:
         if new_tier and new_tier != subscription.tier:
             old_tier = subscription.tier
             subscription.tier = new_tier
-            subscription.monthly_credits = self._get_monthly_credits_for_tier(new_tier)
+            subscription.monthly_credits = self._get_tier_credits(new_tier)
 
             # Update price ID
             price_data = stripe_subscription_dict["items"]["data"][0]["price"]
@@ -491,12 +553,22 @@ class SubscriptionService:
 
         await self.db.commit()
 
-        logger.info(f"✅ Subscription updated: {subscription.id}, status: {old_status} → {subscription.status}")
+        logger.info(f"Subscription updated: {subscription.id}, status: {old_status} → {subscription.status}")
 
     async def handle_subscription_deleted(self, stripe_subscription_dict: Dict[str, Any]) -> None:
         """
         Handle customer.subscription.deleted webhook.
-        Zeros out all credits when subscription ends.
+
+        ⚠️ INTENTIONAL BEHAVIOR: Zeros out ALL user credits when subscription ends.
+
+        This applies to:
+        - Remaining monthly subscription credits
+        - Previously purchased top-up credits
+
+        Rationale: Subscription cancellation results in complete loss of platform access
+        and all associated credits. This enforces that credits are subscription-dependent.
+
+        Users should be warned about this behavior before cancelling.
 
         Args:
             stripe_subscription_dict: Stripe subscription object as dict
@@ -520,7 +592,9 @@ class SubscriptionService:
         )
         user = result.scalar_one()
 
-        # Zero out ALL credits (subscription + top-ups)
+        # ⚠️ BUSINESS POLICY: Zero out ALL credits (subscription + top-ups)
+        # This is intentional - credits are forfeit on subscription cancellation
+        # See docstring above for rationale
         old_balance = user.credits
         user.credits = 0
 
@@ -547,7 +621,7 @@ class SubscriptionService:
         self.db.add(transaction)
         await self.db.commit()
 
-        logger.info(f"✅ Subscription deleted: {subscription.id}, credits reset {old_balance} → 0")
+        logger.info(f"Subscription deleted: {subscription.id}, credits reset {old_balance} → 0")
 
     async def handle_top_up_purchase(self, checkout_session_dict: Dict[str, Any]) -> None:
         """
@@ -582,7 +656,8 @@ class SubscriptionService:
 
         user_id = UUID(user_id_str)
 
-        # Get payment intent ID for idempotency
+        # Get IDs for idempotency (both session and payment intent)
+        checkout_session_id = checkout_session_dict.get('id')
         payment_intent_id = checkout_session_dict.get('payment_intent')
         amount_paid = checkout_session_dict.get('amount_total')  # In cents
 
@@ -595,6 +670,7 @@ class SubscriptionService:
             credits=credits,
             transaction_type="top_up_purchase",
             description=f"Top-up purchase: {package} package ({credits} credits)",
+            stripe_session_id=checkout_session_id,
             stripe_payment_intent_id=payment_intent_id,
             top_up_package=package,
             discount_applied=discount_percent,
@@ -602,9 +678,9 @@ class SubscriptionService:
         )
 
         if result["duplicate"]:
-            logger.info(f"⚠️ Duplicate top-up payment {payment_intent_id} - credits already granted")
+            logger.info(f"Duplicate top-up payment {payment_intent_id} - credits already granted")
         else:
             logger.info(
-                f"✅ Top-up purchase completed: {credits} credits granted to user {user_id}, "
+                f"Top-up purchase completed: {credits} credits granted to user {user_id}, "
                 f"package: {package}, discount: {discount_percent * 100}%"
             )

@@ -7,8 +7,8 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { createAuthenticatedClient } from '@/lib/api-client';
-import { TOPUP_PACKAGES, TOPUP_DISCOUNTS } from '@/lib/constants';
-import { Coins, Loader2, AlertCircle, ShoppingCart } from 'lucide-react';
+import { TOPUP_PACKAGES, TOPUP_DISCOUNTS, SUBSCRIPTION_TIERS } from '@/lib/constants';
+import { Coins, Loader2, AlertCircle, ShoppingCart, ArrowRight, TrendingUp } from 'lucide-react';
 
 interface CreditBalanceData {
   credits: number;
@@ -111,6 +111,15 @@ export default function TopUpPage() {
   const discount = TOPUP_DISCOUNTS[userTier];
   const packages = [TOPUP_PACKAGES.SMALL, TOPUP_PACKAGES.MEDIUM, TOPUP_PACKAGES.LARGE];
 
+  // Determine upgrade tier
+  const getUpgradeTier = () => {
+    if (userTier === 'basic') return SUBSCRIPTION_TIERS.PRO;
+    if (userTier === 'pro') return SUBSCRIPTION_TIERS.ULTIMATE;
+    return null; // Already on highest tier
+  };
+
+  const upgradeTier = getUpgradeTier();
+
   return (
     <div className="flex-1 overflow-y-auto">
       <div className="container mx-auto px-6 py-8 max-w-5xl">
@@ -146,6 +155,58 @@ export default function TopUpPage() {
             </div>
           </div>
         </Card>
+
+        {/* Upgrade Plan Section */}
+        {upgradeTier && (
+          <Card className="p-6 mb-8 border-primary/50 bg-gradient-to-br from-primary/5 to-primary/10">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-2">
+                  <TrendingUp className="w-5 h-5 text-primary" />
+                  <h3 className="text-xl font-bold">Want More Credits & Better Discounts?</h3>
+                </div>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Upgrade to {upgradeTier.name} and get more value from your subscription
+                </p>
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                  <div className="flex items-start gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-primary mt-1.5" />
+                    <div>
+                      <p className="text-sm font-medium">
+                        {upgradeTier.credits} credits/month
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        vs {SUBSCRIPTION_TIERS[userTier.toUpperCase() as keyof typeof SUBSCRIPTION_TIERS].credits} currently
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-primary mt-1.5" />
+                    <div>
+                      <p className="text-sm font-medium">
+                        {TOPUP_DISCOUNTS[upgradeTier.tier]}% top-up discount
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        vs {discount}% currently
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Starting at ${(upgradeTier.price.monthly).toFixed(2)}/month
+                </p>
+              </div>
+              <Button
+                onClick={() => router.push('/pricing')}
+                className="flex-shrink-0"
+                variant="default"
+              >
+                Upgrade Plan
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Button>
+            </div>
+          </Card>
+        )}
 
         {/* Top-Up Packages */}
         <div className="grid md:grid-cols-3 gap-6">

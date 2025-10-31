@@ -265,6 +265,8 @@ async def process_collection(
                 # Deduct credits only for new videos atomically
                 if not await deduct_credits_atomic(db, current_user.id, new_videos):
                     # Refresh user to get current credit balance for error message
+                    # Note: There's a minor TOCTOU here - balance could change between deduction and refresh
+                    # This only affects the error message, not business logic, so it's acceptable
                     await db.refresh(current_user)
                     raise HTTPException(
                         status_code=402,

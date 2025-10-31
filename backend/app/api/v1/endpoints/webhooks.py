@@ -13,6 +13,7 @@ CRITICAL SECURITY:
 from fastapi import APIRouter, Request, HTTPException, Header, Depends
 import stripe
 import logging
+from sqlalchemy.exc import OperationalError, DatabaseError, IntegrityError
 
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
@@ -119,17 +120,59 @@ async def stripe_webhook_handler(
             # Unhandled event type - log and ignore
             logger.info(f"Unhandled webhook event type: {event_type}")
 
-        logger.info(f"✅ Webhook processed: {event_type} (ID: {event.id})")
+        logger.info(f"Webhook processed successfully: {event_type} (ID: {event.id})")
+
+    except (OperationalError, DatabaseError) as e:
+        # 🚨 INFRASTRUCTURE ERROR: Database connection/query failure
+        # Return 500 so Stripe retries (these are transient errors)
+        logger.error(
+            f"❌ DATABASE ERROR processing webhook {event_type}: {e}",
+            exc_info=True,
+            extra={"event_id": event.id, "event_type": event_type}
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Database error processing webhook. Stripe will retry."
+        )
+
+    except ValueError as e:
+        # ⚠️ BUSINESS LOGIC ERROR: Invalid data, duplicate subscription, etc.
+        # Return 200 - these are not transient and retry won't help
+        logger.warning(
+            f"⚠️ BUSINESS LOGIC ERROR in webhook {event_type}: {e}",
+            extra={"event_id": event.id, "event_type": event_type}
+        )
+        # Return success so Stripe doesn't retry
+
+    except stripe.error.StripeError as e:
+        # 🚨 STRIPE API ERROR: Failed to fetch subscription details, etc.
+        # Return 500 so Stripe retries (Stripe API might be temporarily down)
+        logger.error(
+            f"❌ STRIPE API ERROR processing webhook {event_type}: {e}",
+            exc_info=True,
+            extra={"event_id": event.id, "event_type": event_type}
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Stripe API error. Stripe will retry."
+        )
 
     except Exception as e:
-        # Log error but still return 200 to Stripe
-        # Stripe will retry automatically if this fails
-        logger.error(f"❌ Error processing webhook {event_type}: {e}", exc_info=True)
-        # Don't raise - let Stripe retry naturally
-        # If we raise, Stripe sees 500 and retries immediately
+        # ❓ UNKNOWN ERROR: Could be infrastructure or code bug
+        # Log with full context and return 500 to be safe
+        logger.error(
+            f"❌ UNEXPECTED ERROR processing webhook {event_type}: {e}",
+            exc_info=True,
+            extra={"event_id": event.id, "event_type": event_type}
+        )
+        # Return 500 for unknown errors - better to retry than silently fail
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unexpected error processing webhook. Stripe will retry."
+        )
 
     # 4️⃣ RETURN SUCCESS
-    # Always return 200 (even on error) to let Stripe handle retries
+    # Only reached if no exceptions were raised
     return {"received": True, "event_id": event.id, "event_type": event_type}
 
 

@@ -157,6 +157,105 @@ async def cancel_subscription(
         )
 
 
+@router.post("/upgrade/preview")
+async def preview_upgrade(
+    request: UpgradeSubscriptionRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Preview the cost of upgrading/downgrading subscription tier.
+
+    Returns prorated amount and new billing details WITHOUT modifying subscription.
+    Use this to show users what they'll be charged before confirming.
+
+    Args:
+        new_tier: Target tier (basic, pro, or ultimate)
+
+    Returns:
+        {
+            "proration_amount_cents": int,  # Amount to charge now (can be negative for downgrades)
+            "new_price_cents": int,         # New recurring price
+            "current_tier": str,
+            "new_tier": str,
+            "billing_interval": str,
+            "next_billing_date": str
+        }
+
+    Raises:
+        400: Already on this tier or no active subscription
+        404: Invalid tier
+        500: Stripe API error
+    """
+    subscription_service = SubscriptionService(db)
+
+    # Get current subscription
+    subscription = await subscription_service.get_user_subscription(current_user.id)
+
+    if not subscription:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No active subscription found. Please subscribe first."
+        )
+
+    # Check if already on this tier
+    if subscription.tier == request.new_tier:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"You are already subscribed to the {request.new_tier} tier."
+        )
+
+    # Get price ID for new tier
+    new_price_id = TIER_PRICE_IDS.get((request.new_tier, subscription.billing_interval))
+
+    if not new_price_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No price configured for tier '{request.new_tier}' with interval '{subscription.billing_interval}'"
+        )
+
+    try:
+        # Get Stripe customer and subscription
+        stripe_customer = await subscription_service._get_or_create_stripe_customer(current_user)
+
+        # Get Stripe subscription to find subscription item ID
+        stripe_subscription = stripe.Subscription.retrieve(subscription.stripe_subscription_id)
+        subscription_item_id = stripe_subscription['items']['data'][0]['id']
+
+        # Get upcoming invoice with proration preview
+        upcoming_invoice = stripe.Invoice.upcoming(
+            customer=stripe_customer.stripe_customer_id,
+            subscription=subscription.stripe_subscription_id,
+            subscription_items=[{
+                'id': subscription_item_id,
+                'price': new_price_id,
+            }],
+            subscription_proration_behavior='create_prorations',
+        )
+
+        # Calculate proration amount (what they pay now)
+        proration_amount_cents = upcoming_invoice.amount_due
+
+        # Get new recurring price
+        new_price = stripe.Price.retrieve(new_price_id)
+        new_price_cents = new_price.unit_amount
+
+        return {
+            "proration_amount_cents": proration_amount_cents,
+            "new_price_cents": new_price_cents,
+            "current_tier": subscription.tier,
+            "new_tier": request.new_tier,
+            "billing_interval": subscription.billing_interval,
+            "next_billing_date": subscription.current_period_end.isoformat() if subscription.current_period_end else None,
+        }
+
+    except stripe.error.StripeError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to preview upgrade: {str(e)}"
+        )
+
+
 @router.post("/upgrade", response_model=SubscriptionResponse)
 async def upgrade_subscription(
     request: UpgradeSubscriptionRequest,
@@ -258,10 +357,16 @@ async def create_customer_portal_session(
         stripe_customer = await subscription_service._get_or_create_stripe_customer(current_user)
 
         # Create Customer Portal session
-        portal_session = stripe.billing_portal.Session.create(
-            customer=stripe_customer.stripe_customer_id,
-            return_url=f"{settings.FRONTEND_URL or 'http://localhost:3000'}/account",
-        )
+        portal_params = {
+            "customer": stripe_customer.stripe_customer_id,
+            "return_url": f"{settings.FRONTEND_URL or 'http://localhost:3000'}/settings",
+        }
+
+        # Add configuration if provided
+        if settings.STRIPE_PORTAL_CONFIGURATION_ID:
+            portal_params["configuration"] = settings.STRIPE_PORTAL_CONFIGURATION_ID
+
+        portal_session = stripe.billing_portal.Session.create(**portal_params)
 
         return {"portal_url": portal_session.url}
 

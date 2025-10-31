@@ -88,6 +88,7 @@ class Settings(BaseSettings):
     STRIPE_SECRET_KEY: Optional[str] = None  # Required for production
     STRIPE_WEBHOOK_SECRET: Optional[str] = None  # Required for webhook verification
     STRIPE_PUBLISHABLE_KEY: Optional[str] = None  # For frontend
+    STRIPE_PORTAL_CONFIGURATION_ID: Optional[str] = None  # Customer Portal configuration
 
     # Stripe Price IDs - Subscription Plans
     STRIPE_PRICE_BASIC_MONTHLY: Optional[str] = None
@@ -101,6 +102,24 @@ class Settings(BaseSettings):
     STRIPE_PRICE_TOPUP_SMALL: Optional[str] = None  # 50 credits
     STRIPE_PRICE_TOPUP_MEDIUM: Optional[str] = None  # 150 credits
     STRIPE_PRICE_TOPUP_LARGE: Optional[str] = None  # 500 credits
+
+    # Subscription Tier Configuration
+    TIER_CREDITS_BASIC: int = 100  # Monthly credits for Basic tier
+    TIER_CREDITS_PRO: int = 400  # Monthly credits for Pro tier
+    TIER_CREDITS_ULTIMATE: int = 1500  # Monthly credits for Ultimate tier
+
+    # Top-Up Discounts by Tier (percentage as decimal, e.g., 0.10 = 10% off)
+    TIER_DISCOUNT_BASIC: float = 0.0  # No discount for Basic
+    TIER_DISCOUNT_PRO: float = 0.10  # 10% discount for Pro
+    TIER_DISCOUNT_ULTIMATE: float = 0.20  # 20% discount for Ultimate
+
+    # Top-Up Package Configuration
+    TOPUP_CREDITS_SMALL: int = 50  # Small package credits
+    TOPUP_PRICE_SMALL_CENTS: int = 699  # Small package price ($6.99)
+    TOPUP_CREDITS_MEDIUM: int = 150  # Medium package credits
+    TOPUP_PRICE_MEDIUM_CENTS: int = 1799  # Medium package price ($17.99)
+    TOPUP_CREDITS_LARGE: int = 500  # Large package credits
+    TOPUP_PRICE_LARGE_CENTS: int = 4999  # Large package price ($49.99)
 
     # Subscription URLs
     SUBSCRIPTION_SUCCESS_URL: str = "http://localhost:3000/subscription/success"

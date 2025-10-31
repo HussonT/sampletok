@@ -8,9 +8,9 @@ import {
   Download,
   Home,
   Heart,
-  Link as LinkIcon,
+  RefreshCw,
   FolderOpen,
-  User,
+  Settings,
 } from 'lucide-react';
 import {
   SignInButton,
@@ -94,8 +94,8 @@ export function AppSidebar({ activeSection, onSectionChange, onProcessingStarted
                         : 'text-sidebar-foreground hover:bg-sidebar-accent/50'
                     }`}
                   >
-                    <LinkIcon className="w-4 h-4" />
-                    <span>TikTok Connect</span>
+                    <RefreshCw className="w-4 h-4" />
+                    <span>sync a tok-collection</span>
                   </button>
                 </Link>
               </div>
@@ -145,18 +145,6 @@ export function AppSidebar({ activeSection, onSectionChange, onProcessingStarted
                     <span>My Favorites</span>
                   </button>
                 </Link>
-                <Link href="/account" className="w-full">
-                  <button
-                    className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors ${
-                      isActive('/account')
-                        ? 'bg-primary text-primary-foreground font-semibold shadow-sm'
-                        : 'text-sidebar-foreground hover:bg-sidebar-accent/50'
-                    }`}
-                  >
-                    <User className="w-4 h-4" />
-                    <span>Account</span>
-                  </button>
-                </Link>
               </div>
             </div>
           </SignedIn>
@@ -183,6 +171,14 @@ export function AppSidebar({ activeSection, onSectionChange, onProcessingStarted
           </div>
         </SignedOut>
         <SignedIn>
+          <Link href="/settings" className="w-full mb-2">
+            <button
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors text-sidebar-foreground hover:bg-sidebar-accent/50"
+            >
+              <Settings className="w-4 h-4" />
+              <span>Settings</span>
+            </button>
+          </Link>
           {isLoaded && user && (
             <div className="flex items-center gap-2.5 p-2 rounded hover:bg-sidebar-accent/20 transition-colors">
               <UserButton

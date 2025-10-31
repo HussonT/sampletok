@@ -169,7 +169,9 @@ export function SoundsTable({
 
       toast.success('Video download complete!', {
         id: 'video-download',
-        description: 'MP4 file saved to your downloads',
+        description: sample.is_downloaded
+          ? 'MP4 file saved to your downloads (Free re-download)'
+          : 'MP4 file saved to your downloads (1 credit used)',
       });
 
       onVideoDownload?.(sample);
@@ -518,7 +520,7 @@ export function SoundsTable({
                       size="sm"
                       className={`p-0 w-8 h-8 ${downloadedVideos?.has(sample.id) ? 'text-primary' : ''}`}
                       onClick={() => handleVideoDownload(sample)}
-                      title={downloadedVideos?.has(sample.id) ? "Download video (already purchased)" : "Download video (1 credit)"}
+                      title={sample.is_downloaded ? "Download video (Free - Already purchased)" : "Download video (1 credit)"}
                       disabled={!sample.video_url}
                     >
                       <Video className="w-4 h-4" />

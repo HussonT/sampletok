@@ -39,6 +39,7 @@ class CreditService:
         description: str,
         subscription_id: Optional[UUID] = None,
         stripe_invoice_id: Optional[str] = None,
+        stripe_session_id: Optional[str] = None,
         stripe_payment_intent_id: Optional[str] = None,
         top_up_package: Optional[str] = None,
         discount_applied: Optional[float] = None,
@@ -56,6 +57,7 @@ class CreditService:
             description: Human-readable description
             subscription_id: Optional subscription reference
             stripe_invoice_id: For idempotency - prevents duplicate processing of same invoice
+            stripe_session_id: For idempotency - prevents duplicate processing of same checkout session
             stripe_payment_intent_id: For idempotency - prevents duplicate processing of same payment
             top_up_package: Package size (small, medium, large)
             discount_applied: Discount percentage applied
@@ -111,6 +113,28 @@ class CreditService:
                             "new_balance": existing_tx.new_balance
                         }
 
+                # Check for duplicate checkout sessions (top-up purchases)
+                if stripe_session_id:
+                    existing = await self.db.execute(
+                        select(CreditTransaction)
+                        .where(
+                            CreditTransaction.user_id == user_id,
+                            CreditTransaction.stripe_session_id == stripe_session_id,
+                            CreditTransaction.status == 'completed'
+                        )
+                    )
+                    existing_tx = existing.scalar_one_or_none()
+
+                    if existing_tx:
+                        logger.info(f"⚠️ DUPLICATE: Checkout session {stripe_session_id} already processed.")
+                        return {
+                            "duplicate": True,
+                            "transaction_id": str(existing_tx.id),
+                            "previous_balance": existing_tx.previous_balance,
+                            "credits_added": 0,
+                            "new_balance": existing_tx.new_balance
+                        }
+
                 # Same check for payment intents (top-up purchases)
                 if stripe_payment_intent_id:
                     existing = await self.db.execute(
@@ -157,6 +181,7 @@ class CreditService:
                     new_balance=new_balance,
                     description=description,
                     stripe_invoice_id=stripe_invoice_id,
+                    stripe_session_id=stripe_session_id,
                     stripe_payment_intent_id=stripe_payment_intent_id,
                     top_up_package=top_up_package,
                     discount_applied=discount_applied,

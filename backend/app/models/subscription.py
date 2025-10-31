@@ -75,7 +75,7 @@ class Subscription(Base):
     @property
     def is_active(self) -> bool:
         """Check if subscription is active (user has platform access)"""
-        return self.status in ['active', 'past_due']
+        return self.status in ['active', 'past_due', 'incomplete']
 
     @property
     def is_renewable(self) -> bool:

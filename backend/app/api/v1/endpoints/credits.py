@@ -29,24 +29,23 @@ from app.models.schemas import (
 router = APIRouter()
 
 
-# Top-up package configuration
-TOPUP_PACKAGES = {
-    "small": {
-        "credits": 50,
-        "price_cents": 699,  # $6.99
-        "stripe_price_id": settings.STRIPE_PRICE_TOPUP_SMALL
-    },
-    "medium": {
-        "credits": 150,
-        "price_cents": 1799,  # $17.99
-        "stripe_price_id": settings.STRIPE_PRICE_TOPUP_MEDIUM
-    },
-    "large": {
-        "credits": 500,
-        "price_cents": 4999,  # $49.99
-        "stripe_price_id": settings.STRIPE_PRICE_TOPUP_LARGE
+# Top-up package configuration loaded from settings
+def get_topup_packages():
+    """Get top-up package configuration from settings."""
+    return {
+        "small": {
+            "credits": settings.TOPUP_CREDITS_SMALL,
+            "price_cents": settings.TOPUP_PRICE_SMALL_CENTS,
+        },
+        "medium": {
+            "credits": settings.TOPUP_CREDITS_MEDIUM,
+            "price_cents": settings.TOPUP_PRICE_MEDIUM_CENTS,
+        },
+        "large": {
+            "credits": settings.TOPUP_CREDITS_LARGE,
+            "price_cents": settings.TOPUP_PRICE_LARGE_CENTS,
+        }
     }
-}
 
 
 @router.get("/balance", response_model=CreditBalanceResponse)
@@ -163,43 +162,41 @@ async def purchase_top_up(
             detail="Active subscription required to purchase top-up credits. Please subscribe first."
         )
 
-    # Get package details
-    package_details = TOPUP_PACKAGES.get(request.package)
+    # Get package details from config
+    topup_packages = get_topup_packages()
+    package_details = topup_packages.get(request.package)
     if not package_details:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Invalid package: {request.package}"
         )
 
-    # Get tier discount
-    tier_discounts = {
-        "basic": 0.0,
-        "pro": 0.10,
-        "ultimate": 0.20
-    }
-    discount_percent = tier_discounts.get(subscription.tier, 0.0)
-
-    # Get Stripe price ID
-    stripe_price_id = package_details["stripe_price_id"]
-    if not stripe_price_id:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Top-up package '{request.package}' not configured in Stripe"
-        )
+    # Get tier discount from config
+    discount_percent = subscription_service._get_tier_discount(subscription.tier)
 
     # Get or create Stripe customer
-    from app.services.subscription_service import SubscriptionService
     stripe_customer = await subscription_service._get_or_create_stripe_customer(current_user)
 
     # Create checkout session for one-time purchase
     try:
-        # Build line item with optional discount
+        # Calculate discounted price
+        base_price_cents = package_details["price_cents"]
+        discounted_price_cents = int(base_price_cents * (1 - discount_percent))
+
+        # Build line item with dynamic pricing
+        # Using price_data allows us to set the exact discounted price
         line_items = [{
-            "price": stripe_price_id,
+            "price_data": {
+                "currency": "usd",
+                "product_data": {
+                    "name": f"{request.package.capitalize()} Credit Pack",
+                    "description": f"{package_details['credits']} credits{f' ({int(discount_percent * 100)}% {subscription.tier} discount applied)' if discount_percent > 0 else ''}",
+                },
+                "unit_amount": discounted_price_cents,
+            },
             "quantity": 1,
         }]
 
-        # Add discount coupon if applicable
         checkout_params = {
             "customer": stripe_customer.stripe_customer_id,
             "payment_method_types": ["card"],
@@ -212,16 +209,11 @@ async def purchase_top_up(
                 "type": "top_up",
                 "package": request.package,
                 "credits": package_details["credits"],
-                "discount_percent": discount_percent
+                "discount_percent": discount_percent,
+                "base_price_cents": base_price_cents,
+                "discounted_price_cents": discounted_price_cents
             }
         }
-
-        # Add discount if applicable
-        if discount_percent > 0:
-            # Note: Stripe discounts need to be created beforehand
-            # For now, we'll apply discount in the webhook handler
-            # Alternative: Create coupon dynamically
-            pass
 
         session = stripe.checkout.Session.create(**checkout_params)
 

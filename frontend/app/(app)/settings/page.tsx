@@ -14,6 +14,7 @@ import {
   Loader2,
   ExternalLink,
   AlertCircle,
+  Sparkles,
 } from 'lucide-react';
 
 interface SubscriptionData {
@@ -29,7 +30,7 @@ interface SubscriptionData {
   is_active: boolean;
 }
 
-export default function AccountPage() {
+export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [redirecting, setRedirecting] = useState(false);
   const [subscription, setSubscription] = useState<SubscriptionData | null>(null);
@@ -128,11 +129,29 @@ export default function AccountPage() {
       <div className="container mx-auto px-6 py-8 max-w-4xl">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold mb-2">Account & Subscription</h1>
+          <h1 className="text-3xl font-bold mb-2">Settings</h1>
           <p className="text-muted-foreground">
             Manage your subscription, billing, and payment methods
           </p>
         </div>
+
+        {/* Pricing Plans CTA */}
+        <Card className="p-6 mb-6 bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold mb-1 flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-primary" />
+                Explore Other Plans
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                Compare plans and find the perfect fit for your needs
+              </p>
+            </div>
+            <Button onClick={() => router.push('/pricing')} variant="outline" size="lg">
+              View Pricing
+            </Button>
+          </div>
+        </Card>
 
         {/* Current Subscription */}
         <Card className="p-6 mb-6">
