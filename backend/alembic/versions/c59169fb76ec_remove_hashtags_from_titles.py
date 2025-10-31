@@ -46,7 +46,7 @@ def upgrade() -> None:
                     {"cleaned_title": cleaned_title, "sample_id": sample_id}
                 )
 
-    connection.commit()
+    # No need to commit - Alembic manages transactions automatically
 
 
 def downgrade() -> None:
