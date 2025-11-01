@@ -3,6 +3,7 @@
 import React, { useState, useMemo, useTransition, useOptimistic, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@clerk/nextjs';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { SoundsTable } from '@/components/features/sounds-table';
 import { SamplesPagination } from '@/components/features/samples-pagination';
 import { ProcessingQueue, ProcessingTask } from '@/components/features/processing-queue';
@@ -25,9 +26,9 @@ interface MainAppProps {
 export default function MainApp({ initialSamples, totalSamples, currentFilters }: MainAppProps) {
   const router = useRouter();
   const { getToken } = useAuth();
+  const queryClient = useQueryClient();
   const { registerProcessingHandler, unregisterProcessingHandler } = useProcessing();
   const [isPending, startTransition] = useTransition();
-  const [samples, setSamples] = useState<Sample[]>(initialSamples);
   const [currentSample, setCurrentSample] = useState<Sample | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [activeSection, setActiveSection] = useState('explore');
@@ -35,16 +36,56 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
   const [downloadedVideos, setDownloadedVideos] = useState<Set<string>>(new Set());
   const [processingTasks, setProcessingTasks] = useState<Map<string, ProcessingTask>>(new Map());
   const [currentPage, setCurrentPage] = useState(1);
-  const [isLoadingPage, setIsLoadingPage] = useState(false);
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
   const [hasSubscription, setHasSubscription] = useState(false);
   const itemsPerPage = 20;
 
-  // Update samples when initialSamples changes (from server refresh)
+  // Fetch samples with useQuery
+  const { data, isLoading: isLoadingPage } = useQuery({
+    queryKey: ['samples', currentPage],
+    queryFn: async () => {
+      const apiClient = createAuthenticatedClient(getToken);
+      const data = await apiClient.get<PaginatedResponse<Sample>>('/samples/', {
+        skip: (currentPage - 1) * itemsPerPage,
+        limit: itemsPerPage,
+        sort_by: 'recent'
+      });
+      return data;
+    },
+    initialData: currentPage === 1 ? {
+      items: initialSamples,
+      total: totalSamples,
+      skip: 0,
+      limit: itemsPerPage,
+      has_more: totalSamples > itemsPerPage,
+    } : undefined,
+    staleTime: 30 * 1000, // Consider data fresh for 30 seconds
+  });
+
+  const samples = data?.items || initialSamples;
+
+  // Prefetch next page for instant navigation
   useEffect(() => {
-    setSamples(initialSamples);
-    setCurrentPage(1); // Reset to page 1 when initial data changes
-  }, [initialSamples]);
+    const totalPages = Math.ceil((data?.total || totalSamples) / itemsPerPage);
+    const nextPage = currentPage + 1;
+
+    // Only prefetch if there's a next page
+    if (nextPage <= totalPages) {
+      queryClient.prefetchQuery({
+        queryKey: ['samples', nextPage],
+        queryFn: async () => {
+          const apiClient = createAuthenticatedClient(getToken);
+          const data = await apiClient.get<PaginatedResponse<Sample>>('/samples/', {
+            skip: (nextPage - 1) * itemsPerPage,
+            limit: itemsPerPage,
+            sort_by: 'recent'
+          });
+          return data;
+        },
+        staleTime: 30 * 1000,
+      });
+    }
+  }, [currentPage, queryClient, getToken, itemsPerPage, data?.total, totalSamples]);
 
   // Fetch credit balance
   useEffect(() => {
@@ -151,35 +192,15 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
     };
   }, [currentSample, filteredSamples]);
 
-  // Handle page change
-  const handlePageChange = useCallback(async (page: number) => {
+  // Handle page change - useQuery will automatically fetch the data
+  const handlePageChange = useCallback((page: number) => {
     if (isLoadingPage) return;
 
-    setIsLoadingPage(true);
     setCurrentPage(page);
 
-    try {
-      // Create authenticated API client
-      const apiClient = createAuthenticatedClient(getToken);
-
-      // Fetch paginated samples (sorted by newest first)
-      const data = await apiClient.get<PaginatedResponse<Sample>>('/samples/', {
-        skip: (page - 1) * itemsPerPage,
-        limit: itemsPerPage,
-        sort_by: 'recent'
-      });
-
-      setSamples(data.items);
-
-      // Scroll to top of content area
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    } catch (error) {
-      console.error('Failed to load page:', error);
-      toast.error('Failed to load page');
-    } finally {
-      setIsLoadingPage(false);
-    }
-  }, [isLoadingPage, itemsPerPage, getToken]);
+    // Scroll to top of content area
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [isLoadingPage]);
 
   // Add a new processing task
   const addProcessingTask = useCallback((taskId: string, url: string) => {
@@ -335,13 +356,17 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
         is_favorited: isFavorited
       });
     }
-    // Update the samples list to reflect the new favorite state
-    setSamples(prevSamples =>
-      prevSamples.map(s =>
-        s.id === sampleId ? { ...s, is_favorited: isFavorited } : s
-      )
-    );
-  }, [currentSample]);
+    // Update the query cache to reflect the new favorite state
+    queryClient.setQueryData(['samples', currentPage], (oldData: PaginatedResponse<Sample> | undefined) => {
+      if (!oldData) return oldData;
+      return {
+        ...oldData,
+        items: oldData.items.map(s =>
+          s.id === sampleId ? { ...s, is_favorited: isFavorited } : s
+        )
+      };
+    });
+  }, [currentSample, queryClient, currentPage]);
 
   // Spacebar play/pause
   useEffect(() => {
@@ -415,7 +440,7 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
                   />
                   <SamplesPagination
                     currentPage={currentPage}
-                    totalPages={Math.ceil(totalSamples / itemsPerPage)}
+                    totalPages={Math.ceil((data?.total || totalSamples) / itemsPerPage)}
                     onPageChange={handlePageChange}
                   />
                 </>

@@ -8,6 +8,8 @@ import logging
 from pathlib import Path
 import uuid
 from typing import Dict, Any, Optional
+from pydantic import BaseModel, Field, validator
+from uuid import UUID
 
 from app.core.config import settings
 from app.services.tiktok.downloader import TikTokDownloader
@@ -1258,6 +1260,19 @@ async def handle_collection_error(ctx: inngest.Context) -> None:
     await ctx.step.run("mark-collection-as-failed", update_failed_status)
 
 
+# Pydantic models for Inngest event validation
+class StemSeparationEventData(BaseModel):
+    """Validation model for stem separation Inngest event data"""
+    sample_id: UUID = Field(..., description="UUID of the parent sample")
+    stem_ids: List[UUID] = Field(..., description="List of stem UUIDs to process", min_items=1)
+
+    @validator('stem_ids')
+    def validate_stem_ids_not_empty(cls, v):
+        if not v:
+            raise ValueError("stem_ids cannot be empty")
+        return v
+
+
 @inngest_client.create_function(
     fn_id="process-stem-separation",
     trigger=inngest.TriggerEvent(event="stem/separation.submitted"),
@@ -1277,9 +1292,15 @@ async def process_stem_separation(ctx: inngest.Context) -> Dict[str, Any]:
     9. Update database
     10. Clean up temp files
     """
-    event_data = ctx.event.data
-    stem_ids = event_data.get("stem_ids", [])
-    sample_id = event_data.get("sample_id")
+    # Validate event data
+    try:
+        event_data = StemSeparationEventData(**ctx.event.data)
+    except Exception as e:
+        logger.error(f"Invalid event data for stem separation: {e}")
+        raise ValueError(f"Invalid event data: {e}")
+
+    stem_ids = [str(stem_id) for stem_id in event_data.stem_ids]
+    sample_id = str(event_data.sample_id)
 
     logger.info(f"Processing stem separation for sample {sample_id}, stems: {stem_ids}")
 

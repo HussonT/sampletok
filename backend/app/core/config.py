@@ -73,6 +73,7 @@ class Settings(BaseSettings):
     # Rate Limiting
     COLLECTION_RATE_LIMIT_PER_MINUTE: int = 10  # Max collection processing requests per minute per user
     COLLECTIONS_LIST_RATE_LIMIT_PER_MINUTE: int = 60  # Max collection list requests per minute per user
+    STEM_SEPARATION_RATE_LIMIT_PER_MINUTE: int = 5  # Max stem separation requests per minute per user
 
     # Audio Processing
     AUDIO_SAMPLE_RATE: int = 48000
@@ -111,6 +112,9 @@ class Settings(BaseSettings):
     TIER_CREDITS_BASIC: int = 100  # Monthly credits for Basic tier
     TIER_CREDITS_PRO: int = 400  # Monthly credits for Pro tier
     TIER_CREDITS_ULTIMATE: int = 1500  # Monthly credits for Ultimate tier
+
+    # Feature Credit Costs
+    CREDITS_PER_STEM: int = 2  # Cost per stem separation
 
     # Top-Up Discounts by Tier (percentage as decimal, e.g., 0.10 = 10% off)
     TIER_DISCOUNT_BASIC: float = 0.0  # No discount for Basic

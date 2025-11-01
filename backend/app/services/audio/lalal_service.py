@@ -7,6 +7,15 @@ from typing import Dict, List, Optional
 import os
 
 from app.core.config import settings
+from app.services.audio.exceptions import (
+    LalalAIException,
+    LalalAPIKeyError,
+    LalalRateLimitError,
+    LalalQuotaExceededError,
+    LalalFileError,
+    LalalProcessingError,
+    LalalTimeoutError
+)
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +33,51 @@ class LalalAIService:
         self.headers = {
             "Authorization": f"license {self.api_key}"
         }
+
+    def _parse_http_error(self, error: httpx.HTTPError) -> LalalAIException:
+        """
+        Parse HTTP errors from La La AI API and return appropriate custom exception.
+
+        Args:
+            error: HTTPError from httpx
+
+        Returns:
+            Appropriate LalalAIException subclass
+        """
+        status_code = None
+        response_body = None
+
+        if hasattr(error, 'response') and error.response:
+            status_code = error.response.status_code
+            try:
+                response_body = error.response.text
+                response_json = error.response.json()
+                error_message = response_json.get('error', str(error))
+            except Exception:
+                error_message = response_body or str(error)
+        else:
+            error_message = str(error)
+
+        # Map status codes to specific exceptions
+        if status_code == 401 or status_code == 403:
+            return LalalAPIKeyError(f"Authentication failed: {error_message}")
+        elif status_code == 429:
+            retry_after = None
+            if hasattr(error, 'response') and error.response:
+                retry_after = error.response.headers.get('Retry-After')
+            return LalalRateLimitError(error_message, retry_after=retry_after)
+        elif status_code == 402:
+            return LalalQuotaExceededError(error_message)
+        elif status_code == 400:
+            return LalalFileError(error_message, status_code=400)
+        elif status_code == 413:
+            return LalalFileError("File size exceeds maximum allowed", status_code=413)
+        elif status_code == 504 or status_code == 408:
+            return LalalTimeoutError(error_message)
+        elif status_code and status_code >= 500:
+            return LalalProcessingError(f"La La AI server error: {error_message}", status_code=status_code)
+        else:
+            return LalalAIException(error_message, status_code=status_code, response_body=response_body)
 
     async def upload_file(self, file_path: str) -> str:
         """
@@ -77,18 +131,28 @@ class LalalAIService:
                 data = response.json()
 
                 if data.get('status') != 'success':
-                    raise Exception(f"Upload failed: {data.get('error', 'Unknown error')}")
+                    error_msg = data.get('error', 'Unknown error')
+                    raise LalalFileError(f"Upload failed: {error_msg}")
 
                 file_id = data.get('id')
                 logger.info(f"Successfully uploaded file to La La AI: {file_id}")
                 return file_id
 
+        except httpx.TimeoutException as e:
+            logger.error(f"Timeout uploading file to La La AI: {str(e)}")
+            raise LalalTimeoutError("File upload timed out")
         except httpx.HTTPError as e:
             logger.error(f"HTTP error uploading file to La La AI: {str(e)}")
+            if hasattr(e, 'response') and e.response:
+                logger.error(f"Response status: {e.response.status_code}")
+                logger.error(f"Response body: {e.response.text}")
+            raise self._parse_http_error(e)
+        except LalalAIException:
+            # Re-raise custom exceptions
             raise
         except Exception as e:
-            logger.error(f"Error uploading file to La La AI: {str(e)}")
-            raise
+            logger.error(f"Unexpected error uploading file to La La AI: {str(e)}")
+            raise LalalProcessingError(f"File upload failed: {str(e)}")
 
     async def submit_separation(
         self,
@@ -157,7 +221,7 @@ class LalalAIService:
                 if data.get('status') != 'success':
                     error_msg = data.get('error', 'Unknown error')
                     logger.error(f"Split submission failed: {error_msg}")
-                    raise Exception(f"Split submission failed: {error_msg}")
+                    raise LalalProcessingError(f"Split submission failed: {error_msg}")
 
                 # API returns 'task_id' as comma-separated string (optional field)
                 task_id = data.get('task_id', '')
@@ -170,15 +234,21 @@ class LalalAIService:
                     'task_id': task_id
                 }
 
+        except httpx.TimeoutException as e:
+            logger.error(f"Timeout submitting separation to La La AI: {str(e)}")
+            raise LalalTimeoutError("Stem separation submission timed out")
         except httpx.HTTPError as e:
             logger.error(f"HTTP error submitting separation to La La AI: {str(e)}")
             if hasattr(e, 'response') and e.response:
                 logger.error(f"Response status: {e.response.status_code}")
                 logger.error(f"Response body: {e.response.text}")
+            raise self._parse_http_error(e)
+        except LalalAIException:
+            # Re-raise custom exceptions
             raise
         except Exception as e:
-            logger.error(f"Error submitting separation to La La AI: {str(e)}")
-            raise
+            logger.error(f"Unexpected error submitting separation to La La AI: {str(e)}")
+            raise LalalProcessingError(f"Stem separation submission failed: {str(e)}")
 
     async def check_task_status(self, file_id: str) -> Dict:
         """

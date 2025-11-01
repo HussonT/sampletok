@@ -58,6 +58,14 @@ def validate_production_config():
             "operations including subscriptions and payments."
         )
 
+    # Critical: La La AI API Key (required for stem separation feature)
+    if not settings.LALAL_API_KEY:
+        errors.append(
+            "LALAL_API_KEY is not configured. This is required for stem separation "
+            "functionality. If you don't plan to use stem separation, you can ignore this, "
+            "but the feature will not work."
+        )
+
     # Warning: Stripe Price IDs (subscriptions won't work without these)
     if not settings.STRIPE_PRICE_BASIC_MONTHLY:
         logger.warning("STRIPE_PRICE_BASIC_MONTHLY not configured - subscription creation will fail")

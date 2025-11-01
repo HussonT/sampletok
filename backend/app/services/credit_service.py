@@ -230,7 +230,8 @@ class CreditService:
         transaction_type: str = "deduction",
         description: Optional[str] = None,
         collection_id: Optional[UUID] = None,
-        sample_id: Optional[UUID] = None
+        sample_id: Optional[UUID] = None,
+        stem_id: Optional[UUID] = None
     ) -> bool:
         """
         Atomically deduct credits from user account using database-level atomic operation.
@@ -245,6 +246,7 @@ class CreditService:
             description: Optional description of the deduction
             collection_id: Optional collection reference
             sample_id: Optional sample reference
+            stem_id: Optional stem reference
 
         Returns:
             True if credits were successfully deducted, False if insufficient credits
@@ -285,6 +287,7 @@ class CreditService:
                     description=description or f"Deducted {credits_needed} credits",
                     collection_id=collection_id,
                     sample_id=sample_id,
+                    stem_id=stem_id,
                     status='completed',
                     completed_at=utcnow_naive()
                 )
@@ -306,7 +309,8 @@ class CreditService:
         credits_to_refund: int,
         description: Optional[str] = None,
         collection_id: Optional[UUID] = None,
-        sample_id: Optional[UUID] = None
+        sample_id: Optional[UUID] = None,
+        stem_id: Optional[UUID] = None
     ) -> None:
         """
         Atomically refund credits to user account.
@@ -319,6 +323,7 @@ class CreditService:
             description: Optional description of the refund
             collection_id: Optional collection reference
             sample_id: Optional sample reference
+            stem_id: Optional stem reference
         """
         if credits_to_refund <= 0:
             logger.warning(f"Attempted to refund {credits_to_refund} credits to user {user_id} - skipping")
@@ -349,6 +354,7 @@ class CreditService:
                     description=description or f"Refunded {credits_to_refund} credits",
                     collection_id=collection_id,
                     sample_id=sample_id,
+                    stem_id=stem_id,
                     status='completed',
                     completed_at=utcnow_naive()
                 )

@@ -10,6 +10,7 @@ import inngest
 
 from app.core.database import get_db, AsyncSessionLocal
 from app.core.config import settings
+from app.core.rate_limit import limiter
 from app.models import Sample, ProcessingStatus, Stem, StemType, StemProcessingStatus, UserStemFavorite
 from app.models.user import UserStemDownload
 from app.models.user import User
@@ -22,9 +23,6 @@ from app.inngest_functions import inngest_client
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-# Constants
-CREDITS_PER_STEM = 2
 
 
 # Request/Response models
@@ -69,6 +67,7 @@ class FavoriteResponse(BaseModel):
 
 
 @router.post("/{sample_id}/separate-stems", response_model=StemSeparationResponse)
+@limiter.limit(f"{settings.STEM_SEPARATION_RATE_LIMIT_PER_MINUTE}/minute")
 async def submit_stem_separation(
     sample_id: UUID,
     request: StemSeparationRequest,
@@ -119,7 +118,7 @@ async def submit_stem_separation(
 
     # Calculate credits needed
     num_stems = len(request.stems)
-    credits_needed = num_stems * CREDITS_PER_STEM
+    credits_needed = num_stems * settings.CREDITS_PER_STEM
 
     # Check and deduct credits atomically
     try:
@@ -308,8 +307,16 @@ async def download_stem(
             detail="download_type must be 'wav' or 'mp3'"
         )
 
-    # Get stem
-    stem = await db.execute(select(Stem).where(Stem.id == stem_id))
+    # Get stem with parent sample and TikTok creator relationships
+    from sqlalchemy.orm import selectinload
+    stem_query = (
+        select(Stem)
+        .where(Stem.id == stem_id)
+        .options(
+            selectinload(Stem.parent_sample).selectinload(Sample.tiktok_creator)
+        )
+    )
+    stem = await db.execute(stem_query)
     stem = stem.scalars().first()
 
     if not stem:
@@ -400,7 +407,25 @@ async def download_stem(
 
         # Determine content type and filename
         content_type = "audio/mpeg" if download_type == "mp3" else "audio/wav"
-        filename = f"{stem.stem_type.value}_{stem.parent_sample_id}.{download_type}"
+
+        # Format filename: {bpm}bpm_{key}_{artist_username}_{stem_type}.{extension}
+        parent_sample = stem.parent_sample
+        bpm = parent_sample.bpm or "unknown"
+        key = parent_sample.key or "unknown"
+
+        # Get artist username from TikTok creator or fall back to creator_username field
+        if parent_sample.tiktok_creator:
+            artist_username = parent_sample.tiktok_creator.username
+        elif parent_sample.creator_username:
+            artist_username = parent_sample.creator_username
+        else:
+            artist_username = "unknown"
+
+        # Sanitize username for filename (remove special characters)
+        import re
+        artist_username = re.sub(r'[^\w\-_]', '_', artist_username)
+
+        filename = f"{bpm}bpm_{key}_{artist_username}_{stem.stem_type.value}.{download_type}"
 
         return StreamingResponse(
             stream_file(),

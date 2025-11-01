@@ -144,7 +144,7 @@ export function StemSeparationModal({
           {/* Disclaimer */}
           <div className="rounded-lg bg-muted/50 p-3 text-sm text-muted-foreground">
             <p className="leading-relaxed">
-              💡 <span className="font-medium">Pro tip:</span> Results aren't always perfect! Start with the stems you really need,
+              💡 <span className="font-medium">Pro tip:</span> Results aren&apos;t always perfect! Start with the stems you really need,
               then come back to grab more based on how the first ones turn out.
             </p>
           </div>

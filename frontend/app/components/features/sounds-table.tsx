@@ -331,7 +331,7 @@ export function SoundsTable({
     }
   };
 
-  const handleStemDownload = async (stem: Stem, format: 'wav' | 'mp3' = 'mp3') => {
+  const handleStemDownload = async (stem: Stem, format: 'wav' | 'mp3' = 'wav') => {
     // Open Clerk sign-up modal if not authenticated
     if (!isSignedIn) {
       const currentUrl = window.location.pathname + window.location.search;
@@ -969,7 +969,7 @@ export function SoundsTable({
 
                       {/* Audio Download */}
                       <td className="py-2 px-4">
-                        {stem.status === StemProcessingStatus.COMPLETED && stem.download_url_mp3 ? (
+                        {stem.status === StemProcessingStatus.COMPLETED && stem.download_url_wav ? (
                           <TooltipProvider>
                             <Tooltip>
                               <TooltipTrigger asChild>
@@ -977,7 +977,7 @@ export function SoundsTable({
                                   variant="ghost"
                                   size="sm"
                                   className={`p-0 w-8 h-8 ${stem.is_downloaded ? 'text-pink-500 hover:text-pink-600' : ''}`}
-                                  onClick={() => handleStemDownload(stem, 'mp3')}
+                                  onClick={() => handleStemDownload(stem, 'wav')}
                                   disabled={downloadingStem === stem.id}
                                 >
                                   {downloadingStem === stem.id ? (
@@ -990,8 +990,8 @@ export function SoundsTable({
                               <TooltipContent>
                                 <p className="text-xs">
                                   {stem.is_downloaded
-                                    ? 'Download MP3 again (Free - Already purchased)'
-                                    : 'Download MP3 (1 credit)'}
+                                    ? 'Download WAV again (Free - Already purchased)'
+                                    : 'Download WAV (1 credit)'}
                                 </p>
                               </TooltipContent>
                             </Tooltip>
