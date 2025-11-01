@@ -5,6 +5,7 @@ from datetime import datetime
 import uuid
 
 from app.core.database import Base
+from app.utils import utcnow_naive
 
 
 class CreditTransaction(Base):
@@ -74,8 +75,8 @@ class CreditTransaction(Base):
     error_message = Column(Text, nullable=True)
 
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utcnow_naive, nullable=False)
+    updated_at = Column(DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)
     completed_at = Column(DateTime, nullable=True)
 
     # Relationships

@@ -3,6 +3,7 @@ from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Enum as SQ
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from app.core.database import Base
+from app.utils import utcnow_naive
 import enum
 import uuid
 
@@ -35,7 +36,7 @@ class Collection(Base):
     error_message = Column(String, nullable=True)  # Error details if failed
 
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    created_at = Column(DateTime, default=utcnow_naive, nullable=False, index=True)
     started_at = Column(DateTime, nullable=True)  # When processing started
     completed_at = Column(DateTime, nullable=True)  # When processing completed
 
@@ -57,7 +58,7 @@ class CollectionSample(Base):
     collection_id = Column(UUID(as_uuid=True), ForeignKey("collections.id", ondelete="CASCADE"), nullable=False, index=True)
     sample_id = Column(UUID(as_uuid=True), ForeignKey("samples.id", ondelete="CASCADE"), nullable=False, index=True)
     position = Column(Integer, nullable=False)  # Order in the collection (0-based)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utcnow_naive, nullable=False)
 
     # Relationships
     collection = relationship("Collection", back_populates="collection_samples")

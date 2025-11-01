@@ -263,6 +263,31 @@ async def process_collection(
 
                 # New videos found - sync them
                 # Deduct credits only for new videos atomically
+                #
+                # KNOWN ISSUE: TOCTOU (Time-Of-Check-Time-Of-Use) Race Condition
+                # =================================================================
+                # The subscription is checked early in the request (via require_active_subscription dependency),
+                # but credit deduction happens here, potentially seconds later. Theoretically, the subscription
+                # could be cancelled between the check and the deduction.
+                #
+                # IMPACT ANALYSIS:
+                # 1. Subscription cancellations are rare during active processing
+                # 2. Atomic credit operations (with_for_update) prevent double-spending
+                # 3. Worst case: User loses subscription mid-request, gets charged credits anyway
+                # 4. This is an acceptable edge case given the complexity of adding re-checks
+                #
+                # MITIGATION:
+                # - Credit deductions use database-level locks (atomic operations)
+                # - Complete audit trail via CreditTransaction allows manual review
+                # - Subscription status is refreshed on next request
+                #
+                # ALTERNATIVE CONSIDERED AND REJECTED:
+                # Re-checking subscription status before every credit deduction would:
+                # - Add N extra database queries per request
+                # - Increase complexity and potential for deadlocks
+                # - Provide minimal benefit for an extremely rare edge case
+                #
+                # DECISION: Accept this known limitation. Document it clearly for future maintainers.
                 if not await deduct_credits_atomic(db, current_user.id, new_videos):
                     # Refresh user to get current credit balance for error message
                     # Note: There's a minor TOCTOU here - balance could change between deduction and refresh

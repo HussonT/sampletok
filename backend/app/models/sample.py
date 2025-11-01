@@ -6,6 +6,7 @@ import uuid
 import enum
 
 from app.core.database import Base
+from app.utils import utcnow_naive
 
 
 class ProcessingStatus(enum.Enum):
@@ -70,8 +71,8 @@ class Sample(Base):
     # TikTok creator relationship
     tiktok_creator_id = Column(UUID(as_uuid=True), ForeignKey('tiktok_creators.id'), nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow_naive, index=True)
+    updated_at = Column(DateTime, default=utcnow_naive, onupdate=utcnow_naive)
 
     # Relationships
     creator = relationship("User", back_populates="samples", foreign_keys=[creator_id])

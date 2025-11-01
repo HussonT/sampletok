@@ -59,14 +59,16 @@ async def reset_user_collections(
     """
     Emergency endpoint to reset all stuck collections for a user and refund credits.
 
-    Requires X-Admin-Key header matching SECRET_KEY for security.
+    Requires X-Admin-Key header matching ADMIN_API_KEY for security.
 
     Example:
         POST /api/v1/admin/reset-user-collections?clerk_id=user_2abc123def456
-        X-Admin-Key: your-secret-key
+        X-Admin-Key: your-admin-api-key
     """
     # Verify admin key
-    if x_admin_key != settings.SECRET_KEY:
+    if not settings.ADMIN_API_KEY:
+        raise HTTPException(status_code=503, detail="Admin API not configured")
+    if x_admin_key != settings.ADMIN_API_KEY:
         raise HTTPException(status_code=403, detail="Invalid admin key")
 
     logger.info(f"Admin: Resetting collections for Clerk ID {clerk_id}")
@@ -153,14 +155,16 @@ async def reset_collection_by_id(
     """
     Emergency endpoint to reset a specific collection and refund credits.
 
-    Requires X-Admin-Key header matching SECRET_KEY for security.
+    Requires X-Admin-Key header matching ADMIN_API_KEY for security.
 
     Example:
         POST /api/v1/admin/reset-collection/2a3960d1-f762-4947-8f50-f2a736dd1bf6
-        X-Admin-Key: your-secret-key
+        X-Admin-Key: your-admin-api-key
     """
     # Verify admin key
-    if x_admin_key != settings.SECRET_KEY:
+    if not settings.ADMIN_API_KEY:
+        raise HTTPException(status_code=503, detail="Admin API not configured")
+    if x_admin_key != settings.ADMIN_API_KEY:
         raise HTTPException(status_code=403, detail="Invalid admin key")
 
     logger.info(f"Admin: Resetting collection {collection_id}")
@@ -233,18 +237,20 @@ async def add_credits(
     """
     Add credits to a user's account by their Clerk ID.
 
-    Requires X-Admin-Key header matching SECRET_KEY for security.
+    Requires X-Admin-Key header matching ADMIN_API_KEY for security.
 
     Example:
         POST /api/v1/admin/add-credits
-        X-Admin-Key: your-secret-key
+        X-Admin-Key: your-admin-api-key
         {
             "clerk_id": "user_2abc123def456",
             "credits": 100
         }
     """
     # Verify admin key
-    if x_admin_key != settings.SECRET_KEY:
+    if not settings.ADMIN_API_KEY:
+        raise HTTPException(status_code=503, detail="Admin API not configured")
+    if x_admin_key != settings.ADMIN_API_KEY:
         raise HTTPException(status_code=403, detail="Invalid admin key")
 
     if request.credits <= 0:
@@ -297,7 +303,7 @@ async def refund_credits(
     Creates a proper CreditTransaction record for tracking and reconciliation.
     Use this for manual refunds when automated systems fail.
 
-    Requires X-Admin-Key header matching SECRET_KEY for security.
+    Requires X-Admin-Key header matching ADMIN_API_KEY for security.
 
     Args:
         clerk_id: User's Clerk ID
@@ -308,7 +314,7 @@ async def refund_credits(
 
     Example:
         POST /api/v1/admin/refund-credits
-        X-Admin-Key: your-secret-key
+        X-Admin-Key: your-admin-api-key
         {
             "clerk_id": "user_2abc123def456",
             "credits": 50,
@@ -317,7 +323,9 @@ async def refund_credits(
         }
     """
     # Verify admin key
-    if x_admin_key != settings.SECRET_KEY:
+    if not settings.ADMIN_API_KEY:
+        raise HTTPException(status_code=503, detail="Admin API not configured")
+    if x_admin_key != settings.ADMIN_API_KEY:
         raise HTTPException(status_code=403, detail="Invalid admin key")
 
     if request.credits <= 0:

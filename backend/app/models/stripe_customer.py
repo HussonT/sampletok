@@ -5,6 +5,7 @@ from datetime import datetime
 import uuid
 
 from app.core.database import Base
+from app.utils import utcnow_naive
 
 
 class StripeCustomer(Base):
@@ -29,8 +30,8 @@ class StripeCustomer(Base):
     name = Column(String(255), nullable=True)
 
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utcnow_naive, nullable=False)
+    updated_at = Column(DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)
 
     # Relationships
     user = relationship("User", back_populates="stripe_customer")

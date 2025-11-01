@@ -10,9 +10,13 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.models.tiktok_creator import TikTokCreator
+from app.utils import utcnow_naive
 from app.services.tiktok.downloader import TikTokDownloader
+from app.utils import utcnow_naive
 from app.services.storage.s3 import S3Storage
+from app.utils import utcnow_naive
 from app.core.config import settings
+from app.utils import utcnow_naive
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +84,7 @@ class CreatorService:
         if not creator.last_fetched_at:
             return False
 
-        age = datetime.utcnow() - creator.last_fetched_at
+        age = utcnow_naive() - creator.last_fetched_at
         return age < CREATOR_CACHE_TTL
 
     async def _create_creator(self, data: Dict[str, Any]) -> TikTokCreator:
@@ -96,7 +100,7 @@ class CreatorService:
             following_count=data.get('creator_following_count', 0),
             heart_count=data.get('creator_heart_count', 0),
             video_count=data.get('creator_video_count', 0),
-            last_fetched_at=datetime.utcnow()
+            last_fetched_at=utcnow_naive()
         )
 
         self.db.add(creator)
@@ -134,7 +138,7 @@ class CreatorService:
         creator.following_count = data.get('creator_following_count', creator.following_count)
         creator.heart_count = data.get('creator_heart_count', creator.heart_count)
         creator.video_count = data.get('creator_video_count', creator.video_count)
-        creator.last_fetched_at = datetime.utcnow()
+        creator.last_fetched_at = utcnow_naive()
 
         # Download and upload new avatars to our storage
         storage = S3Storage()

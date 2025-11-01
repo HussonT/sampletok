@@ -5,6 +5,7 @@ from datetime import datetime
 import uuid
 
 from app.core.database import Base
+from app.utils import utcnow_naive
 
 
 class User(Base):
@@ -23,8 +24,8 @@ class User(Base):
     is_deleted = Column(Boolean, default=False, nullable=False)
     deleted_at = Column(DateTime, nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow_naive)
+    updated_at = Column(DateTime, default=utcnow_naive, onupdate=utcnow_naive)
 
     # Relationships
     samples = relationship("Sample", back_populates="creator", cascade="all, delete-orphan")
@@ -57,7 +58,7 @@ class UserDownload(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     sample_id = Column(UUID(as_uuid=True), ForeignKey("samples.id", ondelete="CASCADE"), nullable=False)
     download_type = Column(String, nullable=False)  # "wav" or "mp3"
-    downloaded_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    downloaded_at = Column(DateTime, default=utcnow_naive, nullable=False)
 
     # Relationships
     user = relationship("User", back_populates="downloads")
@@ -77,7 +78,7 @@ class UserFavorite(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     sample_id = Column(UUID(as_uuid=True), ForeignKey("samples.id", ondelete="CASCADE"), nullable=False)
-    favorited_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    favorited_at = Column(DateTime, default=utcnow_naive, nullable=False)
 
     # Relationships
     user = relationship("User", back_populates="favorites")

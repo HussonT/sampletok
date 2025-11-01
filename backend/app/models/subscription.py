@@ -5,6 +5,7 @@ from datetime import datetime
 import uuid
 
 from app.core.database import Base
+from app.utils import utcnow_naive
 
 
 class Subscription(Base):
@@ -48,8 +49,8 @@ class Subscription(Base):
     currency = Column(String(3), default='USD', nullable=False)
 
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utcnow_naive, nullable=False)
+    updated_at = Column(DateTime, default=utcnow_naive, onupdate=utcnow_naive, nullable=False)
     cancelled_at = Column(DateTime, nullable=True)
 
     # Relationships

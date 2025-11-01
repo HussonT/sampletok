@@ -18,6 +18,7 @@ from sqlalchemy.exc import OperationalError, DatabaseError, IntegrityError
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.services.subscription_service import SubscriptionService
+from app.exceptions import BusinessLogicError, TransientError, ConfigurationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
@@ -66,7 +67,10 @@ async def stripe_webhook_handler(
 
     if not settings.STRIPE_WEBHOOK_SECRET:
         logger.error("❌ STRIPE_WEBHOOK_SECRET not configured")
-        raise HTTPException(status_code=500, detail="Webhook secret not configured")
+        raise ConfigurationError(
+            "STRIPE_WEBHOOK_SECRET not configured - webhook processing cannot continue",
+            config_key="STRIPE_WEBHOOK_SECRET"
+        )
 
     try:
         # Construct and verify event
@@ -130,8 +134,56 @@ async def stripe_webhook_handler(
 
         logger.info(f"Webhook processed successfully: {event_type} (ID: {event.id})")
 
+    except BusinessLogicError as e:
+        # ⚠️ BUSINESS LOGIC ERROR: Invalid data, duplicate subscription, etc.
+        # Return 200 - these are permanent errors, retry won't help
+        logger.warning(
+            f"⚠️ BUSINESS LOGIC ERROR in webhook {event_type}: {e.message}",
+            extra={
+                "event_id": event.id,
+                "event_type": event_type,
+                "error_details": e.details
+            }
+        )
+        # Return success so Stripe doesn't retry - this is a permanent error
+
+    except TransientError as e:
+        # 🚨 TRANSIENT ERROR: Temporary issue that might succeed on retry
+        # Return 500 so Stripe retries with exponential backoff
+        logger.error(
+            f"❌ TRANSIENT ERROR processing webhook {event_type}: {e.message}",
+            exc_info=True,
+            extra={
+                "event_id": event.id,
+                "event_type": event_type,
+                "error_details": e.details,
+                "original_exception": str(e.original_exception) if e.original_exception else None
+            }
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Transient error processing webhook. Stripe will retry."
+        )
+
+    except ConfigurationError as e:
+        # 🔧 CONFIGURATION ERROR: Missing API keys, etc.
+        # This should have been caught by startup validation, but handle it gracefully
+        logger.error(
+            f"❌ CONFIGURATION ERROR processing webhook {event_type}: {e.message}",
+            extra={
+                "event_id": event.id,
+                "event_type": event_type,
+                "config_key": e.config_key
+            }
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Configuration error: {e.message}"
+        )
+
     except (OperationalError, DatabaseError) as e:
         # 🚨 INFRASTRUCTURE ERROR: Database connection/query failure
+        # Wrap as TransientError for consistent handling
         # Return 500 so Stripe retries (these are transient errors)
         logger.error(
             f"❌ DATABASE ERROR processing webhook {event_type}: {e}",
@@ -142,15 +194,6 @@ async def stripe_webhook_handler(
             status_code=500,
             detail=f"Database error processing webhook. Stripe will retry."
         )
-
-    except ValueError as e:
-        # ⚠️ BUSINESS LOGIC ERROR: Invalid data, duplicate subscription, etc.
-        # Return 200 - these are not transient and retry won't help
-        logger.warning(
-            f"⚠️ BUSINESS LOGIC ERROR in webhook {event_type}: {e}",
-            extra={"event_id": event.id, "event_type": event_type}
-        )
-        # Return success so Stripe doesn't retry
 
     except stripe.error.StripeError as e:
         # 🚨 STRIPE API ERROR: Failed to fetch subscription details, etc.

@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     APP_VERSION: str = "0.1.0"
     DEBUG: bool = True
     SECRET_KEY: str
+    ADMIN_API_KEY: Optional[str] = None  # Separate key for admin endpoints (required in production)
     ENVIRONMENT: str = "development"
 
     # API

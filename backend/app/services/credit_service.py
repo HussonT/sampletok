@@ -21,6 +21,7 @@ from sqlalchemy.exc import IntegrityError
 from app.models.user import User
 from app.models.credit_transaction import CreditTransaction
 from app.models.subscription import Subscription
+from app.utils import utcnow_naive
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +86,14 @@ class CreditService:
                     .where(User.id == user_id)
                     .with_for_update()  # SELECT FOR UPDATE
                 )
-                user = result.scalar_one()
+                user = result.scalar_one_or_none()
+
+                if not user:
+                    from app.exceptions import BusinessLogicError
+                    raise BusinessLogicError(
+                        f"User not found: {user_id}. Cannot add credits to non-existent user.",
+                        details={"user_id": str(user_id)}
+                    )
 
                 # 🔍 IDEMPOTENCY CHECK: Has this exact transaction been processed?
                 if stripe_invoice_id:
@@ -187,7 +195,7 @@ class CreditService:
                     discount_applied=discount_applied,
                     amount_cents=amount_cents,
                     status='completed',
-                    completed_at=datetime.utcnow()
+                    completed_at=utcnow_naive()
                 )
 
                 self.db.add(transaction)
@@ -278,7 +286,7 @@ class CreditService:
                     collection_id=collection_id,
                     sample_id=sample_id,
                     status='completed',
-                    completed_at=datetime.utcnow()
+                    completed_at=utcnow_naive()
                 )
 
                 self.db.add(transaction)
@@ -342,7 +350,7 @@ class CreditService:
                     collection_id=collection_id,
                     sample_id=sample_id,
                     status='completed',
-                    completed_at=datetime.utcnow()
+                    completed_at=utcnow_naive()
                 )
 
                 self.db.add(transaction)

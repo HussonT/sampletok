@@ -22,6 +22,8 @@ from app.models.user import User
 from app.models.subscription import Subscription
 from app.models.stripe_customer import StripeCustomer
 from app.models.credit_transaction import CreditTransaction
+from app.exceptions import BusinessLogicError, TransientError
+from app.utils import utcnow, utcnow_naive, timestamp_to_datetime
 
 # Initialize Stripe with secret key
 if settings.STRIPE_SECRET_KEY:
@@ -185,7 +187,7 @@ class SubscriptionService:
                 # Cancel immediately
                 stripe.Subscription.cancel(subscription.stripe_subscription_id)
                 subscription.status = "cancelled"
-                subscription.cancelled_at = datetime.utcnow()
+                subscription.cancelled_at = utcnow_naive()
                 logger.info(f"Immediately cancelled subscription {subscription.id}")
 
             await self.db.commit()
@@ -338,7 +340,10 @@ class SubscriptionService:
         user_id_str = stripe_subscription_dict["metadata"].get("user_id")
         if not user_id_str:
             logger.error("user_id not found in subscription metadata")
-            raise ValueError("user_id not found in subscription metadata")
+            raise BusinessLogicError(
+                "user_id not found in subscription metadata",
+                details={"subscription_id": stripe_subscription_dict.get("id")}
+            )
 
         user_id = UUID(user_id_str)
 
@@ -375,7 +380,7 @@ class SubscriptionService:
         # Calculate period_end if not provided (happens with incomplete subscriptions)
         if not period_end and period_start:
             from dateutil.relativedelta import relativedelta
-            start_dt = datetime.fromtimestamp(period_start)
+            start_dt = timestamp_to_datetime(period_start)
             billing_interval = price_data["recurring"]["interval"]
             if billing_interval == "month":
                 end_dt = start_dt + relativedelta(months=1)
@@ -396,8 +401,8 @@ class SubscriptionService:
                 billing_interval=price_data["recurring"]["interval"],
                 monthly_credits=monthly_credits,
                 status=stripe_subscription_dict["status"],
-                current_period_start=datetime.fromtimestamp(period_start) if period_start else datetime.utcnow(),
-                current_period_end=datetime.fromtimestamp(period_end) if period_end else datetime.utcnow() + relativedelta(months=1),
+                current_period_start=timestamp_to_datetime(period_start) if period_start else utcnow(),
+                current_period_end=timestamp_to_datetime(period_end) if period_end else utcnow() + relativedelta(months=1),
                 amount_cents=price_data["unit_amount"],
                 currency=price_data["currency"].upper(),
                 cancel_at_period_end=stripe_subscription_dict.get("cancel_at_period_end", False)
@@ -506,8 +511,8 @@ class SubscriptionService:
             line_item = stripe_invoice_dict["lines"]["data"][0]
             if line_item.get("period"):
                 period = line_item["period"]
-                subscription.current_period_start = datetime.fromtimestamp(period["start"])
-                subscription.current_period_end = datetime.fromtimestamp(period["end"])
+                subscription.current_period_start = timestamp_to_datetime(period["start"])
+                subscription.current_period_end = timestamp_to_datetime(period["end"])
                 logger.info(
                     f"Updated subscription {subscription.id} period: "
                     f"{subscription.current_period_start} to {subscription.current_period_end}"
@@ -555,8 +560,8 @@ class SubscriptionService:
             logger.info(f"Subscription tier changed: {old_tier} → {new_tier} for subscription {subscription.id}")
 
         # Update period
-        subscription.current_period_start = datetime.fromtimestamp(stripe_subscription_dict["current_period_start"])
-        subscription.current_period_end = datetime.fromtimestamp(stripe_subscription_dict["current_period_end"])
+        subscription.current_period_start = timestamp_to_datetime(stripe_subscription_dict["current_period_start"])
+        subscription.current_period_end = timestamp_to_datetime(stripe_subscription_dict["current_period_end"])
 
         await self.db.commit()
 
@@ -607,7 +612,7 @@ class SubscriptionService:
 
         # Update subscription
         subscription.status = "cancelled"
-        subscription.cancelled_at = datetime.utcnow()
+        subscription.cancelled_at = utcnow_naive()
 
         # Create transaction record for audit trail
         from app.services.credit_service import CreditService
@@ -622,7 +627,7 @@ class SubscriptionService:
             new_balance=0,
             description=f"Subscription cancelled - all credits reset",
             status='completed',
-            completed_at=datetime.utcnow()
+            completed_at=utcnow_naive()
         )
 
         self.db.add(transaction)
@@ -703,8 +708,12 @@ class SubscriptionService:
         Args:
             checkout_session_dict: Stripe checkout session object as dict
         """
+        session_id = checkout_session_dict.get('id', 'unknown')
+        mode = checkout_session_dict.get('mode')
+
         # Check if this is a top-up purchase (mode = 'payment', not 'subscription')
-        if checkout_session_dict.get('mode') != 'payment':
+        if mode != 'payment':
+            logger.debug(f"Skipping checkout session {session_id}: mode={mode} (expected 'payment')")
             return
 
         # Get metadata
@@ -712,7 +721,10 @@ class SubscriptionService:
         purchase_type = metadata.get('type')
 
         if purchase_type != 'top_up':
+            logger.debug(f"Skipping checkout session {session_id}: type={purchase_type} (expected 'top_up')")
             return
+
+        logger.info(f"Processing top-up purchase from checkout session {session_id}")
 
         # Extract purchase details from metadata
         user_id_str = metadata.get('user_id')
@@ -721,15 +733,35 @@ class SubscriptionService:
         discount_percent = float(metadata.get('discount_percent', 0.0))
 
         if not user_id_str or not package or credits == 0:
-            logger.error(f"Invalid top-up metadata in checkout session {checkout_session_dict.get('id')}")
-            return
+            error_msg = (
+                f"Invalid top-up metadata in checkout session {session_id}: "
+                f"user_id={user_id_str}, package={package}, credits={credits}"
+            )
+            logger.error(error_msg)
+            raise BusinessLogicError(error_msg, details={
+                "session_id": session_id,
+                "metadata": metadata
+            })
 
-        user_id = UUID(user_id_str)
+        try:
+            user_id = UUID(user_id_str)
+        except (ValueError, AttributeError) as e:
+            error_msg = f"Invalid user_id format in checkout session {session_id}: {user_id_str}"
+            logger.error(error_msg)
+            raise BusinessLogicError(error_msg, details={
+                "session_id": session_id,
+                "user_id_str": user_id_str
+            })
 
         # Get IDs for idempotency (both session and payment intent)
         checkout_session_id = checkout_session_dict.get('id')
         payment_intent_id = checkout_session_dict.get('payment_intent')
         amount_paid = checkout_session_dict.get('amount_total')  # In cents
+
+        logger.info(
+            f"Granting top-up credits: user_id={user_id}, package={package}, "
+            f"credits={credits}, amount={amount_paid}¢"
+        )
 
         # Grant credits using CreditService (with idempotency)
         from app.services.credit_service import CreditService

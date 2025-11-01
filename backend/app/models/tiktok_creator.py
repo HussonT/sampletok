@@ -5,6 +5,7 @@ from datetime import datetime
 import uuid
 
 from app.core.database import Base
+from app.utils import utcnow_naive
 
 
 class TikTokCreator(Base):
@@ -33,10 +34,10 @@ class TikTokCreator(Base):
     video_count = Column(Integer, default=0)  # Total videos posted
 
     # Cache management
-    last_fetched_at = Column(DateTime, default=datetime.utcnow)  # When stats were last updated
+    last_fetched_at = Column(DateTime, default=utcnow_naive)  # When stats were last updated
 
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=utcnow_naive, index=True)
+    updated_at = Column(DateTime, default=utcnow_naive, onupdate=utcnow_naive)
 
     # Relationships
     samples = relationship("Sample", back_populates="tiktok_creator")
