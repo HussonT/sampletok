@@ -58,20 +58,24 @@ def utcnow_naive() -> datetime:
 
 def timestamp_to_datetime(timestamp: int) -> datetime:
     """
-    Convert Unix timestamp to timezone-aware UTC datetime.
+    Convert Unix timestamp to timezone-naive UTC datetime.
+
+    Use this when storing Stripe timestamps in database columns that are
+    TIMESTAMP WITHOUT TIME ZONE (the default in PostgreSQL).
 
     Args:
         timestamp: Unix timestamp (seconds since epoch)
 
     Returns:
-        datetime: Timezone-aware datetime in UTC
+        datetime: Timezone-naive datetime in UTC
 
     Example:
         >>> ts = 1698763200
         >>> dt = timestamp_to_datetime(ts)
-        >>> print(dt)  # 2023-10-31 12:00:00+00:00
+        >>> print(dt)  # 2023-10-31 12:00:00
+        >>> print(dt.tzinfo)  # None
     """
-    return datetime.fromtimestamp(timestamp, tz=timezone.utc)
+    return datetime.fromtimestamp(timestamp, tz=timezone.utc).replace(tzinfo=None)
 
 
 def datetime_to_timestamp(dt: datetime) -> int:

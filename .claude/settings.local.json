@@ -57,7 +57,8 @@
       "Bash(stripe checkout sessions retrieve:*)",
       "Bash(gcloud secrets versions disable:*)",
       "Bash(gcloud secrets versions enable:*)",
-      "Bash(gcloud secrets versions access:*)"
+      "Bash(gcloud secrets versions access:*)",
+      "Bash(alembic history:*)"
     ],
     "deny": [],
     "ask": []

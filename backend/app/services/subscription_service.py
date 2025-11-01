@@ -401,8 +401,8 @@ class SubscriptionService:
                 billing_interval=price_data["recurring"]["interval"],
                 monthly_credits=monthly_credits,
                 status=stripe_subscription_dict["status"],
-                current_period_start=timestamp_to_datetime(period_start) if period_start else utcnow(),
-                current_period_end=timestamp_to_datetime(period_end) if period_end else utcnow() + relativedelta(months=1),
+                current_period_start=timestamp_to_datetime(period_start) if period_start else utcnow_naive(),
+                current_period_end=timestamp_to_datetime(period_end) if period_end else utcnow_naive() + relativedelta(months=1),
                 amount_cents=price_data["unit_amount"],
                 currency=price_data["currency"].upper(),
                 cancel_at_period_end=stripe_subscription_dict.get("cancel_at_period_end", False)
