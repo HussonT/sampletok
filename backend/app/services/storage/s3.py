@@ -80,6 +80,22 @@ class S3Storage:
             'ContentType': content_type
         }
 
+        # Add aggressive caching for immutable audio/image files
+        # Audio files and waveforms never change after upload
+        if content_type and (
+            content_type.startswith('audio/') or
+            content_type.startswith('image/') or
+            content_type == 'application/octet-stream'
+        ):
+            # Cache for 1 year, marked as immutable
+            upload_params['CacheControl'] = 'public, max-age=31536000, immutable'
+
+        # Enable byte-range requests for audio files (critical for progressive download)
+        if content_type and content_type.startswith('audio/'):
+            upload_params['Metadata'] = {
+                'accept-ranges': 'bytes'
+            }
+
         # Only add ACL for S3, not for R2
         if settings.STORAGE_TYPE != "r2":
             upload_params['ACL'] = 'public-read'

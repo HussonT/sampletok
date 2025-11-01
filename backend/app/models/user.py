@@ -30,7 +30,9 @@ class User(Base):
     # Relationships
     samples = relationship("Sample", back_populates="creator", cascade="all, delete-orphan")
     downloads = relationship("UserDownload", back_populates="user", cascade="all, delete-orphan")
+    stem_downloads = relationship("UserStemDownload", back_populates="user", cascade="all, delete-orphan")
     favorites = relationship("UserFavorite", back_populates="user", cascade="all, delete-orphan")
+    stem_favorites = relationship("UserStemFavorite", back_populates="user", cascade="all, delete-orphan")
     collections = relationship("Collection", back_populates="user", cascade="all, delete-orphan")
 
     # Subscription relationships (1:1)
@@ -88,4 +90,45 @@ class UserFavorite(Base):
     __table_args__ = (
         UniqueConstraint('user_id', 'sample_id', name='uix_user_sample_favorite'),
         Index('idx_user_favorites_user_date', 'user_id', 'favorited_at'),
+    )
+
+
+class UserStemDownload(Base):
+    """Track individual user stem downloads with type (WAV/MP3)"""
+    __tablename__ = "user_stem_downloads"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    stem_id = Column(UUID(as_uuid=True), ForeignKey("stems.id", ondelete="CASCADE"), nullable=False)
+    download_type = Column(String, nullable=False)  # "wav" or "mp3"
+    downloaded_at = Column(DateTime, default=utcnow_naive, nullable=False)
+
+    # Relationships
+    user = relationship("User", back_populates="stem_downloads")
+    stem = relationship("Stem", back_populates="user_downloads")
+
+    # Indexes for efficient queries
+    __table_args__ = (
+        Index('idx_user_stem_downloads_user_stem', 'user_id', 'stem_id'),
+        Index('idx_user_stem_downloads_user_date', 'user_id', 'downloaded_at'),
+    )
+
+
+class UserStemFavorite(Base):
+    """Track user favorited stems"""
+    __tablename__ = "user_stem_favorites"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    stem_id = Column(UUID(as_uuid=True), ForeignKey("stems.id", ondelete="CASCADE"), nullable=False)
+    favorited_at = Column(DateTime, default=utcnow_naive, nullable=False)
+
+    # Relationships
+    user = relationship("User", back_populates="stem_favorites")
+    stem = relationship("Stem", back_populates="user_favorites")
+
+    # Ensure one favorite per user per stem
+    __table_args__ = (
+        UniqueConstraint('user_id', 'stem_id', name='uix_user_stem_favorite'),
+        Index('idx_user_stem_favorites_user_date', 'user_id', 'favorited_at'),
     )

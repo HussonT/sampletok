@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Sample } from '@/types/api';
+import { HlsAudioPlayer } from './hls-audio-player';
 
 interface AudioPlayerProps {
   sample: Sample | null;
@@ -105,10 +106,13 @@ export function AudioPlayer({
 
   return (
     <>
-      {/* Hidden audio element */}
-      <audio
-        ref={audioRef}
-        src={sample.audio_url_mp3 || sample.audio_url_wav}
+      {/* Hidden HLS audio player */}
+      <HlsAudioPlayer
+        hlsUrl={sample.audio_url_hls}
+        mp3Url={sample.audio_url_mp3 || sample.audio_url_wav}
+        audioRef={audioRef}
+        preload="metadata"
+        crossOrigin="anonymous"
         onTimeUpdate={handleTimeUpdate}
         onEnded={() => onNext()}
       />

@@ -274,8 +274,13 @@ async def download_sample(
             detail="download_type must be 'wav' or 'mp3'"
         )
 
-    # Get sample
-    query = select(Sample).where(Sample.id == sample_id)
+    # Get sample with TikTok creator relationship
+    from sqlalchemy.orm import selectinload
+    query = (
+        select(Sample)
+        .where(Sample.id == sample_id)
+        .options(selectinload(Sample.tiktok_creator))
+    )
     result = await db.execute(query)
     sample = result.scalar_one_or_none()
 
@@ -359,8 +364,23 @@ async def download_sample(
         except httpx.HTTPError as e:
             raise HTTPException(status_code=500, detail=f"Failed to fetch audio file: {str(e)}")
 
-    # Generate filename
-    filename = f"{sample.creator_username or 'unknown'}_{sample.id}.{extension}"
+    # Generate filename: {bpm}bpm_{key}_{artist_username}_sample.{extension}
+    bpm = sample.bpm or "unknown"
+    key = sample.key or "unknown"
+
+    # Get artist username from TikTok creator or fall back to creator_username field
+    if sample.tiktok_creator:
+        artist_username = sample.tiktok_creator.username
+    elif sample.creator_username:
+        artist_username = sample.creator_username
+    else:
+        artist_username = "unknown"
+
+    # Sanitize username for filename (remove special characters)
+    import re
+    artist_username = re.sub(r'[^\w\-_]', '_', artist_username)
+
+    filename = f"{bpm}bpm_{key}_{artist_username}_sample.{extension}"
 
     # Return as streaming response with download headers
     return StreamingResponse(
@@ -383,8 +403,13 @@ async def download_video(
     Records the download in user history and increments download count.
     Deducts 1 credit from user account.
     """
-    # Get sample
-    query = select(Sample).where(Sample.id == sample_id)
+    # Get sample with TikTok creator relationship
+    from sqlalchemy.orm import selectinload
+    query = (
+        select(Sample)
+        .where(Sample.id == sample_id)
+        .options(selectinload(Sample.tiktok_creator))
+    )
     result = await db.execute(query)
     sample = result.scalar_one_or_none()
 
@@ -457,8 +482,23 @@ async def download_video(
         except httpx.HTTPError as e:
             raise HTTPException(status_code=500, detail=f"Failed to fetch video file: {str(e)}")
 
-    # Generate filename
-    filename = f"{sample.creator_username or 'unknown'}_{sample.id}.mp4"
+    # Generate filename: {bpm}bpm_{key}_{artist_username}_video.mp4
+    bpm = sample.bpm or "unknown"
+    key = sample.key or "unknown"
+
+    # Get artist username from TikTok creator or fall back to creator_username field
+    if sample.tiktok_creator:
+        artist_username = sample.tiktok_creator.username
+    elif sample.creator_username:
+        artist_username = sample.creator_username
+    else:
+        artist_username = "unknown"
+
+    # Sanitize username for filename (remove special characters)
+    import re
+    artist_username = re.sub(r'[^\w\-_]', '_', artist_username)
+
+    filename = f"{bpm}bpm_{key}_{artist_username}_video.mp4"
 
     # Return as streaming response with download headers
     return StreamingResponse(

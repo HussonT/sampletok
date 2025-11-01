@@ -49,6 +49,7 @@ class Sample(Base):
     # File URLs - All stored in our infrastructure (R2/S3/GCS)
     audio_url_wav = Column(String)  # Our stored WAV file
     audio_url_mp3 = Column(String)  # Our stored MP3 file
+    audio_url_hls = Column(String)  # HLS playlist URL (m3u8) for streaming
     waveform_url = Column(String)  # Our stored waveform PNG
     video_url = Column(String)  # Our stored video file
     thumbnail_url = Column(String)  # Our stored thumbnail image
@@ -80,4 +81,5 @@ class Sample(Base):
     user_downloads = relationship("UserDownload", back_populates="sample", cascade="all, delete-orphan")
     user_favorites = relationship("UserFavorite", back_populates="sample", cascade="all, delete-orphan")
     collection_samples = relationship("CollectionSample", back_populates="sample", cascade="all, delete-orphan")
+    stems = relationship("Stem", back_populates="parent_sample", cascade="all, delete-orphan")
     

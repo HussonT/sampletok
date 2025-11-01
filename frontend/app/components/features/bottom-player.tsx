@@ -17,6 +17,7 @@ import { Sample } from '@/types/api';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { getAvatarWithFallback } from '@/lib/avatar';
 import { FavoriteButton } from './favorite-button';
+import { HlsAudioPlayer } from './hls-audio-player';
 
 interface BottomPlayerProps {
   sample?: Sample | null;
@@ -38,6 +39,7 @@ export function BottomPlayer({
   onFavoriteChange
 }: BottomPlayerProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
+  const playPromiseRef = useRef<Promise<void> | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(80);
@@ -52,15 +54,42 @@ export function BottomPlayer({
   }, [sample?.id, sample?.duration_seconds]);
 
   useEffect(() => {
-    if (audioRef.current && sample) {
+    const audio = audioRef.current;
+    if (!audio || !sample) return;
+
+    const handlePlayback = async () => {
       if (isPlaying) {
-        audioRef.current.play().catch(e => {
-          console.error('Error playing audio:', e);
+        // Wait for any pending play operation to complete before starting a new one
+        if (playPromiseRef.current) {
+          try {
+            await playPromiseRef.current;
+          } catch (error) {
+            // Ignore errors from previous play attempts
+          }
+        }
+
+        // Start playing
+        playPromiseRef.current = audio.play().catch(error => {
+          // Only log non-abort errors
+          if (error instanceof Error && error.name !== 'AbortError') {
+            console.error('Error playing audio:', error);
+          }
         });
       } else {
-        audioRef.current.pause();
+        // Wait for any pending play to complete before pausing
+        if (playPromiseRef.current) {
+          try {
+            await playPromiseRef.current;
+          } catch (error) {
+            // Ignore errors
+          }
+          playPromiseRef.current = null;
+        }
+        audio.pause();
       }
-    }
+    };
+
+    handlePlayback();
   }, [isPlaying, sample]);
 
   useEffect(() => {
@@ -108,11 +137,14 @@ export function BottomPlayer({
 
   return (
     <>
-      {/* Hidden audio element */}
+      {/* Hidden HLS audio player */}
       {sample && (
-        <audio
-          ref={audioRef}
-          src={sample.audio_url_mp3 || sample.audio_url_wav}
+        <HlsAudioPlayer
+          hlsUrl={sample.audio_url_hls}
+          mp3Url={sample.audio_url_mp3 || sample.audio_url_wav}
+          audioRef={audioRef}
+          preload="metadata"
+          crossOrigin="anonymous"
           onTimeUpdate={handleTimeUpdate}
           onEnded={onNext}
         />

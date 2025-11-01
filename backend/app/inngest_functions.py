@@ -8,20 +8,23 @@ import logging
 from pathlib import Path
 import uuid
 from typing import Dict, Any, Optional
+from pydantic import BaseModel, Field, validator
+from uuid import UUID
 
 from app.core.config import settings
 from app.services.tiktok.downloader import TikTokDownloader
 from app.services.audio.processor import AudioProcessor
 from app.services.audio.analyzer import AudioAnalyzer
+from app.services.audio.lalal_service import LalalAIService
 from app.services.storage.s3 import S3Storage
-from app.models import Sample, ProcessingStatus, TikTokCreator, Collection, CollectionSample, CollectionStatus
+from app.models import Sample, ProcessingStatus, TikTokCreator, Collection, CollectionSample, CollectionStatus, Stem, StemType, StemProcessingStatus
 from app.models.user import UserDownload
 from app.core.database import AsyncSessionLocal
 from sqlalchemy import select, or_
 from sqlalchemy.exc import IntegrityError
 from app.services.tiktok.creator_service import CreatorService
 from app.services.tiktok.collection_service import TikTokCollectionService
-from app.services.credit_service import refund_credits_atomic
+from app.services.credit_service import refund_credits_atomic, CreditService
 from app.utils import extract_hashtags, remove_hashtags, utcnow_naive
 from datetime import datetime
 from typing import List, Tuple
@@ -126,14 +129,23 @@ async def process_tiktok_video(ctx: inngest.Context) -> Dict[str, Any]:
         sample_id
     )
 
-    # Step 7: Analyze audio features (BPM, key detection)
+    # Step 7: Generate HLS stream (generates m3u8 + segments, uploads to R2, returns playlist URL)
+    hls_url = await ctx.step.run(
+        "generate-hls-stream",
+        generate_hls_stream,
+        audio_files["mp3_path"],
+        video_metadata["temp_dir"],
+        sample_id
+    )
+
+    # Step 8: Analyze audio features (BPM, key detection)
     audio_analysis = await ctx.step.run(
         "analyze-audio-features",
         analyze_audio_features,
         audio_files["wav_path"]
     )
 
-    # Step 8: Update database with results (all URLs are from our storage)
+    # Step 9: Update database with results (all URLs are from our storage)
     await ctx.step.run(
         "update-database",
         update_sample_complete,
@@ -146,6 +158,7 @@ async def process_tiktok_video(ctx: inngest.Context) -> Dict[str, Any]:
                 "cover": media_urls.get("cover"),
                 "wav": audio_files["wav_url"],
                 "mp3": audio_files["mp3_url"],
+                "hls": hls_url,
                 "waveform": waveform_url
             },
             "analysis": audio_analysis,
@@ -345,6 +358,47 @@ async def generate_waveform(audio_path: str, temp_dir: str, sample_id: str) -> s
     return waveform_url
 
 
+async def generate_hls_stream(audio_path: str, temp_dir: str, sample_id: str) -> str:
+    """Generate HLS stream, upload playlist and segments to storage, and return playlist URL"""
+    # Use the same temp directory
+    processor = AudioProcessor()
+    hls_data = await processor.generate_hls_stream(audio_path, temp_dir)
+    logger.info(f"Generated HLS stream: {len(hls_data['segments'])} segments")
+
+    # Upload to R2 immediately
+    storage = S3Storage()
+
+    # Upload playlist file
+    logger.info(f"Uploading HLS playlist to R2 for sample {sample_id}")
+    playlist_url = await storage.upload_file(
+        hls_data['playlist'],
+        f"samples/{sample_id}/hls/playlist.m3u8"
+    )
+    logger.info(f"Successfully uploaded HLS playlist to R2")
+
+    # Upload all segment files
+    logger.info(f"Uploading {len(hls_data['segments'])} HLS segments to R2")
+    for i, segment_path in enumerate(hls_data['segments']):
+        segment_filename = Path(segment_path).name
+        await storage.upload_file(
+            segment_path,
+            f"samples/{sample_id}/hls/{segment_filename}"
+        )
+        logger.info(f"Uploaded HLS segment {i+1}/{len(hls_data['segments'])}")
+
+    logger.info(f"Successfully uploaded all HLS segments to R2")
+
+    # Clean up HLS directory
+    import shutil
+    try:
+        shutil.rmtree(hls_data['hls_dir'])
+        logger.info(f"Cleaned up local HLS directory")
+    except Exception as e:
+        logger.warning(f"Failed to clean up HLS directory: {e}")
+
+    return playlist_url
+
+
 async def analyze_audio_features(audio_path: str) -> Dict[str, Any]:
     """
     Analyze audio file to extract musical features
@@ -468,6 +522,7 @@ async def update_sample_complete(data: Dict[str, Any]) -> None:
             sample.cover_url = urls.get("cover")
             sample.audio_url_wav = urls["wav"]
             sample.audio_url_mp3 = urls["mp3"]
+            sample.audio_url_hls = urls.get("hls")
             sample.waveform_url = urls["waveform"]
 
             # Calculate video file size if available
@@ -903,6 +958,55 @@ async def refund_credits_for_failed_collection(user_id: str, credits_to_refund: 
         # Don't raise - we don't want refund failure to stop collection processing
 
 
+async def refund_credits_for_failed_stems(stem_ids: List[str]) -> None:
+    """Refund credits to user when stem separation fails"""
+    try:
+        async with AsyncSessionLocal() as db:
+            # Get the first stem to find the user and sample
+            if not stem_ids:
+                logger.warning("No stem IDs provided for refund")
+                return
+
+            # Load first stem with parent sample to get user
+            stem_uuid = uuid.UUID(stem_ids[0])
+            from sqlalchemy.orm import selectinload
+            query = (
+                select(Stem)
+                .where(Stem.id == stem_uuid)
+                .options(selectinload(Stem.parent_sample))
+            )
+            result = await db.execute(query)
+            stem = result.scalars().first()
+
+            if not stem or not stem.parent_sample:
+                logger.error(f"Stem {stem_ids[0]} or parent sample not found for refund")
+                return
+
+            user_id = stem.parent_sample.creator_id
+            if not user_id:
+                logger.error(f"No creator_id found for sample {stem.parent_sample_id}")
+                return
+
+            # Calculate total credits to refund: 2 credits per stem
+            from app.core.config import settings
+            credits_to_refund = len(stem_ids) * settings.CREDITS_PER_STEM
+
+            # Refund credits atomically
+            credit_service = CreditService(db)
+            await credit_service.refund_credits_atomic(
+                user_id=user_id,
+                credits_to_refund=credits_to_refund,
+                description=f"Refund for {len(stem_ids)} failed stem separation(s)",
+                stem_id=stem_uuid  # Link to first stem for audit trail
+            )
+
+            await db.commit()
+            logger.info(f"Refunded {credits_to_refund} credits to user {user_id} for {len(stem_ids)} failed stems")
+    except Exception as e:
+        logger.exception(f"Error refunding credits for failed stems: {e}")
+        # Don't raise - we don't want refund failure to stop error handling
+
+
 async def mark_collection_failed(collection_id: str, error_message: str) -> None:
     """Mark collection as failed with error message"""
     try:
@@ -1257,6 +1361,448 @@ async def handle_collection_error(ctx: inngest.Context) -> None:
     await ctx.step.run("mark-collection-as-failed", update_failed_status)
 
 
+# Pydantic models for Inngest event validation
+class StemSeparationEventData(BaseModel):
+    """Validation model for stem separation Inngest event data"""
+    sample_id: UUID = Field(..., description="UUID of the parent sample")
+    stem_ids: List[UUID] = Field(..., description="List of stem UUIDs to process", min_items=1)
+
+    @validator('stem_ids')
+    def validate_stem_ids_not_empty(cls, v):
+        if not v:
+            raise ValueError("stem_ids cannot be empty")
+        return v
+
+
+@inngest_client.create_function(
+    fn_id="process-stem-separation",
+    trigger=inngest.TriggerEvent(event="stem/separation.submitted"),
+    retries=2
+)
+async def process_stem_separation(ctx: inngest.Context) -> Dict[str, Any]:
+    """
+    Process stem separation request through multiple steps:
+    1. Update stem status to uploading
+    2. Download original audio from storage
+    3. Upload to La La AI
+    4. Submit separation job per stem
+    5. Poll for completion
+    6. Download separated stems
+    7. Copy metadata from parent sample (BPM, key, duration)
+    8. Upload stems to storage
+    9. Update database
+    10. Clean up temp files
+    """
+    # Validate event data
+    try:
+        event_data = StemSeparationEventData(**ctx.event.data)
+    except Exception as e:
+        logger.error(f"Invalid event data for stem separation: {e}")
+        raise ValueError(f"Invalid event data: {e}")
+
+    stem_ids = [str(stem_id) for stem_id in event_data.stem_ids]
+    sample_id = str(event_data.sample_id)
+
+    logger.info(f"Processing stem separation for sample {sample_id}, stems: {stem_ids}")
+
+    # Step 1: Update all stems to uploading status
+    await ctx.step.run(
+        "update-stems-uploading",
+        update_stems_status,
+        stem_ids,
+        StemProcessingStatus.UPLOADING
+    )
+
+    # Step 2: Download original audio from storage
+    audio_path = await ctx.step.run(
+        "download-original-audio",
+        download_sample_audio,
+        sample_id
+    )
+
+    # Step 3-9: Process each stem type separately
+    # Group stems by type to avoid duplicate processing
+    stems_by_type = {}
+    async with AsyncSessionLocal() as db:
+        for stem_id in stem_ids:
+            query = select(Stem).where(Stem.id == uuid.UUID(stem_id))
+            result = await db.execute(query)
+            stem = result.scalars().first()
+            if stem:
+                stem_type = stem.stem_type.value
+                if stem_type not in stems_by_type:
+                    stems_by_type[stem_type] = []
+                stems_by_type[stem_type].append(str(stem.id))
+
+    # Process each unique stem type
+    for stem_type, stem_id_list in stems_by_type.items():
+        # Use the first stem ID for this type
+        primary_stem_id = stem_id_list[0]
+
+        # Step 3: Upload to La La AI and separate
+        separated_file = await ctx.step.run(
+            f"separate-{stem_type}",
+            separate_stem,
+            audio_path,
+            stem_type,
+            sample_id
+        )
+
+        # Step 4: Get stem metadata from parent sample (stems inherit parent's BPM/key)
+        stem_analysis = await ctx.step.run(
+            f"get-metadata-{stem_type}",
+            get_stem_metadata_from_parent,
+            separated_file,
+            sample_id
+        )
+
+        # Step 5: Upload to storage
+        stem_urls = await ctx.step.run(
+            f"upload-{stem_type}",
+            upload_stem_to_storage,
+            separated_file,
+            sample_id,
+            stem_type
+        )
+
+        # Step 6: Update database
+        await ctx.step.run(
+            f"update-{stem_type}",
+            update_stem_complete,
+            primary_stem_id,
+            stem_urls,
+            stem_analysis
+        )
+
+    # Step 7: Clean up temp files
+    await ctx.step.run(
+        "cleanup-temp-files",
+        cleanup_stem_temp_files,
+        audio_path
+    )
+
+    return {
+        "sample_id": sample_id,
+        "stem_ids": stem_ids,
+        "status": "completed"
+    }
+
+
+@inngest_client.create_function(
+    fn_id="handle-stem-separation-error",
+    trigger=inngest.TriggerEvent(event="inngest/function.failed")
+)
+async def handle_stem_separation_error(ctx: inngest.Context):
+    """Handle errors during stem separation processing"""
+    # Check if this is a stem separation function failure
+    function_id = ctx.event.data.get("function_id")
+    if function_id != "process-stem-separation":
+        # Not a stem separation error, skip
+        return {"skipped": True, "reason": "Not a stem separation error"}
+
+    event_data = ctx.event.data.get("event", {}).get("data", {})
+    stem_ids = event_data.get("stem_ids", [])
+    error_message = ctx.event.data.get("error", {}).get("message", "Unknown error")
+
+    logger.error(f"Stem separation failed for stems {stem_ids}: {error_message}")
+
+    # Refund credits to user before marking stems as failed
+    if stem_ids:
+        await ctx.step.run(
+            "refund-credits-for-failed-stems",
+            refund_credits_for_failed_stems,
+            stem_ids
+        )
+
+    async def update_failed_status():
+        async with AsyncSessionLocal() as db:
+            for stem_id in stem_ids:
+                try:
+                    stem_uuid = uuid.UUID(stem_id)
+                    query = select(Stem).where(Stem.id == stem_uuid)
+                    result = await db.execute(query)
+                    stem = result.scalars().first()
+
+                    if stem:
+                        stem.status = StemProcessingStatus.FAILED
+                        stem.error_message = error_message
+
+                except Exception as e:
+                    logger.exception(f"Error updating failed status for stem {stem_id}: {e}")
+
+            await db.commit()
+            logger.info(f"Updated {len(stem_ids)} stems to failed status")
+
+    await ctx.step.run("mark-stems-as-failed", update_failed_status)
+
+
+async def update_stems_status(stem_ids: List[str], status: StemProcessingStatus) -> None:
+    """Update stem processing status in database"""
+    try:
+        async with AsyncSessionLocal() as db:
+            for stem_id in stem_ids:
+                stem_uuid = uuid.UUID(stem_id)
+                query = select(Stem).where(Stem.id == stem_uuid)
+                result = await db.execute(query)
+                stem = result.scalars().first()
+
+                if stem:
+                    stem.status = status
+                    logger.info(f"Updated stem {stem_id} status to {status.value}")
+
+            await db.commit()
+    except Exception as e:
+        logger.exception(f"Error updating stems status: {e}")
+        raise
+
+
+async def download_sample_audio(sample_id: str) -> str:
+    """Download original sample audio from storage to temp directory"""
+    temp_dir = Path(tempfile.gettempdir()) / f"stems_{sample_id}"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        async with AsyncSessionLocal() as db:
+            sample_uuid = uuid.UUID(sample_id)
+            query = select(Sample).where(Sample.id == sample_uuid)
+            result = await db.execute(query)
+            sample = result.scalars().first()
+
+            if not sample or not sample.audio_url_wav:
+                raise ValueError(f"Sample {sample_id} not found or has no audio")
+
+            # Download WAV file from storage
+            storage = S3Storage()
+            temp_audio_path = temp_dir / f"original.wav"
+
+            # The actual storage key for audio files is samples/{sample_id}/audio.wav
+            file_key = f"samples/{sample_id}/audio.wav"
+
+            logger.info(f"Attempting to download audio from key: {file_key}")
+
+            await storage.download_file(file_key, str(temp_audio_path))
+
+            logger.info(f"Downloaded original audio to {temp_audio_path}")
+            return str(temp_audio_path)
+
+    except Exception as e:
+        logger.exception(f"Error downloading sample audio: {e}")
+        raise
+
+
+async def separate_stem(audio_path: str, stem_type: str, sample_id: str) -> str:
+    """Use La La AI to separate a specific stem"""
+    try:
+        lalal_service = LalalAIService()
+        temp_dir = Path(audio_path).parent / "separated"
+        temp_dir.mkdir(parents=True, exist_ok=True)
+
+        # Process single stem type
+        result = await lalal_service.process_stem_separation(
+            audio_path,
+            [stem_type],
+            str(temp_dir)
+        )
+
+        # La La AI returns different result structures:
+        # - Single stem: {'vocals': file_path, 'background': file_path}
+        # - The stem_type from our database might be singular ('vocal') but Lalal returns plural ('vocals')
+
+        stem_file = None
+
+        # Map our stem types to what Lalal.ai returns
+        # Lalal.ai uses 'vocals' (plural), but our DB uses 'vocal' (singular)
+        lalal_key_mapping = {
+            'vocal': 'vocals',
+            'drum': 'drum',
+            'piano': 'piano',
+            'bass': 'bass',
+            'electric_guitar': 'electric_guitar',
+            'acoustic_guitar': 'acoustic_guitar',
+            'synthesizer': 'synthesizer',
+            'strings': 'strings',
+            'wind': 'wind',
+            'voice': 'voice'
+        }
+
+        # Try to find the stem file with the mapped key
+        mapped_key = lalal_key_mapping.get(stem_type, stem_type)
+        if mapped_key in result:
+            stem_file = result[mapped_key]
+            logger.info(f"Found {stem_type} stem using key '{mapped_key}'")
+        # Fall back to the original key
+        elif stem_type in result:
+            stem_file = result[stem_type]
+            logger.info(f"Found {stem_type} stem by exact name match")
+        # Fall back to generic 'stem' key for single-stem separations
+        elif 'stem' in result:
+            stem_file = result['stem']
+            logger.info(f"Found {stem_type} stem using generic 'stem' key")
+
+        if not stem_file:
+            logger.error(f"Available keys in result: {list(result.keys())}")
+            raise ValueError(f"No stem file found in La La AI result for {stem_type}. Available: {list(result.keys())}")
+
+        # Ensure file exists
+        if not Path(stem_file).exists():
+            raise FileNotFoundError(f"Stem file does not exist: {stem_file}")
+
+        # Rename to standardized format if needed
+        final_path = temp_dir / f"{stem_type}.wav"
+        if Path(stem_file) != final_path:
+            Path(stem_file).rename(final_path)
+
+        logger.info(f"Separated {stem_type} stem to {final_path}")
+        return str(final_path)
+
+    except Exception as e:
+        logger.exception(f"Error separating stem {stem_type}: {e}")
+        raise
+
+
+async def get_stem_metadata_from_parent(stem_file_path: str, sample_id: str) -> Dict[str, Any]:
+    """Get stem metadata by copying from parent sample (stems have same BPM/key as original)"""
+    try:
+        # Get just the duration from the separated file to verify it was created
+        processor = AudioProcessor()
+        metadata = await processor.get_audio_metadata(stem_file_path)
+
+        # Get parent sample's BPM and key
+        async with AsyncSessionLocal() as db:
+            query = select(Sample).where(Sample.id == uuid.UUID(sample_id))
+            result = await db.execute(query)
+            parent_sample = result.scalars().first()
+
+            if not parent_sample:
+                raise ValueError(f"Parent sample {sample_id} not found")
+
+            # Copy BPM, key, and duration from parent sample
+            # Stems are extracted from the same audio, so they have the same musical properties
+            logger.info(f"Copied metadata from parent sample: BPM={parent_sample.bpm}, Key={parent_sample.key}, Duration={metadata.get('duration'):.1f}s")
+
+            return {
+                "bpm": parent_sample.bpm,
+                "key": parent_sample.key,
+                "duration": metadata.get("duration"),  # Use actual stem duration (should match parent)
+                "sample_rate": metadata.get("sample_rate"),
+                "channels": metadata.get("channels")
+            }
+
+    except Exception as e:
+        logger.exception(f"Error getting stem metadata: {e}")
+        # Return partial results if metadata retrieval fails
+        return {
+            "bpm": None,
+            "key": None,
+            "duration": None
+        }
+
+
+async def upload_stem_to_storage(stem_file_path: str, sample_id: str, stem_type: str) -> Dict[str, str]:
+    """Upload separated stem (WAV and MP3) to storage and return URLs"""
+    try:
+        storage = S3Storage()
+        processor = AudioProcessor()
+        stem_path = Path(stem_file_path)
+
+        # Convert WAV to MP3
+        mp3_path = stem_path.parent / f"{stem_type}.mp3"
+        import subprocess
+        cmd = [
+            'ffmpeg', '-i', str(stem_path),
+            '-acodec', 'libmp3lame',
+            '-b:a', '320k',
+            '-y',
+            str(mp3_path)
+        ]
+
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        await process.communicate()
+
+        # Upload both files
+        wav_key = f"samples/{sample_id}/stems/{stem_type}.wav"
+        mp3_key = f"samples/{sample_id}/stems/{stem_type}.mp3"
+
+        await storage.upload_file(str(stem_path), wav_key)
+        await storage.upload_file(str(mp3_path), mp3_key)
+
+        wav_url = storage.get_public_url(wav_key)
+        mp3_url = storage.get_public_url(mp3_key)
+
+        # Get file sizes
+        wav_size = stem_path.stat().st_size
+        mp3_size = mp3_path.stat().st_size
+
+        logger.info(f"Uploaded {stem_type} stem: WAV={wav_url}, MP3={mp3_url}")
+
+        return {
+            "wav_url": wav_url,
+            "mp3_url": mp3_url,
+            "wav_key": wav_key,
+            "mp3_key": mp3_key,
+            "wav_size": wav_size,
+            "mp3_size": mp3_size
+        }
+
+    except Exception as e:
+        logger.exception(f"Error uploading stem to storage: {e}")
+        raise
+
+
+async def update_stem_complete(stem_id: str, urls: Dict[str, str], analysis: Dict[str, Any]) -> None:
+    """Update stem record with completed processing results"""
+    try:
+        async with AsyncSessionLocal() as db:
+            stem_uuid = uuid.UUID(stem_id)
+            query = select(Stem).where(Stem.id == stem_uuid)
+            result = await db.execute(query)
+            stem = result.scalars().first()
+
+            if not stem:
+                raise ValueError(f"Stem {stem_id} not found")
+
+            # Update with results
+            stem.status = StemProcessingStatus.COMPLETED
+            stem.audio_url_wav = urls.get("wav_url")
+            stem.audio_url_mp3 = urls.get("mp3_url")
+            stem.file_path_wav = urls.get("wav_key")
+            stem.file_path_mp3 = urls.get("mp3_key")
+            stem.file_size_wav = urls.get("wav_size")
+            stem.file_size_mp3 = urls.get("mp3_size")
+            stem.bpm = analysis.get("bpm")
+            # Format key as string (e.g., "Ab major") like we do for samples
+            key_data = analysis.get("key")
+            if key_data and isinstance(key_data, dict):
+                stem.key = f"{key_data.get('key')} {key_data.get('scale')}" if key_data.get('key') and key_data.get('scale') else None
+            else:
+                stem.key = key_data
+            stem.duration_seconds = analysis.get("duration")
+            stem.completed_at = utcnow_naive()
+
+            await db.commit()
+            logger.info(f"Updated stem {stem_id} with completion data")
+
+    except Exception as e:
+        logger.exception(f"Error updating stem complete: {e}")
+        raise
+
+
+async def cleanup_stem_temp_files(audio_path: str) -> None:
+    """Clean up temporary files created during stem separation"""
+    try:
+        temp_dir = Path(audio_path).parent
+        if temp_dir.exists():
+            import shutil
+            shutil.rmtree(temp_dir)
+            logger.info(f"Cleaned up temp directory: {temp_dir}")
+    except Exception as e:
+        logger.warning(f"Failed to cleanup temp files: {e}")
+
+
 @inngest_client.create_function(
     fn_id="test-function",
     trigger=inngest.TriggerEvent(event="test/hello")
@@ -1273,5 +1819,7 @@ def get_all_functions():
         handle_processing_error,
         process_collection,
         handle_collection_error,
+        process_stem_separation,
+        handle_stem_separation_error,
         test_function
     ]

@@ -16,19 +16,13 @@ import logging
 from sqlalchemy.exc import OperationalError, DatabaseError, IntegrityError
 
 from app.core.config import settings
-from app.core.database import AsyncSessionLocal
+from app.core.database import get_db
 from app.services.subscription_service import SubscriptionService
 from app.exceptions import BusinessLogicError, TransientError, ConfigurationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-
-async def get_db():
-    """Dependency for database session"""
-    async with AsyncSessionLocal() as session:
-        yield session
 
 
 @router.post("/stripe")

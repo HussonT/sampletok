@@ -73,6 +73,8 @@ class Settings(BaseSettings):
     # Rate Limiting
     COLLECTION_RATE_LIMIT_PER_MINUTE: int = 10  # Max collection processing requests per minute per user
     COLLECTIONS_LIST_RATE_LIMIT_PER_MINUTE: int = 60  # Max collection list requests per minute per user
+    STEM_SEPARATION_RATE_LIMIT_PER_MINUTE: int = 5  # Max stem separation requests per minute per user
+    STEM_DOWNLOAD_RATE_LIMIT_PER_MINUTE: int = 30  # Max stem download requests per minute per user
 
     # Audio Processing
     AUDIO_SAMPLE_RATE: int = 48000
@@ -84,6 +86,11 @@ class Settings(BaseSettings):
     # RapidAPI Settings (must be set in .env)
     RAPIDAPI_KEY: str  # Required - no default for security
     RAPIDAPI_HOST: str = "tiktok-video-no-watermark2.p.rapidapi.com"
+
+    # La La AI Settings
+    LALAL_API_KEY: Optional[str] = None  # Required for stem separation
+    MAX_STEMS_PER_REQUEST: int = 5  # Maximum number of stems that can be requested at once
+    MAX_CONCURRENT_DOWNLOADS_PER_USER: int = 3  # Maximum concurrent stem downloads per user
 
     # Stripe Settings
     STRIPE_SECRET_KEY: Optional[str] = None  # Required for production
@@ -108,6 +115,9 @@ class Settings(BaseSettings):
     TIER_CREDITS_BASIC: int = 100  # Monthly credits for Basic tier
     TIER_CREDITS_PRO: int = 400  # Monthly credits for Pro tier
     TIER_CREDITS_ULTIMATE: int = 1500  # Monthly credits for Ultimate tier
+
+    # Feature Credit Costs
+    CREDITS_PER_STEM: int = 2  # Cost per stem separation
 
     # Top-Up Discounts by Tier (percentage as decimal, e.g., 0.10 = 10% off)
     TIER_DISCOUNT_BASIC: float = 0.0  # No discount for Basic

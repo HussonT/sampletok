@@ -29,24 +29,11 @@ def remove_hashtags(text: str) -> str:
 
 
 def upgrade() -> None:
-    # Get database connection
-    connection = op.get_bind()
-
-    # Fetch all samples with titles
-    result = connection.execute(sa.text("SELECT id, title FROM samples WHERE title IS NOT NULL"))
-    samples = result.fetchall()
-
-    # Update each sample's title to remove hashtags
-    for sample_id, title in samples:
-        if title and '#' in title:
-            cleaned_title = remove_hashtags(title)
-            if cleaned_title != title:
-                connection.execute(
-                    sa.text("UPDATE samples SET title = :cleaned_title WHERE id = :sample_id"),
-                    {"cleaned_title": cleaned_title, "sample_id": sample_id}
-                )
-
-    # No need to commit - Alembic manages transactions automatically
+    # This migration previously contained a data cleanup operation
+    # Data operations should be in backend/scripts/sql/ instead
+    # If you need to clean hashtags from titles, use the SQL script:
+    # backend/scripts/sql/remove_hashtags_from_titles.sql
+    pass
 
 
 def downgrade() -> None:

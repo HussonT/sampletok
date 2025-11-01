@@ -70,6 +70,11 @@ class CreditTransaction(Base):
         ForeignKey("samples.id", ondelete="SET NULL"),
         nullable=True
     )
+    stem_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("stems.id", ondelete="SET NULL"),
+        nullable=True
+    )
 
     # Error tracking
     error_message = Column(Text, nullable=True)
@@ -84,6 +89,7 @@ class CreditTransaction(Base):
     subscription = relationship("Subscription", back_populates="credit_transactions")
     collection = relationship("Collection", foreign_keys=[collection_id])
     sample = relationship("Sample", foreign_keys=[sample_id])
+    stem = relationship("Stem", foreign_keys=[stem_id])
 
     # Indexes
     __table_args__ = (

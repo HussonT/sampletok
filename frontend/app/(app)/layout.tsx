@@ -6,6 +6,7 @@ import { useEffect, useState, useRef, useCallback, createContext, useContext } f
 import { ProcessingContext } from '@/contexts/processing-context';
 import { BottomPlayer } from '@/components/features/bottom-player';
 import { Sample } from '@/types/api';
+import { QueryProvider } from '@/providers/query-provider';
 
 // Audio player context
 interface AudioPlayerContextType {
@@ -111,35 +112,37 @@ export default function AppLayout({
   };
 
   return (
-    <ProcessingContext.Provider value={{ registerProcessingHandler, unregisterProcessingHandler }}>
-      <AudioPlayerContext.Provider value={audioPlayerValue}>
-        <div className="flex h-screen w-screen overflow-hidden">
-          {/* Sidebar - Fixed width */}
-          <div className="w-64 flex-shrink-0 border-r bg-sidebar">
-            <AppSidebar
-              activeSection={activeSection}
-              onSectionChange={setActiveSection}
-              onProcessingStarted={handleProcessingStarted}
+    <QueryProvider>
+      <ProcessingContext.Provider value={{ registerProcessingHandler, unregisterProcessingHandler }}>
+        <AudioPlayerContext.Provider value={audioPlayerValue}>
+          <div className="flex h-screen w-screen overflow-hidden">
+            {/* Sidebar - Fixed width */}
+            <div className="w-64 flex-shrink-0 border-r bg-sidebar">
+              <AppSidebar
+                activeSection={activeSection}
+                onSectionChange={setActiveSection}
+                onProcessingStarted={handleProcessingStarted}
+              />
+            </div>
+
+            {/* Main Content - Takes remaining space */}
+            <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+              {children}
+            </div>
+
+            {/* Bottom Player - Persists across all pages */}
+            <BottomPlayer
+              sample={currentSample}
+              isPlaying={isPlaying}
+              onPlayPause={handlePlayPause}
+              onNext={handleNext}
+              onPrevious={handlePrevious}
+              onDownload={handleDownload}
+              onFavoriteChange={handleFavoriteChange}
             />
           </div>
-
-          {/* Main Content - Takes remaining space */}
-          <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-            {children}
-          </div>
-
-          {/* Bottom Player - Persists across all pages */}
-          <BottomPlayer
-            sample={currentSample}
-            isPlaying={isPlaying}
-            onPlayPause={handlePlayPause}
-            onNext={handleNext}
-            onPrevious={handlePrevious}
-            onDownload={handleDownload}
-            onFavoriteChange={handleFavoriteChange}
-          />
-        </div>
-      </AudioPlayerContext.Provider>
-    </ProcessingContext.Provider>
+        </AudioPlayerContext.Provider>
+      </ProcessingContext.Provider>
+    </QueryProvider>
   );
 }
