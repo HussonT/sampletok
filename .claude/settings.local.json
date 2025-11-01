@@ -58,7 +58,14 @@
       "Bash(gcloud secrets versions disable:*)",
       "Bash(gcloud secrets versions enable:*)",
       "Bash(gcloud secrets versions access:*)",
-      "Bash(alembic history:*)"
+      "Bash(alembic history:*)",
+      "Bash(for secret in RAPIDAPI_KEY INNGEST_EVENT_KEY INNGEST_SIGNING_KEY AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY S3_ENDPOINT_URL R2_PUBLIC_DOMAIN CLERK_FRONTEND_API CLERK_SECRET_KEY)",
+      "Bash(do)",
+      "Bash(echo:*)",
+      "Bash(gcloud secrets versions list:*)",
+      "Bash(done)",
+      "Bash(git log:*)",
+      "Bash(alembic/versions/7459cff6a67f_reset_all_user_credits_to_0_for_.py)"
     ],
     "deny": [],
     "ask": []
