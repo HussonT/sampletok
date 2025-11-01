@@ -6,7 +6,7 @@ import Hls from 'hls.js';
 interface HlsAudioPlayerProps {
   hlsUrl?: string;
   mp3Url?: string;
-  audioRef: React.RefObject<HTMLAudioElement>;
+  audioRef: React.RefObject<HTMLAudioElement | null>;
   preload?: "none" | "metadata" | "auto";
   crossOrigin?: "anonymous" | "use-credentials";
   onTimeUpdate?: () => void;
