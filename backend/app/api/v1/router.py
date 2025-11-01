@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import samples, process, test, users, collections, admin, webhooks, subscriptions, credits, debug_schema
+from app.api.v1.endpoints import samples, process, test, users, collections, admin, webhooks, subscriptions, credits
 
 api_router = APIRouter()
 
@@ -13,4 +13,3 @@ api_router.include_router(admin.router, prefix="/admin", tags=["admin"])
 api_router.include_router(webhooks.router, prefix="/webhooks", tags=["webhooks"])
 api_router.include_router(subscriptions.router, prefix="/subscriptions", tags=["subscriptions"])
 api_router.include_router(credits.router, prefix="/credits", tags=["credits"])
-api_router.include_router(debug_schema.router, prefix="/debug", tags=["debug"])
