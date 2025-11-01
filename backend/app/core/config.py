@@ -85,6 +85,9 @@ class Settings(BaseSettings):
     RAPIDAPI_KEY: str  # Required - no default for security
     RAPIDAPI_HOST: str = "tiktok-video-no-watermark2.p.rapidapi.com"
 
+    # La La AI Settings
+    LALAL_API_KEY: Optional[str] = None  # Required for stem separation
+
     # Stripe Settings
     STRIPE_SECRET_KEY: Optional[str] = None  # Required for production
     STRIPE_WEBHOOK_SECRET: Optional[str] = None  # Required for webhook verification

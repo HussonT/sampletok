@@ -17,9 +17,10 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Reset all user credits to 0 for subscription system
-    # No free credits - users must subscribe to get credits
-    op.execute("UPDATE users SET credits = 0 WHERE credits != 0")
+    # This migration previously contained a data operation to reset credits
+    # Data operations should be in backend/scripts/sql/ instead
+    # Subscription system should handle credit allocation
+    pass
 
 
 def downgrade() -> None:

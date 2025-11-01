@@ -11,8 +11,9 @@ from sqlalchemy import select, func, and_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
-from app.models.user import User, UserDownload, UserFavorite
+from app.models.user import User, UserDownload, UserStemDownload, UserFavorite, UserStemFavorite
 from app.models.sample import Sample
+from app.models.stem import Stem
 from app.utils import utcnow_naive
 
 
@@ -470,3 +471,275 @@ class UserFavoriteService:
         count = result.scalar() or 0
 
         return count
+
+
+class UserStemFavoriteService:
+    """Service for managing user stem favorites"""
+
+    @staticmethod
+    async def add_favorite(
+        db: AsyncSession,
+        user_id: UUID,
+        stem_id: UUID
+    ) -> UserStemFavorite:
+        """
+        Add a stem to user's favorites (idempotent).
+
+        Args:
+            db: Database session
+            user_id: User's UUID
+            stem_id: Stem's UUID
+
+        Returns:
+            UserStemFavorite record (existing or newly created)
+        """
+        # Check if already favorited
+        stmt = select(UserStemFavorite).where(
+            and_(
+                UserStemFavorite.user_id == user_id,
+                UserStemFavorite.stem_id == stem_id
+            )
+        )
+        result = await db.execute(stmt)
+        existing = result.scalar_one_or_none()
+
+        if existing:
+            return existing
+
+        # Create new favorite
+        favorite = UserStemFavorite(
+            user_id=user_id,
+            stem_id=stem_id,
+            favorited_at=utcnow_naive()
+        )
+        db.add(favorite)
+
+        try:
+            await db.commit()
+            await db.refresh(favorite)
+            return favorite
+        except IntegrityError:
+            # Race condition: another request created it
+            await db.rollback()
+            stmt = select(UserStemFavorite).where(
+                and_(
+                    UserStemFavorite.user_id == user_id,
+                    UserStemFavorite.stem_id == stem_id
+                )
+            )
+            result = await db.execute(stmt)
+            return result.scalar_one()
+
+    @staticmethod
+    async def remove_favorite(
+        db: AsyncSession,
+        user_id: UUID,
+        stem_id: UUID
+    ) -> bool:
+        """
+        Remove a stem from user's favorites.
+
+        Args:
+            db: Database session
+            user_id: User's UUID
+            stem_id: Stem's UUID
+
+        Returns:
+            True if favorite was removed, False if it didn't exist
+        """
+        stmt = select(UserStemFavorite).where(
+            and_(
+                UserStemFavorite.user_id == user_id,
+                UserStemFavorite.stem_id == stem_id
+            )
+        )
+        result = await db.execute(stmt)
+        favorite = result.scalar_one_or_none()
+
+        if favorite:
+            await db.delete(favorite)
+            await db.commit()
+            return True
+
+        return False
+
+    @staticmethod
+    async def check_if_favorited(
+        db: AsyncSession,
+        user_id: UUID,
+        stem_id: UUID
+    ) -> bool:
+        """
+        Check if a user has favorited a specific stem.
+
+        Args:
+            db: Database session
+            user_id: User's UUID
+            stem_id: Stem's UUID
+
+        Returns:
+            True if user has favorited this stem, False otherwise
+        """
+        stmt = select(UserStemFavorite).where(
+            and_(
+                UserStemFavorite.user_id == user_id,
+                UserStemFavorite.stem_id == stem_id
+            )
+        ).limit(1)
+        result = await db.execute(stmt)
+        favorite = result.scalar_one_or_none()
+
+        return favorite is not None
+
+
+class UserStemDownloadService:
+    """Service for managing user stem download tracking"""
+
+    @staticmethod
+    async def record_download(
+        db: AsyncSession,
+        user_id: UUID,
+        stem_id: UUID,
+        download_type: str
+    ) -> UserStemDownload:
+        """
+        Record a download for a user and increment the stem's download count.
+
+        Args:
+            db: Database session
+            user_id: User's UUID
+            stem_id: Stem's UUID
+            download_type: Either 'wav' or 'mp3'
+
+        Returns:
+            Created UserStemDownload record
+        """
+        # Create download record
+        download = UserStemDownload(
+            user_id=user_id,
+            stem_id=stem_id,
+            download_type=download_type,
+            downloaded_at=utcnow_naive()
+        )
+        db.add(download)
+
+        # Increment stem download count
+        stmt = select(Stem).where(Stem.id == stem_id)
+        result = await db.execute(stmt)
+        stem = result.scalar_one_or_none()
+
+        if stem:
+            stem.download_count = (stem.download_count or 0) + 1
+
+        await db.commit()
+        await db.refresh(download)
+
+        return download
+
+    @staticmethod
+    async def get_user_downloads(
+        db: AsyncSession,
+        user_id: UUID,
+        limit: int = 20,
+        offset: int = 0
+    ) -> List[UserStemDownload]:
+        """
+        Get a user's stem download history with pagination.
+
+        Args:
+            db: Database session
+            user_id: User's UUID
+            limit: Maximum number of results
+            offset: Number of results to skip
+
+        Returns:
+            List of UserStemDownload records with stem data eagerly loaded
+        """
+        stmt = (
+            select(UserStemDownload)
+            .options(
+                selectinload(UserStemDownload.stem).selectinload(Stem.parent_sample)
+            )
+            .where(UserStemDownload.user_id == user_id)
+            .order_by(UserStemDownload.downloaded_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        result = await db.execute(stmt)
+        downloads = result.scalars().all()
+
+        return list(downloads)
+
+    @staticmethod
+    async def check_if_downloaded(
+        db: AsyncSession,
+        user_id: UUID,
+        stem_id: UUID
+    ) -> bool:
+        """
+        Check if a user has downloaded a specific stem.
+
+        Args:
+            db: Database session
+            user_id: User's UUID
+            stem_id: Stem's UUID
+
+        Returns:
+            True if user has downloaded this stem, False otherwise
+        """
+        stmt = select(UserStemDownload).where(
+            and_(
+                UserStemDownload.user_id == user_id,
+                UserStemDownload.stem_id == stem_id
+            )
+        ).limit(1)
+        result = await db.execute(stmt)
+        download = result.scalar_one_or_none()
+
+        return download is not None
+
+    @staticmethod
+    async def get_download_stats(
+        db: AsyncSession,
+        user_id: UUID
+    ) -> Dict[str, int]:
+        """
+        Get stem download statistics for a user.
+
+        Args:
+            db: Database session
+            user_id: User's UUID
+
+        Returns:
+            Dictionary with total, wav_count, and mp3_count
+        """
+        # Total downloads
+        stmt = select(func.count(UserStemDownload.id)).where(UserStemDownload.user_id == user_id)
+        result = await db.execute(stmt)
+        total = result.scalar() or 0
+
+        # WAV downloads
+        stmt = select(func.count(UserStemDownload.id)).where(
+            and_(
+                UserStemDownload.user_id == user_id,
+                UserStemDownload.download_type == 'wav'
+            )
+        )
+        result = await db.execute(stmt)
+        wav_count = result.scalar() or 0
+
+        # MP3 downloads
+        stmt = select(func.count(UserStemDownload.id)).where(
+            and_(
+                UserStemDownload.user_id == user_id,
+                UserStemDownload.download_type == 'mp3'
+            )
+        )
+        result = await db.execute(stmt)
+        mp3_count = result.scalar() or 0
+
+        return {
+            'total': total,
+            'wav_count': wav_count,
+            'mp3_count': mp3_count
+        }

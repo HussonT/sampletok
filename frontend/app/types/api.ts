@@ -182,3 +182,59 @@ export interface Collection {
 export interface CollectionWithSamples extends Collection {
   samples: Sample[];
 }
+
+// Stem Types
+export enum StemType {
+  VOCAL = 'vocal',
+  VOICE = 'voice',
+  DRUM = 'drum',
+  PIANO = 'piano',
+  BASS = 'bass',
+  ELECTRIC_GUITAR = 'electric_guitar',
+  ACOUSTIC_GUITAR = 'acoustic_guitar',
+  SYNTHESIZER = 'synthesizer',
+  STRINGS = 'strings',
+  WIND = 'wind'
+}
+
+export enum StemProcessingStatus {
+  PENDING = 'pending',
+  UPLOADING = 'uploading',
+  PROCESSING = 'processing',
+  DOWNLOADING = 'downloading',
+  ANALYZING = 'analyzing',
+  COMPLETED = 'completed',
+  FAILED = 'failed'
+}
+
+export interface Stem {
+  id: string;
+  stem_type: StemType;
+  file_name: string;
+  bpm?: number;
+  key?: string;
+  duration_seconds?: number;
+  status: StemProcessingStatus;
+  download_url_mp3?: string;
+  download_url_wav?: string;
+  download_count?: number;
+  error_message?: string;
+  created_at: string;
+  completed_at?: string;
+  is_favorited?: boolean;
+  favorited_at?: string;
+  is_downloaded?: boolean;
+}
+
+export interface StemSeparationRequest {
+  stems: string[];
+}
+
+export interface StemSeparationResponse {
+  success: boolean;
+  credits_deducted: number;
+  remaining_credits: number;
+  stem_ids: string[];
+  estimated_time_seconds: number;
+  message: string;
+}

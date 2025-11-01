@@ -74,7 +74,7 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
     return () => clearInterval(interval);
   }, [getToken]);
 
-  // Preload videos for current samples
+  // Preload videos and audio for current samples
   useEffect(() => {
     samples.forEach((sample) => {
       if (sample.video_url) {
@@ -85,8 +85,71 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
         link.href = sample.video_url;
         document.head.appendChild(link);
       }
+
+      // Preload MP3 audio for instant playback
+      const audioUrl = sample.audio_url_mp3 || sample.audio_url_wav;
+      if (audioUrl) {
+        const audioLink = document.createElement('link');
+        audioLink.rel = 'prefetch';
+        audioLink.as = 'audio';
+        audioLink.href = audioUrl;
+        document.head.appendChild(audioLink);
+      }
     });
   }, [samples]);
+
+  // Compute filtered samples (sorted by most recent)
+  const filteredSamples = useMemo(() => {
+    return [...samples].sort((a, b) =>
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+  }, [samples]);
+
+  // Smart prefetch: Preload next/previous samples when a sample is selected
+  useEffect(() => {
+    if (!currentSample) return;
+
+    const currentIndex = filteredSamples.findIndex(s => s.id === currentSample.id);
+    if (currentIndex === -1) return;
+
+    // Prefetch next sample
+    const nextIndex = (currentIndex + 1) % filteredSamples.length;
+    const nextSample = filteredSamples[nextIndex];
+    if (nextSample) {
+      const nextAudioUrl = nextSample.audio_url_mp3 || nextSample.audio_url_wav;
+      if (nextAudioUrl) {
+        const nextLink = document.createElement('link');
+        nextLink.rel = 'prefetch';
+        nextLink.as = 'audio';
+        nextLink.href = nextAudioUrl;
+        nextLink.id = `prefetch-next-${nextSample.id}`;
+        document.head.appendChild(nextLink);
+      }
+    }
+
+    // Prefetch previous sample
+    const prevIndex = currentIndex === 0 ? filteredSamples.length - 1 : currentIndex - 1;
+    const prevSample = filteredSamples[prevIndex];
+    if (prevSample) {
+      const prevAudioUrl = prevSample.audio_url_mp3 || prevSample.audio_url_wav;
+      if (prevAudioUrl) {
+        const prevLink = document.createElement('link');
+        prevLink.rel = 'prefetch';
+        prevLink.as = 'audio';
+        prevLink.href = prevAudioUrl;
+        prevLink.id = `prefetch-prev-${prevSample.id}`;
+        document.head.appendChild(prevLink);
+      }
+    }
+
+    // Cleanup function to remove old prefetch links when sample changes
+    return () => {
+      const oldNextLink = document.getElementById(`prefetch-next-${nextSample?.id}`);
+      const oldPrevLink = document.getElementById(`prefetch-prev-${prevSample?.id}`);
+      if (oldNextLink) oldNextLink.remove();
+      if (oldPrevLink) oldPrevLink.remove();
+    };
+  }, [currentSample, filteredSamples]);
 
   // Handle page change
   const handlePageChange = useCallback(async (page: number) => {
@@ -214,13 +277,6 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
     return () => clearInterval(interval);
   }, [processingTasks, updateProcessingTask, removeProcessingTask, router]);
 
-  const filteredSamples = useMemo(() => {
-    // Just return samples sorted by most recent
-    return [...samples].sort((a, b) =>
-      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    );
-  }, [samples]);
-
   const handleSamplePreview = (sample: Sample) => {
     if (currentSample?.id === sample.id) {
       setIsPlaying(!isPlaying);
@@ -259,7 +315,7 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
     const nextIndex = (currentIndex + 1) % filteredSamples.length;
     const nextSample = filteredSamples[nextIndex];
     setCurrentSample(nextSample);
-    setIsPlaying(false);
+    setIsPlaying(true);
   };
 
   const handlePlayerPrevious = () => {
@@ -352,6 +408,7 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
                     isPlaying={isPlaying}
                     downloadedSamples={downloadedSamples}
                     downloadedVideos={downloadedVideos}
+                    userCredits={creditBalance ?? undefined}
                     onSamplePreview={handleSamplePreview}
                     onSampleDownload={handleSampleDownload}
                     onVideoDownload={handleVideoDownload}
@@ -384,6 +441,7 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
                 isPlaying={isPlaying}
                 downloadedSamples={downloadedSamples}
                 downloadedVideos={downloadedVideos}
+                userCredits={creditBalance ?? undefined}
                 onSamplePreview={handleSamplePreview}
                 onSampleDownload={handleSampleDownload}
                 onVideoDownload={handleVideoDownload}

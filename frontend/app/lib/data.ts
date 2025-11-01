@@ -13,7 +13,14 @@ export async function getSamples(filters?: SampleFilters, authToken?: string | n
     });
   }
 
-  const url = `${process.env.NEXT_PUBLIC_API_URL}/api/v1/samples/${params.toString() ? `?${params}` : ''}`;
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL;
+  if (!baseUrl) {
+    console.error('[getSamples] NEXT_PUBLIC_API_URL is not set');
+    throw new Error('NEXT_PUBLIC_API_URL environment variable is not set');
+  }
+
+  const url = `${baseUrl}/api/v1/samples/${params.toString() ? `?${params}` : ''}`;
+  console.log('[getSamples] Fetching from:', url);
 
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
@@ -24,26 +31,33 @@ export async function getSamples(filters?: SampleFilters, authToken?: string | n
     headers['Authorization'] = `Bearer ${authToken}`;
   }
 
-  const response = await fetch(url, {
-    headers,
-    next: {
-      revalidate: 5, // Revalidate every 5 seconds for fresh data
-      tags: ['samples']
+  try {
+    const response = await fetch(url, {
+      headers,
+      next: {
+        revalidate: 5, // Revalidate every 5 seconds for fresh data
+        tags: ['samples']
+      }
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => 'No error details');
+      console.error('[getSamples] Failed to fetch:', { url, status: response.status, statusText: response.statusText, error: errorText });
+      throw new Error(`Failed to fetch samples: ${response.status} ${response.statusText}`);
     }
-  });
 
-  if (!response.ok) {
-    throw new Error('Failed to fetch samples');
+    return response.json();
+  } catch (error) {
+    console.error('[getSamples] Error fetching samples:', { url, error });
+    throw error;
   }
-
-  return response.json();
 }
 
 // Fetch single sample with caching
 export const getSampleById = unstable_cache(
   async (id: string): Promise<Sample> => {
     const response = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/api/v1/samples/${id}`,
+      `${process.env.NEXT_PUBLIC_API_URL}/api/v1/samples/${id}/`,
       {
         next: {
           revalidate: 60,
@@ -68,7 +82,7 @@ export const getSampleById = unstable_cache(
 // Get processing status (no cache, real-time)
 export async function getProcessingStatus(taskId: string) {
   const response = await fetch(
-    `${process.env.NEXT_PUBLIC_API_URL}/api/v1/process/status/${taskId}`,
+    `${process.env.NEXT_PUBLIC_API_URL}/api/v1/process/status/${taskId}/`,
     {
       cache: 'no-store' // Always fetch fresh
     }

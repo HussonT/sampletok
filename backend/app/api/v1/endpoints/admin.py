@@ -11,8 +11,11 @@ import logging
 
 from app.core.database import get_db
 from app.core.config import settings
-from app.models import Collection, CollectionStatus, User
+from app.models import Collection, CollectionStatus, User, Stem, StemProcessingStatus
 from app.services.credit_service import CreditService
+from app.inngest_functions import inngest_client
+import inngest
+from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 
@@ -390,3 +393,112 @@ async def refund_credits(
             status_code=500,
             detail=f"Failed to refund credits: {str(e)}"
         )
+
+
+@router.post("/retrigger-failed-stems")
+async def retrigger_failed_stems(
+    x_admin_key: str = Header(..., description="Admin API key"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Retrigger all failed or stuck stem separation jobs.
+
+    This will resend the Inngest event for all stems that are:
+    - PENDING (never started)
+    - UPLOADING (stuck during upload)
+    - PROCESSING (stuck during processing)
+    - FAILED (explicitly failed)
+
+    Requires X-Admin-Key header matching ADMIN_API_KEY for security.
+
+    Example:
+        POST /api/v1/admin/retrigger-failed-stems
+        X-Admin-Key: your-admin-api-key
+    """
+    # Verify admin key
+    if not settings.ADMIN_API_KEY:
+        raise HTTPException(status_code=503, detail="Admin API not configured")
+    if x_admin_key != settings.ADMIN_API_KEY:
+        raise HTTPException(status_code=403, detail="Invalid admin key")
+
+    logger.info("Admin: Retriggering failed stem separation jobs")
+
+    # Get stems that are stuck or failed
+    stems_query = select(Stem).where(
+        Stem.status.in_([
+            StemProcessingStatus.PENDING,
+            StemProcessingStatus.UPLOADING,
+            StemProcessingStatus.PROCESSING,
+            StemProcessingStatus.FAILED
+        ])
+    )
+    stems_result = await db.execute(stems_query)
+    stems = stems_result.scalars().all()
+
+    if not stems:
+        return {
+            "message": "No stems need retriggering",
+            "stems_retriggered": 0,
+            "samples_affected": 0
+        }
+
+    # Group stems by sample_id
+    stems_by_sample = defaultdict(list)
+    for stem in stems:
+        stems_by_sample[str(stem.parent_sample_id)].append(stem)
+
+    # Retrigger each sample's stems
+    retriggered_count = 0
+    failed_count = 0
+    sample_details = []
+
+    for sample_id, sample_stems in stems_by_sample.items():
+        stem_ids = [str(stem.id) for stem in sample_stems]
+        stem_types = [stem.stem_type.value for stem in sample_stems]
+
+        try:
+            # Send Inngest event
+            await inngest_client.send(
+                inngest.Event(
+                    name="stem/separation.submitted",
+                    data={
+                        "sample_id": sample_id,
+                        "stem_ids": stem_ids
+                    }
+                )
+            )
+
+            retriggered_count += len(sample_stems)
+            sample_details.append({
+                "sample_id": sample_id,
+                "stem_count": len(sample_stems),
+                "stem_types": stem_types,
+                "status": "retriggered"
+            })
+
+            logger.info(f"Admin: Retriggered {len(sample_stems)} stems for sample {sample_id}")
+
+        except Exception as e:
+            failed_count += len(sample_stems)
+            sample_details.append({
+                "sample_id": sample_id,
+                "stem_count": len(sample_stems),
+                "stem_types": stem_types,
+                "status": "failed",
+                "error": str(e)
+            })
+
+            logger.error(f"Admin: Failed to retrigger stems for sample {sample_id}: {e}")
+
+    logger.info(
+        f"Admin: Retriggered {retriggered_count} stems across {len(stems_by_sample)} samples. "
+        f"Failed: {failed_count}"
+    )
+
+    return {
+        "message": f"Retriggered {retriggered_count} stems across {len(stems_by_sample)} samples",
+        "stems_retriggered": retriggered_count,
+        "stems_failed": failed_count,
+        "samples_affected": len(stems_by_sample),
+        "details": sample_details
+    }

@@ -202,9 +202,12 @@ Uses Alembic with async support. Models are in `app/models/`, migrations in `ale
 When adding/modifying models:
 1. Update SQLAlchemy model in `app/models/`
 2. Generate migration: `alembic revision --autogenerate -m "description"`
-3. Review generated migration file (may need manual edits)
-4. Test locally: `alembic upgrade head`
-5. Commit migration file
+3. **Review generated migration carefully** - delete checklist, verify schema-only
+4. **Run validation:** `python backend/scripts/check_migrations.py`
+5. Test locally: `alembic upgrade head && alembic downgrade -1`
+6. Commit migration file
+
+**CRITICAL:** See `backend/alembic/MIGRATION_GUIDELINES.md` before creating migrations!
 
 ### Migrations vs SQL Scripts
 
