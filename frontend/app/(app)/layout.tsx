@@ -39,6 +39,16 @@ export default function AppLayout({
   const [currentSample, setCurrentSample] = useState<Sample | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
 
+  // Handle favorite changes to update the current sample
+  const handleFavoriteChange = useCallback((sampleId: string, isFavorited: boolean) => {
+    if (currentSample?.id === sampleId) {
+      setCurrentSample({
+        ...currentSample,
+        is_favorited: isFavorited
+      });
+    }
+  }, [currentSample]);
+
   // Update active section based on pathname
   useEffect(() => {
     if (pathname === '/') {
@@ -126,6 +136,7 @@ export default function AppLayout({
             onNext={handleNext}
             onPrevious={handlePrevious}
             onDownload={handleDownload}
+            onFavoriteChange={handleFavoriteChange}
           />
         </div>
       </AudioPlayerContext.Provider>

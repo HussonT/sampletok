@@ -88,14 +88,14 @@ export default function SubscriptionSuccessPage() {
         const balanceData = await api.get<CreditBalanceData>('/credits/balance');
         setCreditData(balanceData);
 
-        // If session_id is present, try to fetch transaction details
+        // Optionally fetch transaction details if session_id is present
         if (sessionId) {
           try {
             const txData = await api.get<TransactionData>(`/credits/transaction/session/${sessionId}`);
             setTransactionData(txData);
-          } catch (err) {
-            console.error('Failed to fetch transaction details:', err);
-            // Not critical - we can still show the balance
+          } catch {
+            // Transaction details not available yet - that's okay
+            // User will see their credit balance which is the important part
           }
         }
       } catch (err) {
@@ -156,9 +156,11 @@ export default function SubscriptionSuccessPage() {
 
         {/* Credit Balance */}
         {loading ? (
-          <div className="flex items-center justify-center gap-2 py-6">
-            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-            <span className="text-sm text-muted-foreground">Loading your credits...</span>
+          <div className="flex flex-col items-center justify-center gap-3 py-6">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            <div className="text-center">
+              <div className="text-sm font-medium text-muted-foreground">Loading your account...</div>
+            </div>
           </div>
         ) : creditData ? (
           <div className="bg-gradient-to-br from-primary/10 to-primary/5 rounded-lg p-6 mb-6 border border-primary/20">
@@ -192,13 +194,6 @@ export default function SubscriptionSuccessPage() {
         ) : (
           <div className="py-6 text-sm text-muted-foreground">
             Credits available! Check your account for details.
-          </div>
-        )}
-
-        {/* Session ID (for reference) */}
-        {sessionId && (
-          <div className="mb-6 p-3 bg-muted rounded text-xs font-mono text-muted-foreground break-all">
-            Session: {sessionId}
           </div>
         )}
 

@@ -101,6 +101,7 @@ class SubscriptionService:
                 }
             ],
             "mode": "subscription",
+            "allow_promotion_codes": True,
             "success_url": f"{settings.SUBSCRIPTION_SUCCESS_URL}?session_id={{CHECKOUT_SESSION_ID}}",
             "cancel_url": settings.SUBSCRIPTION_CANCEL_URL,
             "metadata": {
@@ -317,13 +318,18 @@ class SubscriptionService:
     # WEBHOOK HANDLERS - Called directly by FastAPI webhook endpoint
     # ============================================================================
 
-    async def handle_subscription_created(self, stripe_subscription_dict: Dict[str, Any]) -> Subscription:
+    async def handle_subscription_created(
+        self,
+        stripe_subscription_dict: Dict[str, Any],
+        checkout_session_id: Optional[str] = None
+    ) -> Subscription:
         """
         Handle customer.subscription.created webhook.
         Creates subscription record and grants initial credits.
 
         Args:
             stripe_subscription_dict: Stripe subscription object as dict
+            checkout_session_id: Optional checkout session ID to link transaction to success page
 
         Returns:
             Created Subscription object
@@ -410,7 +416,8 @@ class SubscriptionService:
                 transaction_type="subscription_grant",
                 description=f"Initial credits for {tier} subscription",
                 subscription_id=subscription.id,
-                stripe_invoice_id=None  # Initial grant doesn't have invoice yet
+                stripe_invoice_id=None,  # Initial grant doesn't have invoice yet
+                stripe_session_id=checkout_session_id  # Link to checkout session for success page lookup
             )
 
             await self.db.commit()
@@ -623,6 +630,71 @@ class SubscriptionService:
 
         logger.info(f"Subscription deleted: {subscription.id}, credits reset {old_balance} → 0")
 
+    async def handle_checkout_session_subscription(self, checkout_session_dict: Dict[str, Any]) -> None:
+        """
+        Handle checkout.session.completed webhook for subscription purchases.
+        Updates initial credit transaction with session_id for success page lookup.
+
+        This handler runs when a subscription checkout completes. It links the
+        checkout session to the initial credit grant so the success page can
+        display transaction details.
+
+        Args:
+            checkout_session_dict: Stripe checkout session object as dict
+        """
+        # Only handle subscription checkouts
+        if checkout_session_dict.get('mode') != 'subscription':
+            return
+
+        session_id = checkout_session_dict.get('id')
+        subscription_id = checkout_session_dict.get('subscription')
+
+        if not subscription_id:
+            logger.warning(f"No subscription_id in checkout session {session_id}")
+            return
+
+        logger.info(f"Processing subscription checkout session {session_id} for subscription {subscription_id}")
+
+        # Try to find the subscription in our database
+        # Note: subscription.created webhook might not have fired yet, so this is best-effort
+        result = await self.db.execute(
+            select(Subscription).where(
+                Subscription.stripe_subscription_id == subscription_id
+            )
+        )
+        subscription = result.scalar_one_or_none()
+
+        if not subscription:
+            logger.info(
+                f"Subscription {subscription_id} not found yet for session {session_id}. "
+                f"This is normal if subscription.created webhook hasn't fired yet. "
+                f"The transaction will be created without session_id, and can be looked up by subscription_id instead."
+            )
+            # Note: If subscription.created fires later, the transaction will be created
+            # without session_id. The success page already handles 404 gracefully, and
+            # users can see their credits via the balance endpoint.
+            return
+
+        # Subscription exists - find and update the initial credit transaction
+        result = await self.db.execute(
+            select(CreditTransaction).where(
+                CreditTransaction.subscription_id == subscription.id,
+                CreditTransaction.transaction_type == 'subscription_grant',
+                CreditTransaction.stripe_session_id.is_(None)  # Only update if not set
+            ).limit(1)
+        )
+        transaction = result.scalar_one_or_none()
+
+        if transaction:
+            transaction.stripe_session_id = session_id
+            await self.db.commit()
+            logger.info(
+                f"✅ Updated transaction {transaction.id} with session_id {session_id} "
+                f"for subscription {subscription.id}"
+            )
+        else:
+            logger.info(f"No transaction found to update for subscription {subscription.id}")
+
     async def handle_top_up_purchase(self, checkout_session_dict: Dict[str, Any]) -> None:
         """
         Handle checkout.session.completed webhook for top-up purchases.
@@ -633,7 +705,6 @@ class SubscriptionService:
         """
         # Check if this is a top-up purchase (mode = 'payment', not 'subscription')
         if checkout_session_dict.get('mode') != 'payment':
-            logger.info(f"Skipping non-payment checkout session {checkout_session_dict.get('id')}")
             return
 
         # Get metadata
@@ -641,7 +712,6 @@ class SubscriptionService:
         purchase_type = metadata.get('type')
 
         if purchase_type != 'top_up':
-            logger.info(f"Skipping non-top-up purchase {checkout_session_dict.get('id')}")
             return
 
         # Extract purchase details from metadata

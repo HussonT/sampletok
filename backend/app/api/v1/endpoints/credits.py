@@ -240,6 +240,7 @@ async def purchase_top_up(
             "payment_method_types": ["card"],
             "line_items": line_items,
             "mode": "payment",  # One-time payment
+            "allow_promotion_codes": True,
             "success_url": f"{settings.SUBSCRIPTION_SUCCESS_URL}?session_id={{CHECKOUT_SESSION_ID}}",
             "cancel_url": settings.SUBSCRIPTION_CANCEL_URL,
             "metadata": {

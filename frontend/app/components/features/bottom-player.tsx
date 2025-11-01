@@ -9,7 +9,6 @@ import {
   Volume2,
   Repeat,
   Shuffle,
-  Heart,
   Download,
   ExternalLink,
   Users
@@ -17,6 +16,7 @@ import {
 import { Sample } from '@/types/api';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { getAvatarWithFallback } from '@/lib/avatar';
+import { FavoriteButton } from './favorite-button';
 
 interface BottomPlayerProps {
   sample?: Sample | null;
@@ -25,6 +25,7 @@ interface BottomPlayerProps {
   onNext?: () => void;
   onPrevious?: () => void;
   onDownload?: (sample: Sample) => void;
+  onFavoriteChange?: (sampleId: string, isFavorited: boolean) => void;
 }
 
 export function BottomPlayer({
@@ -33,7 +34,8 @@ export function BottomPlayer({
   onPlayPause,
   onNext,
   onPrevious,
-  onDownload
+  onDownload,
+  onFavoriteChange
 }: BottomPlayerProps) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [currentTime, setCurrentTime] = useState(0);
@@ -146,20 +148,24 @@ export function BottomPlayer({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button 
-              variant="ghost" 
-              size="sm" 
+            <Button
+              variant="ghost"
+              size="sm"
               className="w-8 h-8 p-0"
               onClick={() => sample.tiktok_url && window.open(sample.tiktok_url, '_blank')}
             >
               <ExternalLink className="w-4 h-4" />
             </Button>
-            <Button variant="ghost" size="sm" className="w-8 h-8 p-0">
-              <Heart className="w-4 h-4" />
-            </Button>
-            <Button 
-              variant="ghost" 
-              size="sm" 
+            <FavoriteButton
+              sample={sample}
+              variant="ghost"
+              size="sm"
+              className="w-8 h-8 p-0"
+              onFavoriteChange={(isFavorited) => onFavoriteChange?.(sample.id, isFavorited)}
+            />
+            <Button
+              variant="ghost"
+              size="sm"
               className="w-8 h-8 p-0"
               onClick={() => onDownload?.(sample)}
             >

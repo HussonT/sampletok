@@ -113,8 +113,16 @@ async def stripe_webhook_handler(
             # Stripe automatically retries - no action needed
 
         elif event_type == "checkout.session.completed":
-            # Handle top-up purchases (one-time payments)
-            await subscription_service.handle_top_up_purchase(event_data)
+            # Handle both subscription checkouts and top-up purchases
+            mode = event_data.get('mode')
+            if mode == 'subscription':
+                # New subscription purchase - link session to transaction
+                await subscription_service.handle_checkout_session_subscription(event_data)
+            elif mode == 'payment':
+                # Top-up purchase - grant credits
+                await subscription_service.handle_top_up_purchase(event_data)
+            else:
+                logger.warning(f"Unknown checkout mode: {mode}")
 
         else:
             # Unhandled event type - log and ignore

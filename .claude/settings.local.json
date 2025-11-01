@@ -54,7 +54,10 @@
       "Bash(stripe login:*)",
       "Bash(stripe trigger:*)",
       "Bash(stripe events:*)",
-      "Bash(stripe checkout sessions retrieve:*)"
+      "Bash(stripe checkout sessions retrieve:*)",
+      "Bash(gcloud secrets versions disable:*)",
+      "Bash(gcloud secrets versions enable:*)",
+      "Bash(gcloud secrets versions access:*)"
     ],
     "deny": [],
     "ask": []

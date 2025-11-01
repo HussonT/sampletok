@@ -271,6 +271,22 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
     setIsPlaying(true);
   };
 
+  const handleFavoriteChange = useCallback((sampleId: string, isFavorited: boolean) => {
+    // Update the current sample if it's the one being favorited
+    if (currentSample?.id === sampleId) {
+      setCurrentSample({
+        ...currentSample,
+        is_favorited: isFavorited
+      });
+    }
+    // Update the samples list to reflect the new favorite state
+    setSamples(prevSamples =>
+      prevSamples.map(s =>
+        s.id === sampleId ? { ...s, is_favorited: isFavorited } : s
+      )
+    );
+  }, [currentSample]);
+
   // Spacebar play/pause
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
@@ -384,6 +400,7 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
         onNext={handlePlayerNext}
         onPrevious={handlePlayerPrevious}
         onDownload={handleSampleDownload}
+        onFavoriteChange={handleFavoriteChange}
       />
     </>
   );
