@@ -22,7 +22,7 @@ from sqlalchemy.exc import IntegrityError
 from app.services.tiktok.creator_service import CreatorService
 from app.services.tiktok.collection_service import TikTokCollectionService
 from app.services.credit_service import refund_credits_atomic
-from app.utils import extract_hashtags, remove_hashtags
+from app.utils import extract_hashtags, remove_hashtags, utcnow_naive
 from datetime import datetime
 from typing import List, Tuple
 
@@ -928,7 +928,7 @@ async def update_collection_status(collection_id: str, status: CollectionStatus)
             collection = result.scalar_one()
             collection.status = status
             if status == CollectionStatus.processing:
-                collection.started_at = datetime.utcnow()
+                collection.started_at = utcnow_naive()
             await db.commit()
             logger.info(f"Updated collection {collection_id} status to {status.value}")
     except Exception as e:
@@ -1202,7 +1202,7 @@ async def complete_collection(
             result = await db.execute(query)
             collection = result.scalar_one()
             collection.status = CollectionStatus.completed
-            collection.completed_at = datetime.utcnow()
+            collection.completed_at = utcnow_naive()
             collection.next_cursor = next_cursor
             collection.has_more = has_more
             await db.commit()

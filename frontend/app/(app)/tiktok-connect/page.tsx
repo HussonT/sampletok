@@ -373,8 +373,7 @@ export default function TikTokConnectPage() {
                     <li>Enter a TikTok username to browse their collections</li>
                     <li>Review collections and credit costs (1 credit per tok)</li>
                     <li>Click &quot;Import Collection&quot; to start processing</li>
-                    <li>Track progress in real-time (max {MAX_VIDEOS_PER_BATCH} toks per collection)</li>
-                    <li>All toks will be added to your downloads automatically</li>
+                    <li>All toks will be available in your collection library</li>
                   </ol>
                 </div>
               </div>

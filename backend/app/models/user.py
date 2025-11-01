@@ -5,6 +5,7 @@ from datetime import datetime
 import uuid
 
 from app.core.database import Base
+from app.utils import utcnow_naive
 
 
 class User(Base):
@@ -17,10 +18,14 @@ class User(Base):
     hashed_password = Column(String, nullable=True)  # Not used for Clerk users
     is_active = Column(Boolean, default=True)
     is_superuser = Column(Boolean, default=False)
-    credits = Column(Integer, default=10)
+    credits = Column(Integer, default=0)  # No free credits - subscription required
 
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    # Soft delete for users with active subscriptions
+    is_deleted = Column(Boolean, default=False, nullable=False)
+    deleted_at = Column(DateTime, nullable=True)
+
+    created_at = Column(DateTime, default=utcnow_naive)
+    updated_at = Column(DateTime, default=utcnow_naive, onupdate=utcnow_naive)
 
     # Relationships
     samples = relationship("Sample", back_populates="creator", cascade="all, delete-orphan")
@@ -28,9 +33,20 @@ class User(Base):
     favorites = relationship("UserFavorite", back_populates="user", cascade="all, delete-orphan")
     collections = relationship("Collection", back_populates="user", cascade="all, delete-orphan")
 
+    # Subscription relationships (1:1)
+    subscription = relationship("Subscription", back_populates="user", uselist=False, cascade="all, delete-orphan")
+    stripe_customer = relationship("StripeCustomer", back_populates="user", uselist=False, cascade="all, delete-orphan")
+    credit_transactions = relationship("CreditTransaction", back_populates="user", cascade="all, delete-orphan")
+
     # Constraints
     __table_args__ = (
         CheckConstraint('credits >= 0', name='check_credits_non_negative'),
+        # Constraint: deleted_at must be set if is_deleted is true
+        CheckConstraint(
+            '(is_deleted = false) OR (is_deleted = true AND deleted_at IS NOT NULL)',
+            name='check_deleted_at'
+        ),
+        Index('idx_users_is_deleted', 'is_deleted'),
     )
 
 
@@ -42,7 +58,7 @@ class UserDownload(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     sample_id = Column(UUID(as_uuid=True), ForeignKey("samples.id", ondelete="CASCADE"), nullable=False)
     download_type = Column(String, nullable=False)  # "wav" or "mp3"
-    downloaded_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    downloaded_at = Column(DateTime, default=utcnow_naive, nullable=False)
 
     # Relationships
     user = relationship("User", back_populates="downloads")
@@ -62,7 +78,7 @@ class UserFavorite(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     sample_id = Column(UUID(as_uuid=True), ForeignKey("samples.id", ondelete="CASCADE"), nullable=False)
-    favorited_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    favorited_at = Column(DateTime, default=utcnow_naive, nullable=False)
 
     # Relationships
     user = relationship("User", back_populates="favorites")

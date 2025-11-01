@@ -119,6 +119,39 @@ export function SoundsTable({
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
+
+        // Handle 403 (no subscription or no credits) with helpful messages
+        if (response.status === 403) {
+          const detail = errorData.detail || '';
+
+          if (detail.includes('subscription required') || detail.includes('Active subscription')) {
+            toast.error('Subscription Required', {
+              id: 'video-download',
+              description: 'You need an active subscription to download videos.',
+              action: {
+                label: 'Subscribe Now',
+                onClick: () => window.location.href = '/pricing'
+              },
+              duration: 5000,
+            });
+            return;
+          }
+
+          if (detail.includes('Insufficient credits') || detail.includes('credits')) {
+            toast.error('No Credits Available', {
+              id: 'video-download',
+              description: 'You need at least 1 credit to download. Top up your credits to continue.',
+              action: {
+                label: 'Buy Credits',
+                onClick: () => window.location.href = '/top-up'
+              },
+              duration: 5000,
+            });
+            return;
+          }
+        }
+
+        // Only log unexpected errors (not 403s which are handled above)
         console.error('Video download failed:', response.status, errorData);
         throw new Error(errorData.detail || 'Download failed');
       }
@@ -136,16 +169,35 @@ export function SoundsTable({
 
       toast.success('Video download complete!', {
         id: 'video-download',
-        description: 'MP4 file saved to your downloads',
+        description: sample.is_downloaded
+          ? 'MP4 file saved to your downloads (Free re-download)'
+          : 'MP4 file saved to your downloads (1 credit used)',
       });
 
       onVideoDownload?.(sample);
     } catch (error) {
       console.error('Video download error:', error);
-      toast.error('Video download failed', {
-        id: 'video-download',
-        description: 'Please try again or contact support if the issue persists',
-      });
+
+      // Show helpful error message
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+
+      // If error mentions credits or subscription, show helpful toast
+      if (errorMessage.toLowerCase().includes('credit') || errorMessage.toLowerCase().includes('subscription')) {
+        toast.error('Cannot Download Video', {
+          id: 'video-download',
+          description: errorMessage,
+          action: {
+            label: errorMessage.toLowerCase().includes('subscription') ? 'Subscribe' : 'Buy Credits',
+            onClick: () => window.location.href = errorMessage.toLowerCase().includes('subscription') ? '/pricing' : '/top-up'
+          },
+          duration: 5000,
+        });
+      } else {
+        toast.error('Video download failed', {
+          id: 'video-download',
+          description: errorMessage || 'Please try again or contact support if the issue persists',
+        });
+      }
     } finally {
       setDownloadingVideo(null);
     }
@@ -468,7 +520,7 @@ export function SoundsTable({
                       size="sm"
                       className={`p-0 w-8 h-8 ${downloadedVideos?.has(sample.id) ? 'text-primary' : ''}`}
                       onClick={() => handleVideoDownload(sample)}
-                      title={downloadedVideos?.has(sample.id) ? "Download video (already purchased)" : "Download video (1 credit)"}
+                      title={sample.is_downloaded ? "Download video (Free - Already purchased)" : "Download video (1 credit)"}
                       disabled={!sample.video_url}
                     >
                       <Video className="w-4 h-4" />

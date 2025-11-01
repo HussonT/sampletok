@@ -154,3 +154,4 @@ uploads/
 
 # Local development
 .local/
+gcp-secrets-backup.md

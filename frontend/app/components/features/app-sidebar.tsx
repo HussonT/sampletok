@@ -8,8 +8,9 @@ import {
   Download,
   Home,
   Heart,
-  Link as LinkIcon,
+  RefreshCw,
   FolderOpen,
+  Settings,
 } from 'lucide-react';
 import {
   SignInButton,
@@ -20,6 +21,7 @@ import {
   useUser,
 } from '@clerk/nextjs';
 import { AddSampleDialog } from './add-sample-dialog';
+import { CreditBalance } from './credit-balance';
 
 interface AppSidebarProps {
   activeSection?: string;
@@ -92,8 +94,8 @@ export function AppSidebar({ activeSection, onSectionChange, onProcessingStarted
                         : 'text-sidebar-foreground hover:bg-sidebar-accent/50'
                     }`}
                   >
-                    <LinkIcon className="w-4 h-4" />
-                    <span>TikTok Connect</span>
+                    <RefreshCw className="w-4 h-4" />
+                    <span>sync a tok-collection</span>
                   </button>
                 </Link>
               </div>
@@ -149,6 +151,9 @@ export function AppSidebar({ activeSection, onSectionChange, onProcessingStarted
         </div>
       </div>
 
+      {/* Credit Balance */}
+      <CreditBalance />
+
       {/* Auth Section */}
       <div className="px-4 py-3 border-t">
         <SignedOut>
@@ -166,6 +171,14 @@ export function AppSidebar({ activeSection, onSectionChange, onProcessingStarted
           </div>
         </SignedOut>
         <SignedIn>
+          <Link href="/settings" className="w-full mb-2">
+            <button
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors text-sidebar-foreground hover:bg-sidebar-accent/50"
+            >
+              <Settings className="w-4 h-4" />
+              <span>Settings</span>
+            </button>
+          </Link>
           {isLoaded && user && (
             <div className="flex items-center gap-2.5 p-2 rounded hover:bg-sidebar-accent/20 transition-colors">
               <UserButton

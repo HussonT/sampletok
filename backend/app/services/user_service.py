@@ -13,6 +13,7 @@ from sqlalchemy.orm import selectinload
 
 from app.models.user import User, UserDownload, UserFavorite
 from app.models.sample import Sample
+from app.utils import utcnow_naive
 
 
 async def get_or_create_user_from_clerk(
@@ -72,7 +73,7 @@ async def get_or_create_user_from_clerk(
         hashed_password=None,  # No password for Clerk users
         is_active=True,
         is_superuser=False,
-        credits=10  # Default credits for new users
+        credits=0  # No free credits - users must subscribe
     )
 
     db.add(user)
@@ -129,7 +130,7 @@ class UserDownloadService:
             user_id=user_id,
             sample_id=sample_id,
             download_type=download_type,
-            downloaded_at=datetime.utcnow()
+            downloaded_at=utcnow_naive()
         )
         db.add(download)
 
@@ -295,7 +296,7 @@ class UserFavoriteService:
         favorite = UserFavorite(
             user_id=user_id,
             sample_id=sample_id,
-            favorited_at=datetime.utcnow()
+            favorited_at=utcnow_naive()
         )
         db.add(favorite)
 

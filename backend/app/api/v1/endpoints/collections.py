@@ -19,7 +19,7 @@ from app.models.schemas import (
     CollectionProcessingTaskResponse,
     SampleResponse
 )
-from app.api.deps import get_current_user
+from app.api.deps import get_current_user, require_active_subscription
 from app.services.tiktok.collection_service import TikTokCollectionService
 from app.services.credit_service import deduct_credits_atomic, refund_credits_atomic
 from app.inngest_functions import inngest_client
@@ -187,19 +187,22 @@ async def process_collection(
     request: Request,
     payload: ProcessCollectionRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(require_active_subscription)
 ):
     """
     Process a TikTok collection - downloads all videos and adds them to user's downloads
 
-    Requires authentication and sufficient credits (1 credit per video, max 30 videos)
+    Requires ACTIVE SUBSCRIPTION and sufficient credits (1 credit per video, max 30 videos)
 
     Args:
         payload: Collection details (collection_id, username, name, video_count)
-        current_user: Authenticated user
+        current_user: Authenticated user with active subscription
 
     Returns:
         Task response with collection_id for status tracking
+
+    Raises:
+        403: If user has no active subscription
     """
     # Enforce max videos per batch
     max_videos = settings.MAX_VIDEOS_PER_BATCH
@@ -260,8 +263,35 @@ async def process_collection(
 
                 # New videos found - sync them
                 # Deduct credits only for new videos atomically
+                #
+                # KNOWN ISSUE: TOCTOU (Time-Of-Check-Time-Of-Use) Race Condition
+                # =================================================================
+                # The subscription is checked early in the request (via require_active_subscription dependency),
+                # but credit deduction happens here, potentially seconds later. Theoretically, the subscription
+                # could be cancelled between the check and the deduction.
+                #
+                # IMPACT ANALYSIS:
+                # 1. Subscription cancellations are rare during active processing
+                # 2. Atomic credit operations (with_for_update) prevent double-spending
+                # 3. Worst case: User loses subscription mid-request, gets charged credits anyway
+                # 4. This is an acceptable edge case given the complexity of adding re-checks
+                #
+                # MITIGATION:
+                # - Credit deductions use database-level locks (atomic operations)
+                # - Complete audit trail via CreditTransaction allows manual review
+                # - Subscription status is refreshed on next request
+                #
+                # ALTERNATIVE CONSIDERED AND REJECTED:
+                # Re-checking subscription status before every credit deduction would:
+                # - Add N extra database queries per request
+                # - Increase complexity and potential for deadlocks
+                # - Provide minimal benefit for an extremely rare edge case
+                #
+                # DECISION: Accept this known limitation. Document it clearly for future maintainers.
                 if not await deduct_credits_atomic(db, current_user.id, new_videos):
                     # Refresh user to get current credit balance for error message
+                    # Note: There's a minor TOCTOU here - balance could change between deduction and refresh
+                    # This only affects the error message, not business logic, so it's acceptable
                     await db.refresh(current_user)
                     raise HTTPException(
                         status_code=402,

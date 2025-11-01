@@ -206,6 +206,48 @@ When adding/modifying models:
 4. Test locally: `alembic upgrade head`
 5. Commit migration file
 
+### Migrations vs SQL Scripts
+
+**IMPORTANT:** Alembic migrations should ONLY contain schema changes. Never put business logic or one-time data operations in migrations.
+
+**Use Alembic Migrations For:**
+- Schema changes (tables, columns, indexes, constraints)
+- Structural modifications that must be applied to all environments
+- Changes that new databases need during initial setup
+
+Examples:
+```bash
+alembic revision -m "Add subscription table"
+alembic revision -m "Add index on user_email"
+alembic revision -m "Add NOT NULL constraint to tier column"
+```
+
+**Use SQL Scripts (`backend/scripts/sql/`) For:**
+- One-time data operations for production
+- Bulk data updates or cleanup
+- Business logic changes that don't affect schema
+- Operations that should be reviewed before running
+
+Examples:
+- Resetting user credits for a launch
+- Bulk updating legacy data
+- Data migration between systems
+- Cleanup of test/duplicate data
+
+**Running SQL Scripts:**
+```bash
+# Always review first
+cat backend/scripts/sql/script-name.sql
+
+# Create backup
+pg_dump $DATABASE_URL > backup-$(date +%Y%m%d-%H%M%S).sql
+
+# Run the script
+psql $DATABASE_URL -f backend/scripts/sql/script-name.sql
+```
+
+See `backend/scripts/README.md` for detailed guidelines on when to use migrations vs scripts.
+
 ## API Endpoints
 
 **Key endpoints** (`/api/v1/`):

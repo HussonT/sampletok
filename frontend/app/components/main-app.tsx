@@ -7,13 +7,14 @@ import { SoundsTable } from '@/components/features/sounds-table';
 import { SamplesPagination } from '@/components/features/samples-pagination';
 import { ProcessingQueue, ProcessingTask } from '@/components/features/processing-queue';
 import { BottomPlayer } from '@/components/features/bottom-player';
-import { Download, Music } from 'lucide-react';
+import { Download, Music, Coins } from 'lucide-react';
 import { Sample, SampleFilters, ProcessingStatus, PaginatedResponse } from '@/types/api';
 import { processTikTokUrl, deleteSample, getProcessingStatus } from '@/actions/samples';
 import { toast } from 'sonner';
 import { useProcessing } from '@/contexts/processing-context';
 import { TableLoadingSkeleton, LoadingBar } from '@/components/ui/loading-skeletons';
 import { createAuthenticatedClient } from '@/lib/api-client';
+import Link from 'next/link';
 
 interface MainAppProps {
   initialSamples: Sample[];
@@ -32,10 +33,11 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
   const [activeSection, setActiveSection] = useState('explore');
   const [downloadedSamples, setDownloadedSamples] = useState<Set<string>>(new Set());
   const [downloadedVideos, setDownloadedVideos] = useState<Set<string>>(new Set());
-  const [credits, setCredits] = useState(10);
   const [processingTasks, setProcessingTasks] = useState<Map<string, ProcessingTask>>(new Map());
   const [currentPage, setCurrentPage] = useState(1);
   const [isLoadingPage, setIsLoadingPage] = useState(false);
+  const [creditBalance, setCreditBalance] = useState<number | null>(null);
+  const [hasSubscription, setHasSubscription] = useState(false);
   const itemsPerPage = 20;
 
   // Update samples when initialSamples changes (from server refresh)
@@ -43,6 +45,34 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
     setSamples(initialSamples);
     setCurrentPage(1); // Reset to page 1 when initial data changes
   }, [initialSamples]);
+
+  // Fetch credit balance
+  useEffect(() => {
+    const fetchCredits = async () => {
+      try {
+        const token = await getToken();
+        if (!token) return;
+
+        const api = createAuthenticatedClient(async () => token);
+        const data = await api.get<{
+          credits: number;
+          has_subscription: boolean;
+          subscription_tier: string | null;
+          monthly_credits: number | null;
+        }>('/credits/balance');
+
+        setCreditBalance(data.credits);
+        setHasSubscription(data.has_subscription);
+      } catch (err) {
+        console.error('Failed to fetch credit balance:', err);
+      }
+    };
+
+    fetchCredits();
+    // Refresh credits every 30 seconds
+    const interval = setInterval(fetchCredits, 30000);
+    return () => clearInterval(interval);
+  }, [getToken]);
 
   // Preload videos for current samples
   useEffect(() => {
@@ -201,47 +231,21 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
   };
 
   const handleSampleDownload = (sample: Sample) => {
-    if (downloadedSamples.has(sample.id)) {
-      toast.success('Download started!', {
-        description: `Downloading ${sample.creator_username} sample as WAV`,
-      });
-    } else {
-      if (credits <= 0) {
-        toast.error('No credits remaining', {
-          description: 'Purchase more credits to download samples',
-        });
-        return;
-      }
+    // Mark as downloaded locally (actual download handled by SoundsTable)
+    setDownloadedSamples(prev => new Set([...prev, sample.id]));
 
-      setCredits(prev => prev - 1);
-      setDownloadedSamples(prev => new Set([...prev, sample.id]));
-
-      toast.success('Sample purchased!', {
-        description: `Used 1 credit. ${credits - 1} credits remaining`,
-      });
-    }
+    toast.success('Download started!', {
+      description: `Downloading ${sample.creator_username} sample`,
+    });
   };
 
   const handleVideoDownload = (sample: Sample) => {
-    if (downloadedVideos.has(sample.id)) {
-      toast.success('Download started!', {
-        description: `Downloading ${sample.creator_username} video`,
-      });
-    } else {
-      if (credits <= 0) {
-        toast.error('No credits remaining', {
-          description: 'Purchase more credits to download videos',
-        });
-        return;
-      }
+    // Mark as downloaded locally (actual download handled by SoundsTable)
+    setDownloadedVideos(prev => new Set([...prev, sample.id]));
 
-      setCredits(prev => prev - 1);
-      setDownloadedVideos(prev => new Set([...prev, sample.id]));
-
-      toast.success('Video purchased!', {
-        description: `Used 1 credit. ${credits - 1} credits remaining`,
-      });
-    }
+    toast.success('Download started!', {
+      description: `Downloading ${sample.creator_username} video`,
+    });
   };
 
 
@@ -266,6 +270,22 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
     setCurrentSample(prevSample);
     setIsPlaying(true);
   };
+
+  const handleFavoriteChange = useCallback((sampleId: string, isFavorited: boolean) => {
+    // Update the current sample if it's the one being favorited
+    if (currentSample?.id === sampleId) {
+      setCurrentSample({
+        ...currentSample,
+        is_favorited: isFavorited
+      });
+    }
+    // Update the samples list to reflect the new favorite state
+    setSamples(prevSamples =>
+      prevSamples.map(s =>
+        s.id === sampleId ? { ...s, is_favorited: isFavorited } : s
+      )
+    );
+  }, [currentSample]);
 
   // Spacebar play/pause
   useEffect(() => {
@@ -295,11 +315,18 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
             {activeSection === 'explore' ? 'Explore' : 'My Downloads'}
           </h1>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="text-sm text-muted-foreground">
-            {credits} credits
-          </div>
-        </div>
+
+        {/* Credit Balance Display */}
+        {creditBalance !== null && (
+          <Link href={hasSubscription ? '/top-up' : '/pricing'}>
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-md hover:bg-accent/50 transition-colors cursor-pointer">
+              <Coins className={`w-4 h-4 ${creditBalance > 0 ? 'text-foreground' : 'text-muted-foreground'}`} />
+              <span className={`text-sm ${creditBalance > 0 ? 'text-foreground' : 'text-muted-foreground'}`}>
+                {creditBalance}
+              </span>
+            </div>
+          </Link>
+        )}
       </div>
 
       {/* Loading bar */}
@@ -373,6 +400,7 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
         onNext={handlePlayerNext}
         onPrevious={handlePlayerPrevious}
         onDownload={handleSampleDownload}
+        onFavoriteChange={handleFavoriteChange}
       />
     </>
   );

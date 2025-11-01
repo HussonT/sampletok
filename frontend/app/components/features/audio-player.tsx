@@ -38,15 +38,36 @@ export function AudioPlayer({
   const [isMuted, setIsMuted] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
 
+  // Handle sample changes - reset audio state
   useEffect(() => {
     if (audioRef.current) {
-      if (isPlaying) {
-        audioRef.current.play();
-      } else {
-        audioRef.current.pause();
-      }
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      setCurrentTime(0);
     }
-  }, [isPlaying, sample]);
+  }, [sample]);
+
+  // Handle play/pause state
+  useEffect(() => {
+    if (!audioRef.current) return;
+
+    const playAudio = async () => {
+      try {
+        if (isPlaying) {
+          await audioRef.current!.play();
+        } else {
+          audioRef.current!.pause();
+        }
+      } catch (error) {
+        // Ignore AbortError - happens when play is interrupted (expected behavior)
+        if (error instanceof Error && error.name !== 'AbortError') {
+          console.error('Error playing audio:', error);
+        }
+      }
+    };
+
+    playAudio();
+  }, [isPlaying]);
 
   useEffect(() => {
     if (audioRef.current) {
