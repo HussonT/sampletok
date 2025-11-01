@@ -17,6 +17,7 @@ import { Sample } from '@/types/api';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { getAvatarWithFallback } from '@/lib/avatar';
 import { FavoriteButton } from './favorite-button';
+import { HlsAudioPlayer } from './hls-audio-player';
 
 interface BottomPlayerProps {
   sample?: Sample | null;
@@ -136,12 +137,14 @@ export function BottomPlayer({
 
   return (
     <>
-      {/* Hidden audio element */}
+      {/* Hidden HLS audio player */}
       {sample && (
-        <audio
-          ref={audioRef}
-          src={sample.audio_url_mp3 || sample.audio_url_wav}
-          preload="auto"
+        <HlsAudioPlayer
+          hlsUrl={sample.audio_url_hls}
+          mp3Url={sample.audio_url_mp3 || sample.audio_url_wav}
+          audioRef={audioRef}
+          preload="metadata"
+          crossOrigin="anonymous"
           onTimeUpdate={handleTimeUpdate}
           onEnded={onNext}
         />

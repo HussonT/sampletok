@@ -102,6 +102,7 @@ class SampleInDB(BaseModel):
     tags: List[str]
     audio_url_wav: Optional[str]
     audio_url_mp3: Optional[str]
+    audio_url_hls: Optional[str]
     waveform_url: Optional[str]
     thumbnail_url: Optional[str]
     origin_cover_url: Optional[str]
@@ -167,6 +168,7 @@ class SampleResponse(BaseModel):
     tags: Optional[List[str]] = Field(default_factory=list)
     audio_url_wav: Optional[str] = None
     audio_url_mp3: Optional[str] = None
+    audio_url_hls: Optional[str] = None
     waveform_url: Optional[str] = None
     thumbnail_url: Optional[str] = None
     origin_cover_url: Optional[str] = None

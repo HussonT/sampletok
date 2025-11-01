@@ -40,6 +40,7 @@ export interface Sample {
   // File URLs - All stored in our infrastructure (R2/S3/GCS)
   audio_url_wav?: string;
   audio_url_mp3?: string;
+  audio_url_hls?: string;  // HLS playlist URL (m3u8) for streaming
   waveform_url?: string;
   video_url?: string;  // Our stored video file
   thumbnail_url?: string;  // Our stored thumbnail

@@ -29,6 +29,7 @@ interface SoundsTableProps {
   downloadedVideos?: Set<string>;
   userCredits?: number;
   onSamplePreview?: (sample: Sample) => void;
+  onSampleHover?: (sample: Sample) => void;
   onSampleDownload?: (sample: Sample) => void;
   onVideoDownload?: (sample: Sample) => void;
   onFavoriteChange?: (sampleId: string, isFavorited: boolean) => void;
@@ -42,6 +43,7 @@ export function SoundsTable({
   downloadedVideos,
   userCredits = 0,
   onSamplePreview,
+  onSampleHover,
   onSampleDownload,
   onVideoDownload,
   onFavoriteChange
@@ -506,6 +508,7 @@ export function SoundsTable({
                         size="sm"
                         className="p-0 w-8 h-8 hover:bg-secondary/50"
                         onClick={() => onSamplePreview?.(sample)}
+                        onMouseEnter={() => onSampleHover?.(sample)}
                       >
                         {isCurrentPlaying ? (
                           <Pause className="w-4 h-4" />
@@ -892,6 +895,15 @@ export function SoundsTable({
                                     created_at: stem.created_at,
                                   };
                                   onSamplePreview?.(stemAsSample);
+                                }}
+                                onMouseEnter={() => {
+                                  // Preload stem audio on hover
+                                  const stemAsSample: Sample = {
+                                    id: stem.id,
+                                    audio_url_mp3: stem.download_url_mp3,
+                                    audio_url_wav: stem.download_url_wav,
+                                  } as Sample;
+                                  onSampleHover?.(stemAsSample);
                                 }}
                               >
                                 {currentSample?.id === stem.id && isPlaying ? (

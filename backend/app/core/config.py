@@ -74,6 +74,7 @@ class Settings(BaseSettings):
     COLLECTION_RATE_LIMIT_PER_MINUTE: int = 10  # Max collection processing requests per minute per user
     COLLECTIONS_LIST_RATE_LIMIT_PER_MINUTE: int = 60  # Max collection list requests per minute per user
     STEM_SEPARATION_RATE_LIMIT_PER_MINUTE: int = 5  # Max stem separation requests per minute per user
+    STEM_DOWNLOAD_RATE_LIMIT_PER_MINUTE: int = 30  # Max stem download requests per minute per user
 
     # Audio Processing
     AUDIO_SAMPLE_RATE: int = 48000
@@ -88,6 +89,8 @@ class Settings(BaseSettings):
 
     # La La AI Settings
     LALAL_API_KEY: Optional[str] = None  # Required for stem separation
+    MAX_STEMS_PER_REQUEST: int = 5  # Maximum number of stems that can be requested at once
+    MAX_CONCURRENT_DOWNLOADS_PER_USER: int = 3  # Maximum concurrent stem downloads per user
 
     # Stripe Settings
     STRIPE_SECRET_KEY: Optional[str] = None  # Required for production

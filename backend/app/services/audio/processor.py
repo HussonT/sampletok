@@ -87,6 +87,69 @@ class AudioProcessor:
             # Replace original with normalized
             Path(temp_path).replace(audio_path)
 
+    async def generate_hls_stream(self, audio_path: str, output_dir: str) -> Dict[str, any]:
+        """
+        Generate HLS stream from audio file at 320kbps
+        Creates .m3u8 playlist and segment files for instant streaming playback
+
+        Args:
+            audio_path: Path to source audio file (MP3 or WAV)
+            output_dir: Directory to store HLS files
+
+        Returns:
+            Dict with 'playlist' path and list of 'segments'
+        """
+        audio_path = Path(audio_path)
+        output_dir = Path(output_dir)
+
+        # Create HLS subdirectory
+        hls_dir = output_dir / f"{audio_path.stem}_hls"
+        hls_dir.mkdir(parents=True, exist_ok=True)
+
+        # Output files
+        playlist_path = hls_dir / "playlist.m3u8"
+        segment_pattern = str(hls_dir / "segment_%03d.ts")
+
+        try:
+            # Generate HLS stream with 2-second segments at 320kbps
+            # Using fMP4 would be better for modern browsers, but TS has better compatibility
+            hls_cmd = [
+                'ffmpeg', '-i', str(audio_path),
+                '-c:a', 'aac',  # AAC codec (better than MP3 for HLS)
+                '-b:a', '320k',  # 320kbps bitrate (matching MP3 quality)
+                '-ac', '2',  # Stereo
+                '-ar', '48000',  # 48kHz sample rate
+                '-f', 'hls',  # HLS format
+                '-hls_time', '2',  # 2-second segments
+                '-hls_list_size', '0',  # Include all segments in playlist
+                '-hls_segment_type', 'mpegts',  # Use MPEG-TS segments
+                '-hls_segment_filename', segment_pattern,
+                '-y',
+                str(playlist_path)
+            ]
+
+            logger.info(f"Generating HLS stream for {audio_path.name}")
+            result = await self._run_command(hls_cmd)
+
+            if result.returncode != 0:
+                raise Exception(f"FFmpeg HLS generation failed: {result.stderr}")
+
+            # Get list of generated segment files
+            segments = sorted(hls_dir.glob("segment_*.ts"))
+            segment_paths = [str(seg) for seg in segments]
+
+            logger.info(f"Generated HLS stream: {len(segment_paths)} segments")
+
+            return {
+                'playlist': str(playlist_path),
+                'segments': segment_paths,
+                'hls_dir': str(hls_dir)
+            }
+
+        except Exception as e:
+            logger.error(f"Error generating HLS stream: {str(e)}")
+            raise
+
     async def generate_waveform(self, audio_path: str, output_dir: str) -> str:
         """
         Generate normalized waveform visualization with consistent amplitude display

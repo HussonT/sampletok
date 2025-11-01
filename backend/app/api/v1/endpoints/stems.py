@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
@@ -7,6 +7,8 @@ from uuid import UUID
 from pydantic import BaseModel
 import logging
 import inngest
+import asyncio
+from collections import defaultdict
 
 from app.core.database import get_db, AsyncSessionLocal
 from app.core.config import settings
@@ -23,6 +25,11 @@ from app.inngest_functions import inngest_client
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# Concurrent download tracking (in-memory)
+# Maps user_id -> number of active downloads
+_active_downloads: defaultdict = defaultdict(int)
+_download_lock = asyncio.Lock()
 
 
 # Request/Response models
@@ -91,6 +98,19 @@ async def submit_stem_separation(
             detail="Sample must be fully processed before separating stems"
         )
 
+    # Validate number of stems requested
+    if len(request.stems) > settings.MAX_STEMS_PER_REQUEST:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Too many stems requested. Maximum {settings.MAX_STEMS_PER_REQUEST} stems per request. You requested {len(request.stems)} stems."
+        )
+
+    if len(request.stems) == 0:
+        raise HTTPException(
+            status_code=400,
+            detail="At least one stem type must be requested"
+        )
+
     # Validate stem types
     valid_stem_types = [e.value for e in StemType]
     for stem_type in request.stems:
@@ -114,6 +134,23 @@ async def submit_stem_separation(
         raise HTTPException(
             status_code=400,
             detail=f"Stems already exist or are being processed for: {existing_types}"
+        )
+
+    # Validate audio file size (La La AI limit is 10GB)
+    MAX_FILE_SIZE_GB = 10
+    MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_GB * 1024 * 1024 * 1024  # 10GB in bytes
+
+    if sample.file_size_wav:
+        file_size_gb = sample.file_size_wav / (1024 * 1024 * 1024)
+        if sample.file_size_wav > MAX_FILE_SIZE_BYTES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Audio file is too large for stem separation. Maximum size is {MAX_FILE_SIZE_GB}GB, but this file is {file_size_gb:.2f}GB. Please use a shorter audio sample."
+            )
+    elif not sample.audio_url_wav:
+        raise HTTPException(
+            status_code=400,
+            detail="Sample audio file not found. Cannot perform stem separation."
         )
 
     # Calculate credits needed
@@ -289,7 +326,9 @@ async def get_sample_stems(
 
 
 @router.get("/{stem_id}/download")
+@limiter.limit(f"{settings.STEM_DOWNLOAD_RATE_LIMIT_PER_MINUTE}/minute")
 async def download_stem(
+    request: Request,
     stem_id: UUID,
     download_type: str = Query("mp3", regex="^(wav|mp3)$"),
     current_user: User = Depends(get_current_user),
@@ -327,6 +366,18 @@ async def download_stem(
             status_code=400,
             detail=f"Stem is not ready for download (status: {stem.status.value})"
         )
+
+    # Check concurrent download limit for this user
+    async with _download_lock:
+        user_active_downloads = _active_downloads[current_user.id]
+        if user_active_downloads >= settings.MAX_CONCURRENT_DOWNLOADS_PER_USER:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Too many concurrent downloads. Maximum {settings.MAX_CONCURRENT_DOWNLOADS_PER_USER} downloads allowed at once. Please wait for current downloads to complete.",
+                headers={"Retry-After": "30"}
+            )
+        # Reserve a download slot
+        _active_downloads[current_user.id] += 1
 
     # Check if user has already downloaded this stem (any format)
     has_downloaded = await UserStemDownloadService.check_if_downloaded(
@@ -385,7 +436,7 @@ async def download_stem(
 
         storage = S3Storage()
 
-        # Stream file from storage
+        # Stream file from storage with cleanup tracking
         async def stream_file():
             # Download file to memory and stream
             import tempfile
@@ -404,6 +455,14 @@ async def download_stem(
             finally:
                 # Clean up temp file
                 Path(tmp_path).unlink(missing_ok=True)
+
+                # Release download slot
+                async with _download_lock:
+                    _active_downloads[current_user.id] -= 1
+                    # Clean up entry if no active downloads
+                    if _active_downloads[current_user.id] <= 0:
+                        del _active_downloads[current_user.id]
+                logger.info(f"Released download slot for user {current_user.id}")
 
         # Determine content type and filename
         content_type = "audio/mpeg" if download_type == "mp3" else "audio/wav"
@@ -436,6 +495,12 @@ async def download_stem(
         )
 
     except Exception as e:
+        # Release download slot if error occurs before streaming
+        async with _download_lock:
+            if current_user.id in _active_downloads and _active_downloads[current_user.id] > 0:
+                _active_downloads[current_user.id] -= 1
+                if _active_downloads[current_user.id] <= 0:
+                    del _active_downloads[current_user.id]
         logger.exception(f"Error downloading stem: {e}")
         raise HTTPException(status_code=500, detail="Failed to download stem")
 

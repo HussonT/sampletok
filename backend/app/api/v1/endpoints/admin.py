@@ -11,11 +11,16 @@ import logging
 
 from app.core.database import get_db
 from app.core.config import settings
-from app.models import Collection, CollectionStatus, User, Stem, StemProcessingStatus
+from app.models import Collection, CollectionStatus, User, Stem, StemProcessingStatus, Sample
 from app.services.credit_service import CreditService
 from app.inngest_functions import inngest_client
 import inngest
 from collections import defaultdict
+from app.services.audio.processor import AudioProcessor
+from app.services.storage.s3 import S3Storage
+import tempfile
+import shutil
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +54,19 @@ class RefundCreditsRequest(BaseModel):
                 "credits": 50,
                 "reason": "Refund for failed collection processing",
                 "collection_id": "2a3960d1-f762-4947-8f50-f2a736dd1bf6"
+            }
+        }
+
+
+class BackfillHLSRequest(BaseModel):
+    limit: Optional[int] = None
+    dry_run: bool = False
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "limit": 10,
+                "dry_run": False
             }
         }
 
@@ -500,5 +518,179 @@ async def retrigger_failed_stems(
         "stems_retriggered": retriggered_count,
         "stems_failed": failed_count,
         "samples_affected": len(stems_by_sample),
+        "details": sample_details
+    }
+
+
+@router.post("/backfill-hls")
+async def backfill_hls_streams(
+    request: BackfillHLSRequest,
+    x_admin_key: str = Header(..., description="Admin API key"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Generate HLS streaming playlists for existing samples that only have MP3 files.
+
+    This adds instant playback capability to older samples without re-downloading from TikTok.
+    For each sample, it:
+    1. Downloads the existing MP3 from storage
+    2. Generates HLS segments (2-second chunks at 320kbps AAC)
+    3. Uploads playlist.m3u8 + all segment files
+    4. Updates database with HLS URL
+
+    Much faster than full reprocessing (no TikTok API calls needed).
+
+    Requires X-Admin-Key header matching ADMIN_API_KEY for security.
+
+    Args:
+        limit: Maximum number of samples to process (optional, processes all if not specified)
+        dry_run: If true, preview what would be processed without actually doing it
+
+    Example:
+        POST /api/v1/admin/backfill-hls
+        X-Admin-Key: your-admin-api-key
+        {
+            "limit": 10,
+            "dry_run": false
+        }
+    """
+    # Verify admin key
+    if not settings.ADMIN_API_KEY:
+        raise HTTPException(status_code=503, detail="Admin API not configured")
+    if x_admin_key != settings.ADMIN_API_KEY:
+        raise HTTPException(status_code=403, detail="Invalid admin key")
+
+    logger.info(f"Admin: Starting HLS backfill (limit={request.limit}, dry_run={request.dry_run})")
+
+    # Get samples without HLS
+    from app.models.sample import ProcessingStatus
+    query = select(Sample).where(
+        Sample.status == ProcessingStatus.COMPLETED,
+        Sample.audio_url_mp3.isnot(None),
+        Sample.audio_url_hls.is_(None)
+    )
+
+    if request.limit:
+        query = query.limit(request.limit)
+
+    result = await db.execute(query)
+    samples = result.scalars().all()
+
+    if not samples:
+        return {
+            "message": "No samples need HLS processing",
+            "samples_processed": 0,
+            "samples_failed": 0,
+            "dry_run": request.dry_run
+        }
+
+    if request.dry_run:
+        sample_list = [
+            {
+                "id": str(s.id),
+                "creator": s.creator_username,
+                "duration": s.duration_seconds,
+                "mp3_url": s.audio_url_mp3
+            }
+            for s in samples
+        ]
+        return {
+            "message": f"Would process {len(samples)} samples",
+            "samples_found": len(samples),
+            "dry_run": True,
+            "samples": sample_list
+        }
+
+    # Process samples
+    success_count = 0
+    failed_count = 0
+    sample_details = []
+
+    storage = S3Storage()
+    processor = AudioProcessor()
+
+    for sample in samples:
+        temp_dir = None
+        try:
+            logger.info(f"Processing sample {sample.id} - {sample.creator_username}")
+
+            # Create temporary directory
+            temp_dir = tempfile.mkdtemp(prefix=f"hls_{sample.id}_")
+            temp_path = Path(temp_dir)
+
+            # Download MP3 from storage
+            mp3_path = temp_path / f"{sample.id}.mp3"
+            mp3_url = sample.audio_url_mp3
+
+            if '/samples/' in mp3_url:
+                object_key = mp3_url.split('/samples/')[-1]
+                object_key = f"samples/{object_key}"
+            else:
+                raise ValueError(f"Could not parse MP3 URL: {mp3_url}")
+
+            await storage.download_file(object_key, str(mp3_path))
+
+            # Generate HLS stream
+            hls_data = await processor.generate_hls_stream(str(mp3_path), temp_dir)
+            num_segments = len(hls_data['segments'])
+
+            # Upload playlist
+            playlist_url = await storage.upload_file(
+                hls_data['playlist'],
+                f"samples/{sample.id}/hls/playlist.m3u8"
+            )
+
+            # Upload all segments
+            for segment_path in hls_data['segments']:
+                segment_filename = Path(segment_path).name
+                await storage.upload_file(
+                    segment_path,
+                    f"samples/{sample.id}/hls/{segment_filename}"
+                )
+
+            # Update database
+            sample.audio_url_hls = playlist_url
+            await db.commit()
+            await db.refresh(sample)
+
+            success_count += 1
+            sample_details.append({
+                "id": str(sample.id),
+                "creator": sample.creator_username,
+                "segments": num_segments,
+                "status": "success",
+                "hls_url": playlist_url
+            })
+
+            logger.info(f"Successfully processed sample {sample.id}")
+
+        except Exception as e:
+            failed_count += 1
+            sample_details.append({
+                "id": str(sample.id),
+                "creator": sample.creator_username,
+                "status": "failed",
+                "error": str(e)
+            })
+            logger.error(f"Failed to process sample {sample.id}: {e}", exc_info=True)
+
+        finally:
+            # Cleanup temp directory
+            if temp_dir and Path(temp_dir).exists():
+                try:
+                    shutil.rmtree(temp_dir)
+                except Exception as e:
+                    logger.warning(f"Failed to cleanup temp directory: {e}")
+
+    logger.info(
+        f"Admin: HLS backfill complete. Processed: {success_count}, Failed: {failed_count}"
+    )
+
+    return {
+        "message": f"Processed {success_count} samples successfully",
+        "samples_processed": success_count,
+        "samples_failed": failed_count,
+        "total_samples": len(samples),
+        "dry_run": False,
         "details": sample_details
     }

@@ -173,7 +173,123 @@ Skipped: 0
 
 ---
 
-## 2. Media Migration Script (Alternative)
+## 2. HLS Stream Backfill Script
+
+### Purpose
+**Generates HLS streaming playlists for existing samples that only have MP3 files.** This adds instant playback capability to older samples without re-downloading from TikTok.
+
+### When to Use
+- ✅ **After implementing HLS streaming feature** (upgrading from MP3-only playback)
+- When you want instant playback for existing samples
+- To add professional streaming to your entire library
+- Much faster than full reprocessing (no TikTok API calls needed)
+
+### What It Does
+
+For each sample without HLS:
+
+1. **Download MP3** - Fetch existing MP3 from your storage (R2/S3/GCS)
+2. **Generate HLS** - Segment into 2-second chunks at 320kbps AAC
+3. **Upload Segments** - Store playlist.m3u8 + all .ts segment files in `samples/{id}/hls/`
+4. **Update Database** - Set `audio_url_hls` field
+
+### How to Run
+
+```bash
+# From the backend directory
+cd backend
+
+# Activate virtual environment
+source venv/bin/activate
+
+# DRY RUN FIRST - see what will be processed
+python scripts/backfill_hls_streams.py --dry-run
+
+# Process ALL samples without HLS
+python scripts/backfill_hls_streams.py
+
+# Process only first 10 samples (for testing)
+python scripts/backfill_hls_streams.py --limit 10
+
+# Process specific sample by ID
+python scripts/backfill_hls_streams.py --sample-id abc-123-def-456
+```
+
+### Command Line Options
+
+- `--dry-run` - Preview what will be processed without actually doing it
+- `--limit <number>` - Process only first N samples
+- `--sample-id <uuid>` - Process only this specific sample
+- `--batch-size <number>` - Concurrent processing (default: 1, be careful!)
+
+### Output Example
+
+```
+Found 45 samples without HLS streams
+Will process up to 45 samples
+
+Processing 45 samples...
+================================================================================
+
+[1/45] Sample: abc-123-def-456
+  Creator: @johndoe
+  Duration: 28.5s
+  MP3 URL: https://r2.domain.com/samples/abc-123-def-456/audio.mp3
+Processing sample abc-123-def-456 - @johndoe
+  Downloading MP3 from storage...
+  MP3 downloaded: 1.23 MB
+  Generating HLS stream...
+  Generated 15 HLS segments
+  Uploading HLS playlist...
+  Playlist uploaded: https://r2.domain.com/samples/abc-123-def-456/hls/playlist.m3u8
+  Uploading 15 HLS segments...
+    Uploaded 5/15 segments
+    Uploaded 10/15 segments
+    Uploaded 15/15 segments
+  All segments uploaded
+  Updating database...
+  ✅ Successfully processed sample abc-123-def-456
+  Progress: 1 succeeded, 0 failed
+
+...
+
+================================================================================
+SUMMARY
+================================================================================
+Total processed: 45
+Successful: 45
+Failed: 0
+```
+
+### Performance Estimates
+
+- **Processing time**: ~10-15 seconds per sample
+- **45 samples**: ~8-12 minutes total
+- **100 samples**: ~18-25 minutes total
+- **No API calls**: Uses existing MP3s, no TikTok quota consumed
+
+### Important Notes
+
+- ✅ **Safe to run** - Only adds HLS, doesn't modify existing files
+- ✅ **Idempotent** - Won't re-process samples that already have HLS
+- ✅ **No API costs** - Uses your existing MP3 files
+- ⚡ **Much faster** than full reprocessing (10s vs 60s per sample)
+- 💾 **Storage impact**: ~1.5-2x MP3 size (segments + overhead)
+
+### Comparison: HLS Backfill vs Full Reprocessing
+
+| Aspect | HLS Backfill | Full Reprocessing |
+|--------|--------------|-------------------|
+| Speed | ~10-15s per sample | ~30-60s per sample |
+| API Calls | None | Uses TikTok quota |
+| What's Updated | HLS only | Everything |
+| Storage Used | Existing MP3 | Fresh from TikTok |
+| Risk | Very low | Low |
+| Use Case | Add streaming | Fix broken data |
+
+---
+
+## 3. Media Migration Script (Alternative)
 
 ### Purpose
 Migrates all existing media (videos, thumbnails, cover images, creator avatars) from external TikTok CDN URLs to your own storage infrastructure (R2/S3/GCS).

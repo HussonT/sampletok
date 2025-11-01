@@ -49,6 +49,7 @@ class Sample(Base):
     # File URLs - All stored in our infrastructure (R2/S3/GCS)
     audio_url_wav = Column(String)  # Our stored WAV file
     audio_url_mp3 = Column(String)  # Our stored MP3 file
+    audio_url_hls = Column(String)  # HLS playlist URL (m3u8) for streaming
     waveform_url = Column(String)  # Our stored waveform PNG
     video_url = Column(String)  # Our stored video file
     thumbnail_url = Column(String)  # Our stored thumbnail image

@@ -24,7 +24,7 @@ from sqlalchemy import select, or_
 from sqlalchemy.exc import IntegrityError
 from app.services.tiktok.creator_service import CreatorService
 from app.services.tiktok.collection_service import TikTokCollectionService
-from app.services.credit_service import refund_credits_atomic
+from app.services.credit_service import refund_credits_atomic, CreditService
 from app.utils import extract_hashtags, remove_hashtags, utcnow_naive
 from datetime import datetime
 from typing import List, Tuple
@@ -129,14 +129,23 @@ async def process_tiktok_video(ctx: inngest.Context) -> Dict[str, Any]:
         sample_id
     )
 
-    # Step 7: Analyze audio features (BPM, key detection)
+    # Step 7: Generate HLS stream (generates m3u8 + segments, uploads to R2, returns playlist URL)
+    hls_url = await ctx.step.run(
+        "generate-hls-stream",
+        generate_hls_stream,
+        audio_files["mp3_path"],
+        video_metadata["temp_dir"],
+        sample_id
+    )
+
+    # Step 8: Analyze audio features (BPM, key detection)
     audio_analysis = await ctx.step.run(
         "analyze-audio-features",
         analyze_audio_features,
         audio_files["wav_path"]
     )
 
-    # Step 8: Update database with results (all URLs are from our storage)
+    # Step 9: Update database with results (all URLs are from our storage)
     await ctx.step.run(
         "update-database",
         update_sample_complete,
@@ -149,6 +158,7 @@ async def process_tiktok_video(ctx: inngest.Context) -> Dict[str, Any]:
                 "cover": media_urls.get("cover"),
                 "wav": audio_files["wav_url"],
                 "mp3": audio_files["mp3_url"],
+                "hls": hls_url,
                 "waveform": waveform_url
             },
             "analysis": audio_analysis,
@@ -348,6 +358,47 @@ async def generate_waveform(audio_path: str, temp_dir: str, sample_id: str) -> s
     return waveform_url
 
 
+async def generate_hls_stream(audio_path: str, temp_dir: str, sample_id: str) -> str:
+    """Generate HLS stream, upload playlist and segments to storage, and return playlist URL"""
+    # Use the same temp directory
+    processor = AudioProcessor()
+    hls_data = await processor.generate_hls_stream(audio_path, temp_dir)
+    logger.info(f"Generated HLS stream: {len(hls_data['segments'])} segments")
+
+    # Upload to R2 immediately
+    storage = S3Storage()
+
+    # Upload playlist file
+    logger.info(f"Uploading HLS playlist to R2 for sample {sample_id}")
+    playlist_url = await storage.upload_file(
+        hls_data['playlist'],
+        f"samples/{sample_id}/hls/playlist.m3u8"
+    )
+    logger.info(f"Successfully uploaded HLS playlist to R2")
+
+    # Upload all segment files
+    logger.info(f"Uploading {len(hls_data['segments'])} HLS segments to R2")
+    for i, segment_path in enumerate(hls_data['segments']):
+        segment_filename = Path(segment_path).name
+        await storage.upload_file(
+            segment_path,
+            f"samples/{sample_id}/hls/{segment_filename}"
+        )
+        logger.info(f"Uploaded HLS segment {i+1}/{len(hls_data['segments'])}")
+
+    logger.info(f"Successfully uploaded all HLS segments to R2")
+
+    # Clean up HLS directory
+    import shutil
+    try:
+        shutil.rmtree(hls_data['hls_dir'])
+        logger.info(f"Cleaned up local HLS directory")
+    except Exception as e:
+        logger.warning(f"Failed to clean up HLS directory: {e}")
+
+    return playlist_url
+
+
 async def analyze_audio_features(audio_path: str) -> Dict[str, Any]:
     """
     Analyze audio file to extract musical features
@@ -471,6 +522,7 @@ async def update_sample_complete(data: Dict[str, Any]) -> None:
             sample.cover_url = urls.get("cover")
             sample.audio_url_wav = urls["wav"]
             sample.audio_url_mp3 = urls["mp3"]
+            sample.audio_url_hls = urls.get("hls")
             sample.waveform_url = urls["waveform"]
 
             # Calculate video file size if available
@@ -904,6 +956,55 @@ async def refund_credits_for_failed_collection(user_id: str, credits_to_refund: 
     except Exception as e:
         logger.exception(f"Error refunding {credits_to_refund} credits to user {user_id}: {e}")
         # Don't raise - we don't want refund failure to stop collection processing
+
+
+async def refund_credits_for_failed_stems(stem_ids: List[str]) -> None:
+    """Refund credits to user when stem separation fails"""
+    try:
+        async with AsyncSessionLocal() as db:
+            # Get the first stem to find the user and sample
+            if not stem_ids:
+                logger.warning("No stem IDs provided for refund")
+                return
+
+            # Load first stem with parent sample to get user
+            stem_uuid = uuid.UUID(stem_ids[0])
+            from sqlalchemy.orm import selectinload
+            query = (
+                select(Stem)
+                .where(Stem.id == stem_uuid)
+                .options(selectinload(Stem.parent_sample))
+            )
+            result = await db.execute(query)
+            stem = result.scalars().first()
+
+            if not stem or not stem.parent_sample:
+                logger.error(f"Stem {stem_ids[0]} or parent sample not found for refund")
+                return
+
+            user_id = stem.parent_sample.creator_id
+            if not user_id:
+                logger.error(f"No creator_id found for sample {stem.parent_sample_id}")
+                return
+
+            # Calculate total credits to refund: 2 credits per stem
+            from app.core.config import settings
+            credits_to_refund = len(stem_ids) * settings.CREDITS_PER_STEM
+
+            # Refund credits atomically
+            credit_service = CreditService(db)
+            await credit_service.refund_credits_atomic(
+                user_id=user_id,
+                credits_to_refund=credits_to_refund,
+                description=f"Refund for {len(stem_ids)} failed stem separation(s)",
+                stem_id=stem_uuid  # Link to first stem for audit trail
+            )
+
+            await db.commit()
+            logger.info(f"Refunded {credits_to_refund} credits to user {user_id} for {len(stem_ids)} failed stems")
+    except Exception as e:
+        logger.exception(f"Error refunding credits for failed stems: {e}")
+        # Don't raise - we don't want refund failure to stop error handling
 
 
 async def mark_collection_failed(collection_id: str, error_message: str) -> None:
@@ -1404,6 +1505,14 @@ async def handle_stem_separation_error(ctx: inngest.Context):
     error_message = ctx.event.data.get("error", {}).get("message", "Unknown error")
 
     logger.error(f"Stem separation failed for stems {stem_ids}: {error_message}")
+
+    # Refund credits to user before marking stems as failed
+    if stem_ids:
+        await ctx.step.run(
+            "refund-credits-for-failed-stems",
+            refund_credits_for_failed_stems,
+            stem_ids
+        )
 
     async def update_failed_status():
         async with AsyncSessionLocal() as db:

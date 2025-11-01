@@ -49,9 +49,7 @@ export class ApiClient {
   }
 
   async get<T>(path: string, params?: Record<string, any>): Promise<T> {
-    // Ensure path has trailing slash to match FastAPI expectations
-    const normalizedPath = path.endsWith('/') ? path : `${path}/`;
-    const url = new URL(`${this.baseUrl}${normalizedPath}`);
+    const url = new URL(`${this.baseUrl}${path}`);
 
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
@@ -70,9 +68,7 @@ export class ApiClient {
   }
 
   async post<T>(path: string, body?: any): Promise<T> {
-    // Ensure path has trailing slash to match FastAPI expectations
-    const normalizedPath = path.endsWith('/') ? path : `${path}/`;
-    const response = await fetch(`${this.baseUrl}${normalizedPath}`, {
+    const response = await fetch(`${this.baseUrl}${path}`, {
       method: 'POST',
       headers: await this.getHeaders(),
       body: body ? JSON.stringify(body) : undefined,
@@ -82,9 +78,7 @@ export class ApiClient {
   }
 
   async patch<T>(path: string, body: any): Promise<T> {
-    // Ensure path has trailing slash to match FastAPI expectations
-    const normalizedPath = path.endsWith('/') ? path : `${path}/`;
-    const response = await fetch(`${this.baseUrl}${normalizedPath}`, {
+    const response = await fetch(`${this.baseUrl}${path}`, {
       method: 'PATCH',
       headers: await this.getHeaders(),
       body: JSON.stringify(body),
@@ -94,9 +88,7 @@ export class ApiClient {
   }
 
   async delete<T>(path: string): Promise<T> {
-    // Ensure path has trailing slash to match FastAPI expectations
-    const normalizedPath = path.endsWith('/') ? path : `${path}/`;
-    const response = await fetch(`${this.baseUrl}${normalizedPath}`, {
+    const response = await fetch(`${this.baseUrl}${path}`, {
       method: 'DELETE',
       headers: await this.getHeaders(),
     });

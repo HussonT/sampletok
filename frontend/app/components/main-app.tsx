@@ -115,29 +115,9 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
     return () => clearInterval(interval);
   }, [getToken]);
 
-  // Preload videos and audio for current samples
-  useEffect(() => {
-    samples.forEach((sample) => {
-      if (sample.video_url) {
-        // Preload video in background
-        const link = document.createElement('link');
-        link.rel = 'prefetch';
-        link.as = 'video';
-        link.href = sample.video_url;
-        document.head.appendChild(link);
-      }
-
-      // Preload MP3 audio for instant playback
-      const audioUrl = sample.audio_url_mp3 || sample.audio_url_wav;
-      if (audioUrl) {
-        const audioLink = document.createElement('link');
-        audioLink.rel = 'prefetch';
-        audioLink.as = 'audio';
-        audioLink.href = audioUrl;
-        document.head.appendChild(audioLink);
-      }
-    });
-  }, [samples]);
+  // REMOVED: Aggressive prefetching of all samples
+  // We now use smart prefetching: only next/previous when a sample is playing
+  // This reduces bandwidth from ~24MB to ~2.4MB on page load
 
   // Compute filtered samples (sorted by most recent)
   const filteredSamples = useMemo(() => {
@@ -146,47 +126,48 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
     );
   }, [samples]);
 
-  // Smart prefetch: Preload next/previous samples when a sample is selected
+  // Smart preload: High-priority preload of next/previous samples when a sample is selected
+  // Changed from 'prefetch' to 'preload' for higher browser priority
   useEffect(() => {
     if (!currentSample) return;
 
     const currentIndex = filteredSamples.findIndex(s => s.id === currentSample.id);
     if (currentIndex === -1) return;
 
-    // Prefetch next sample
+    // Preload next sample with high priority
     const nextIndex = (currentIndex + 1) % filteredSamples.length;
     const nextSample = filteredSamples[nextIndex];
     if (nextSample) {
       const nextAudioUrl = nextSample.audio_url_mp3 || nextSample.audio_url_wav;
       if (nextAudioUrl) {
         const nextLink = document.createElement('link');
-        nextLink.rel = 'prefetch';
+        nextLink.rel = 'preload';  // High priority
         nextLink.as = 'audio';
         nextLink.href = nextAudioUrl;
-        nextLink.id = `prefetch-next-${nextSample.id}`;
+        nextLink.id = `preload-next-${nextSample.id}`;
         document.head.appendChild(nextLink);
       }
     }
 
-    // Prefetch previous sample
+    // Preload previous sample with high priority
     const prevIndex = currentIndex === 0 ? filteredSamples.length - 1 : currentIndex - 1;
     const prevSample = filteredSamples[prevIndex];
     if (prevSample) {
       const prevAudioUrl = prevSample.audio_url_mp3 || prevSample.audio_url_wav;
       if (prevAudioUrl) {
         const prevLink = document.createElement('link');
-        prevLink.rel = 'prefetch';
+        prevLink.rel = 'preload';  // High priority
         prevLink.as = 'audio';
         prevLink.href = prevAudioUrl;
-        prevLink.id = `prefetch-prev-${prevSample.id}`;
+        prevLink.id = `preload-prev-${prevSample.id}`;
         document.head.appendChild(prevLink);
       }
     }
 
-    // Cleanup function to remove old prefetch links when sample changes
+    // Cleanup function to remove old preload links when sample changes
     return () => {
-      const oldNextLink = document.getElementById(`prefetch-next-${nextSample?.id}`);
-      const oldPrevLink = document.getElementById(`prefetch-prev-${prevSample?.id}`);
+      const oldNextLink = document.getElementById(`preload-next-${nextSample?.id}`);
+      const oldPrevLink = document.getElementById(`preload-prev-${prevSample?.id}`);
       if (oldNextLink) oldNextLink.remove();
       if (oldPrevLink) oldPrevLink.remove();
     };
@@ -325,6 +306,29 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
     });
   };
 
+  // Hover-to-preload: Start loading audio when user hovers over play button
+  const handleSampleHover = useCallback((sample: Sample) => {
+    const audioUrl = sample.audio_url_mp3 || sample.audio_url_wav;
+    if (!audioUrl) return;
+
+    // Check if already preloaded
+    const existingLink = document.getElementById(`hover-preload-${sample.id}`);
+    if (existingLink) return;
+
+    // Create high-priority preload link
+    const preloadLink = document.createElement('link');
+    preloadLink.rel = 'preload';
+    preloadLink.as = 'audio';
+    preloadLink.href = audioUrl;
+    preloadLink.id = `hover-preload-${sample.id}`;
+    document.head.appendChild(preloadLink);
+
+    // Clean up after 30 seconds if not played
+    setTimeout(() => {
+      const link = document.getElementById(`hover-preload-${sample.id}`);
+      if (link) link.remove();
+    }, 30000);
+  }, []);
 
   const handlePlayerPlayPause = () => {
     setIsPlaying(!isPlaying);
@@ -435,6 +439,7 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
                     downloadedVideos={downloadedVideos}
                     userCredits={creditBalance ?? undefined}
                     onSamplePreview={handleSamplePreview}
+                    onSampleHover={handleSampleHover}
                     onSampleDownload={handleSampleDownload}
                     onVideoDownload={handleVideoDownload}
                   />
@@ -468,6 +473,7 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
                 downloadedVideos={downloadedVideos}
                 userCredits={creditBalance ?? undefined}
                 onSamplePreview={handleSamplePreview}
+                onSampleHover={handleSampleHover}
                 onSampleDownload={handleSampleDownload}
                 onVideoDownload={handleVideoDownload}
               />
