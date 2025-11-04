@@ -201,6 +201,31 @@ class SampleDownloadResponse(BaseModel):
     expires_at: datetime
 
 
+# Search Schemas
+class SampleSearchParams(BaseModel):
+    """V1 Search parameters (simplified - no facets)"""
+    # Text search
+    search: Optional[str] = Field(None, max_length=200, description="Full-text search query")
+
+    # Sorting
+    sort_by: str = Field(
+        "created_at_desc",
+        description="Sort order: created_at_desc, created_at_asc, views_desc"
+    )
+
+    # Pagination
+    skip: int = Field(0, ge=0, le=10000)
+    limit: int = Field(20, ge=1, le=100)
+
+
+class SampleSearchResponse(BaseModel):
+    """V1 Search results (NO FACETS - defer to Elasticsearch phase)"""
+    samples: List[SampleResponse]
+    total: int
+    skip: int
+    limit: int
+
+
 # Processing Schemas
 class ProcessingTaskResponse(BaseModel):
     task_id: str

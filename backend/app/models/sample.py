@@ -1,5 +1,5 @@
 from sqlalchemy import Column, String, Integer, Float, DateTime, Text, ForeignKey, Enum
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy.dialects.postgresql import UUID, JSONB, TSVECTOR
 from sqlalchemy.orm import relationship
 from datetime import datetime
 import uuid
@@ -45,6 +45,9 @@ class Sample(Base):
     key = Column(String)
     genre = Column(String)
     tags = Column(JSONB, default=list)
+
+    # Full-text search vector (managed by trigger)
+    search_vector = Column(TSVECTOR, nullable=True)
 
     # File URLs - All stored in our infrastructure (R2/S3/GCS)
     audio_url_wav = Column(String)  # Our stored WAV file

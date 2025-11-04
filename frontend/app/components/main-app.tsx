@@ -8,7 +8,8 @@ import { SoundsTable } from '@/components/features/sounds-table';
 import { SamplesPagination } from '@/components/features/samples-pagination';
 import { ProcessingQueue, ProcessingTask } from '@/components/features/processing-queue';
 import { BottomPlayer } from '@/components/features/bottom-player';
-import { Download, Music, Coins } from 'lucide-react';
+import { Download, Music, Coins, Search, X } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import { Sample, SampleFilters, ProcessingStatus, PaginatedResponse } from '@/types/api';
 import { processTikTokUrl, deleteSample, getProcessingStatus } from '@/actions/samples';
 import { toast } from 'sonner';
@@ -38,18 +39,23 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
   const [currentPage, setCurrentPage] = useState(1);
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
   const [hasSubscription, setHasSubscription] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const itemsPerPage = 20;
 
   // Fetch samples with useQuery
   const { data, isLoading: isLoadingPage } = useQuery({
-    queryKey: ['samples', currentPage],
+    queryKey: ['samples', currentPage, searchQuery],
     queryFn: async () => {
       const apiClient = createAuthenticatedClient(getToken);
-      const data = await apiClient.get<PaginatedResponse<Sample>>('/samples/', {
+      const params: any = {
         skip: (currentPage - 1) * itemsPerPage,
         limit: itemsPerPage,
-        sort_by: 'recent'
-      });
+        sort_by: 'created_at_desc'
+      };
+      if (searchQuery) {
+        params.search = searchQuery;
+      }
+      const data = await apiClient.get<PaginatedResponse<Sample>>('/samples/', params);
       return data;
     },
     initialData: currentPage === 1 ? {
@@ -427,6 +433,32 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
       <div className="flex-1 overflow-auto px-6 pb-6" style={{ paddingBottom: currentSample ? '160px' : '24px' }}>
           {activeSection === 'explore' && (
             <>
+              {/* Search Bar */}
+              <div className="mb-4 relative max-w-2xl">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  type="text"
+                  placeholder="Search samples by description, creator, tags..."
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setCurrentPage(1); // Reset to page 1 when searching
+                  }}
+                  className="pl-10 pr-10"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => {
+                      setSearchQuery('');
+                      setCurrentPage(1);
+                    }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+
               {isLoadingPage ? (
                 <TableLoadingSkeleton rows={8} />
               ) : (

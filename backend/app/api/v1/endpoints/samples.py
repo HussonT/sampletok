@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks, Body
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, func, and_, text
 from sqlalchemy.orm import selectinload
 from typing import List, Optional
 from uuid import UUID
@@ -10,6 +10,7 @@ import httpx
 import inngest
 import asyncio
 import logging
+import time
 
 from app.core.database import get_db, AsyncSessionLocal
 from app.models import Sample, ProcessingStatus
@@ -20,7 +21,9 @@ from app.models.schemas import (
     PaginatedResponse,
     PaginationParams,
     ReprocessRequest,
-    ReprocessResponse
+    ReprocessResponse,
+    SampleSearchParams,
+    SampleSearchResponse
 )
 from app.api.deps import get_current_user, get_current_user_optional
 from app.services.user_service import UserDownloadService, UserFavoriteService
@@ -119,17 +122,21 @@ async def get_samples(
     genre: Optional[str] = None,
     status: Optional[str] = None,
     search: Optional[str] = None,
+    sort_by: Optional[str] = Query("created_at_desc", description="Sort order: created_at_desc, created_at_asc, views_desc"),
     current_user: Optional[User] = Depends(get_current_user_optional),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Get all samples with optional filtering.
-    Includes user-specific fields (is_favorited, is_downloaded) when authenticated.
-    """
-    query = select(Sample)
+    V1 Search endpoint - Text search with relevance ranking
 
-    # Filter out samples without essential data - only show completed, playable samples
-    query = query.where(
+    - Full-text search using PostgreSQL tsvector
+    - Sorted by relevance (if search) or created_at
+    - Includes user-specific fields (is_favorited, is_downloaded) when authenticated
+    """
+    start_time = time.time()
+
+    # Base query - only completed, playable samples
+    query = select(Sample).where(
         # Must have essential metadata
         Sample.creator_username.isnot(None),
         Sample.creator_username != '',
@@ -157,26 +164,71 @@ async def get_samples(
     if genre:
         query = query.where(Sample.genre == genre)
 
+    # Full-text search with PostgreSQL tsvector
     if search:
-        query = query.where(
-            Sample.description.ilike(f"%{search}%") |
-            Sample.creator_username.ilike(f"%{search}%")
+        # Convert search query to tsquery
+        ts_query = func.plainto_tsquery('english', search)
+
+        # Filter by tsvector match
+        query = query.where(Sample.search_vector.op('@@')(ts_query))
+
+        # Sort by relevance when searching
+        query = query.order_by(
+            func.ts_rank(Sample.search_vector, ts_query).desc()
+        )
+    else:
+        # Apply sorting when not searching
+        if sort_by == "created_at_desc":
+            query = query.order_by(Sample.created_at.desc())
+        elif sort_by == "created_at_asc":
+            query = query.order_by(Sample.created_at.asc())
+        elif sort_by == "views_desc":
+            query = query.order_by(Sample.view_count.desc())
+        else:
+            query = query.order_by(Sample.created_at.desc())
+
+    # Get total count with timeout
+    count_query = select(func.count()).select_from(query.subquery())
+    try:
+        result = await asyncio.wait_for(
+            db.execute(count_query),
+            timeout=5.0
+        )
+        total = result.scalar_one()
+    except asyncio.TimeoutError:
+        logger.error("Count query timeout")
+        raise HTTPException(
+            status_code=504,
+            detail="Search timeout. Try a simpler query."
         )
 
-    # Get total count
-    count_query = select(func.count()).select_from(query.subquery())
-    result = await db.execute(count_query)
-    total = result.scalar_one()
-
     # Apply pagination and eager load creator
-    query = query.options(selectinload(Sample.tiktok_creator)).offset(skip).limit(limit).order_by(Sample.created_at.desc())
+    query = query.options(selectinload(Sample.tiktok_creator)).offset(skip).limit(limit)
 
-    # Execute query
-    result = await db.execute(query)
-    samples = result.scalars().all()
+    # Execute main query with timeout
+    try:
+        result = await asyncio.wait_for(
+            db.execute(query),
+            timeout=5.0
+        )
+        samples = result.scalars().all()
+    except asyncio.TimeoutError:
+        logger.error("Search query timeout")
+        raise HTTPException(
+            status_code=504,
+            detail="Search timeout. Try a simpler query."
+        )
 
     # Enrich with user-specific data (favorites, downloads)
     items = await enrich_samples_with_user_data(samples, current_user, db)
+
+    # Log slow queries
+    query_time = time.time() - start_time
+    if query_time > 1.0:
+        logger.warning(
+            f"Slow search query: {query_time:.2f}s",
+            extra={"search": search, "duration": query_time}
+        )
 
     return PaginatedResponse(
         items=items,
