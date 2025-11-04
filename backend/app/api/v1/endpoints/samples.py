@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks, Body
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, text
+from sqlalchemy import select, func, and_, text, cast, String
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import selectinload
 from typing import List, Optional
 from uuid import UUID
@@ -125,16 +126,18 @@ async def get_samples(
     bpm_min: Optional[int] = Query(None, ge=0, le=300),
     bpm_max: Optional[int] = Query(None, ge=0, le=300),
     key: Optional[str] = Query(None, max_length=20),
+    tags: Optional[str] = Query(None, max_length=500),
     sort_by: Optional[str] = Query("created_at_desc", description="Sort order: created_at_desc, created_at_asc, views_desc, bpm_asc, bpm_desc"),
     current_user: Optional[User] = Depends(get_current_user_optional),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    V2 Search endpoint - Text search with BPM and Key filtering
+    V3 Search endpoint - Text search with BPM, Key, and Tag filtering
 
     - Full-text search using PostgreSQL tsvector
     - BPM range filtering
     - Musical key filtering
+    - Tag filtering (OR logic - any tag matches)
     - Sorted by relevance (if search) or created_at/views/bpm
     - Includes user-specific fields (is_favorited, is_downloaded) when authenticated
     """
@@ -178,6 +181,14 @@ async def get_samples(
     # Key filter
     if key:
         query = query.where(Sample.key == key)
+
+    # Tag filter (OR logic - any tag matches)
+    if tags:
+        tag_list = [t.strip().lower() for t in tags.split(",")]
+        # Use overlap operator: any tag matches (OR logic)
+        query = query.where(
+            Sample.tags.op('&&')(cast(tag_list, ARRAY(String)))
+        )
 
     # Full-text search with PostgreSQL tsvector
     if search:
@@ -257,6 +268,33 @@ async def get_samples(
         has_more=(skip + limit) < total,
         next_cursor=None
     )
+
+
+@router.get("/tags/popular", response_model=List[dict])
+async def get_popular_tags(
+    limit: int = Query(50, ge=1, le=100, description="Maximum number of tags to return"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get most popular tags across all samples
+    Returns list of {tag: str, count: int}
+    """
+    try:
+        query = select(
+            func.unnest(Sample.tags).label('tag'),
+            func.count().label('count')
+        ).where(
+            Sample.status == ProcessingStatus.COMPLETED
+        ).group_by('tag').order_by(text('count DESC')).limit(limit)
+
+        result = await asyncio.wait_for(
+            db.execute(query),
+            timeout=3.0
+        )
+        return [{"tag": row.tag, "count": row.count} for row in result]
+    except asyncio.TimeoutError:
+        logger.error("Popular tags query timeout")
+        return []  # Return empty on timeout
 
 
 @router.get("/{sample_id}", response_model=SampleResponse)

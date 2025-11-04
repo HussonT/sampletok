@@ -9,6 +9,7 @@ import { SamplesPagination } from '@/components/features/samples-pagination';
 import { ProcessingQueue, ProcessingTask } from '@/components/features/processing-queue';
 import { BottomPlayer } from '@/components/features/bottom-player';
 import { FilterBar } from '@/components/features/filter-bar';
+import { TagPills } from '@/components/features/tag-pills';
 import { Download, Music, Coins, Search, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Sample, SampleFilters, ProcessingStatus, PaginatedResponse } from '@/types/api';
@@ -41,6 +42,7 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
   const [hasSubscription, setHasSubscription] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [tags, setTags] = useState<string[]>([]);
   const [bpmMin, setBpmMin] = useState<number | null>(null);
   const [bpmMax, setBpmMax] = useState<number | null>(null);
   const [musicalKey, setMusicalKey] = useState<string | null>(null);
@@ -49,7 +51,7 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
 
   // Fetch samples with useQuery
   const { data, isLoading: isLoadingPage } = useQuery({
-    queryKey: ['samples', currentPage, searchQuery, bpmMin, bpmMax, musicalKey, sortBy],
+    queryKey: ['samples', currentPage, searchQuery, tags, bpmMin, bpmMax, musicalKey, sortBy],
     queryFn: async () => {
       const apiClient = createAuthenticatedClient(getToken);
       const params: any = {
@@ -59,6 +61,9 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
       };
       if (searchQuery) {
         params.search = searchQuery;
+      }
+      if (tags.length > 0) {
+        params.tags = tags.join(',');
       }
       if (bpmMin) {
         params.bpm_min = bpmMin;
@@ -472,6 +477,19 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
                   </button>
                 )}
               </div>
+
+              {/* Tag Pills */}
+              <TagPills
+                activeTags={tags}
+                onToggleTag={(tag) => {
+                  setTags(prev =>
+                    prev.includes(tag)
+                      ? prev.filter(t => t !== tag)
+                      : [...prev, tag]
+                  );
+                  setCurrentPage(1);
+                }}
+              />
 
               {/* Filter Bar */}
               <FilterBar

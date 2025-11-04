@@ -203,7 +203,7 @@ class SampleDownloadResponse(BaseModel):
 
 # Search Schemas
 class SampleSearchParams(BaseModel):
-    """V2 Search parameters - with BPM and Key filters"""
+    """V3 Search parameters - with BPM, Key, and Tag filters"""
     # Text search
     search: Optional[str] = Field(None, max_length=200, description="Full-text search query")
 
@@ -214,6 +214,9 @@ class SampleSearchParams(BaseModel):
     # Key filtering
     key: Optional[str] = Field(None, max_length=20, description="Musical key (e.g., 'C Major')")
 
+    # Tag filtering (comma-separated, OR logic)
+    tags: Optional[str] = Field(None, max_length=500, description="Comma-separated tags")
+
     # Sorting
     sort_by: str = Field(
         "created_at_desc",
@@ -223,6 +226,14 @@ class SampleSearchParams(BaseModel):
     # Pagination
     skip: int = Field(0, ge=0, le=10000)
     limit: int = Field(20, ge=1, le=100)
+
+    @validator('tags')
+    def validate_tags(cls, v):
+        if v:
+            tag_list = v.split(',')
+            if len(tag_list) > 20:
+                raise ValueError('Maximum 20 tags allowed')
+        return v
 
 
 class SampleSearchResponse(BaseModel):
