@@ -8,6 +8,7 @@ import { SoundsTable } from '@/components/features/sounds-table';
 import { SamplesPagination } from '@/components/features/samples-pagination';
 import { ProcessingQueue, ProcessingTask } from '@/components/features/processing-queue';
 import { BottomPlayer } from '@/components/features/bottom-player';
+import { FilterBar } from '@/components/features/filter-bar';
 import { Download, Music, Coins, Search, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Sample, SampleFilters, ProcessingStatus, PaginatedResponse } from '@/types/api';
@@ -40,20 +41,33 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
   const [hasSubscription, setHasSubscription] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [bpmMin, setBpmMin] = useState<number | null>(null);
+  const [bpmMax, setBpmMax] = useState<number | null>(null);
+  const [musicalKey, setMusicalKey] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState('created_at_desc');
   const itemsPerPage = 20;
 
   // Fetch samples with useQuery
   const { data, isLoading: isLoadingPage } = useQuery({
-    queryKey: ['samples', currentPage, searchQuery],
+    queryKey: ['samples', currentPage, searchQuery, bpmMin, bpmMax, musicalKey, sortBy],
     queryFn: async () => {
       const apiClient = createAuthenticatedClient(getToken);
       const params: any = {
         skip: (currentPage - 1) * itemsPerPage,
         limit: itemsPerPage,
-        sort_by: 'created_at_desc'
+        sort_by: sortBy
       };
       if (searchQuery) {
         params.search = searchQuery;
+      }
+      if (bpmMin) {
+        params.bpm_min = bpmMin;
+      }
+      if (bpmMax) {
+        params.bpm_max = bpmMax;
+      }
+      if (musicalKey) {
+        params.key = musicalKey;
       }
       const data = await apiClient.get<PaginatedResponse<Sample>>('/samples/', params);
       return data;
@@ -458,6 +472,27 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
                   </button>
                 )}
               </div>
+
+              {/* Filter Bar */}
+              <FilterBar
+                bpmMin={bpmMin}
+                bpmMax={bpmMax}
+                musicalKey={musicalKey}
+                sortBy={sortBy}
+                onBpmChange={(min, max) => {
+                  setBpmMin(min);
+                  setBpmMax(max);
+                  setCurrentPage(1);
+                }}
+                onKeyChange={(key) => {
+                  setMusicalKey(key);
+                  setCurrentPage(1);
+                }}
+                onSortChange={(sort) => {
+                  setSortBy(sort);
+                  setCurrentPage(1);
+                }}
+              />
 
               {isLoadingPage ? (
                 <TableLoadingSkeleton rows={8} />

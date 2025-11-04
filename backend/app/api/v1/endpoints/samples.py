@@ -122,15 +122,20 @@ async def get_samples(
     genre: Optional[str] = None,
     status: Optional[str] = None,
     search: Optional[str] = None,
-    sort_by: Optional[str] = Query("created_at_desc", description="Sort order: created_at_desc, created_at_asc, views_desc"),
+    bpm_min: Optional[int] = Query(None, ge=0, le=300),
+    bpm_max: Optional[int] = Query(None, ge=0, le=300),
+    key: Optional[str] = Query(None, max_length=20),
+    sort_by: Optional[str] = Query("created_at_desc", description="Sort order: created_at_desc, created_at_asc, views_desc, bpm_asc, bpm_desc"),
     current_user: Optional[User] = Depends(get_current_user_optional),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    V1 Search endpoint - Text search with relevance ranking
+    V2 Search endpoint - Text search with BPM and Key filtering
 
     - Full-text search using PostgreSQL tsvector
-    - Sorted by relevance (if search) or created_at
+    - BPM range filtering
+    - Musical key filtering
+    - Sorted by relevance (if search) or created_at/views/bpm
     - Includes user-specific fields (is_favorited, is_downloaded) when authenticated
     """
     start_time = time.time()
@@ -164,6 +169,16 @@ async def get_samples(
     if genre:
         query = query.where(Sample.genre == genre)
 
+    # BPM range filter
+    if bpm_min is not None:
+        query = query.where(Sample.bpm >= bpm_min)
+    if bpm_max is not None:
+        query = query.where(Sample.bpm <= bpm_max)
+
+    # Key filter
+    if key:
+        query = query.where(Sample.key == key)
+
     # Full-text search with PostgreSQL tsvector
     if search:
         # Convert search query to tsquery
@@ -184,6 +199,10 @@ async def get_samples(
             query = query.order_by(Sample.created_at.asc())
         elif sort_by == "views_desc":
             query = query.order_by(Sample.view_count.desc())
+        elif sort_by == "bpm_asc":
+            query = query.order_by(Sample.bpm.asc())
+        elif sort_by == "bpm_desc":
+            query = query.order_by(Sample.bpm.desc())
         else:
             query = query.order_by(Sample.created_at.desc())
 

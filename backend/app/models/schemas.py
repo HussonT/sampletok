@@ -203,14 +203,21 @@ class SampleDownloadResponse(BaseModel):
 
 # Search Schemas
 class SampleSearchParams(BaseModel):
-    """V1 Search parameters (simplified - no facets)"""
+    """V2 Search parameters - with BPM and Key filters"""
     # Text search
     search: Optional[str] = Field(None, max_length=200, description="Full-text search query")
+
+    # BPM filtering
+    bpm_min: Optional[int] = Field(None, ge=0, le=300, description="Minimum BPM")
+    bpm_max: Optional[int] = Field(None, ge=0, le=300, description="Maximum BPM")
+
+    # Key filtering
+    key: Optional[str] = Field(None, max_length=20, description="Musical key (e.g., 'C Major')")
 
     # Sorting
     sort_by: str = Field(
         "created_at_desc",
-        description="Sort order: created_at_desc, created_at_asc, views_desc"
+        description="Sort order: created_at_desc, created_at_asc, views_desc, bpm_asc, bpm_desc"
     )
 
     # Pagination
