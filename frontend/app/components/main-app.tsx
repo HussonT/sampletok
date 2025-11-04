@@ -10,6 +10,7 @@ import { ProcessingQueue, ProcessingTask } from '@/components/features/processin
 import { BottomPlayer } from '@/components/features/bottom-player';
 import { FilterBar } from '@/components/features/filter-bar';
 import { TagPills } from '@/components/features/tag-pills';
+import { ActiveFilters } from '@/components/features/active-filters';
 import { Download, Music, Coins, Search, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Sample, SampleFilters, ProcessingStatus, PaginatedResponse } from '@/types/api';
@@ -508,6 +509,38 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
                 }}
                 onSortChange={(sort) => {
                   setSortBy(sort);
+                  setCurrentPage(1);
+                }}
+              />
+
+              {/* Active Filters */}
+              <ActiveFilters
+                search={searchQuery}
+                tags={tags}
+                bpmMin={bpmMin}
+                bpmMax={bpmMax}
+                musicalKey={musicalKey}
+                onRemoveTag={(tag) => {
+                  setTags(prev => prev.filter(t => t !== tag));
+                  setCurrentPage(1);
+                }}
+                onClear={(filter) => {
+                  if (filter === 'search') {
+                    setSearchQuery('');
+                  } else if (filter === 'bpm') {
+                    setBpmMin(null);
+                    setBpmMax(null);
+                  } else if (filter === 'key') {
+                    setMusicalKey(null);
+                  }
+                  setCurrentPage(1);
+                }}
+                onClearAll={() => {
+                  setSearchQuery('');
+                  setTags([]);
+                  setBpmMin(null);
+                  setBpmMax(null);
+                  setMusicalKey(null);
                   setCurrentPage(1);
                 }}
               />
