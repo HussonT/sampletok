@@ -183,29 +183,57 @@ async def process_tiktok_video(ctx: inngest.Context) -> Dict[str, Any]:
 
 
 async def update_sample_status(sample_id: str, status: ProcessingStatus) -> None:
-    """Update sample processing status in database"""
-    try:
-        async with AsyncSessionLocal() as db:
-            # Convert sample_id to UUID if it's a string
-            if isinstance(sample_id, str):
-                sample_uuid = uuid.UUID(sample_id)
-            else:
-                sample_uuid = sample_id
+    """Update sample processing status in database with retry logic for race conditions"""
+    max_retries = 3
+    retry_delay = 0.5  # Start with 500ms delay
 
-            query = select(Sample).where(Sample.id == sample_uuid)
-            result = await db.execute(query)
-            sample = result.scalars().first()
+    for attempt in range(max_retries):
+        try:
+            async with AsyncSessionLocal() as db:
+                # Convert sample_id to UUID if it's a string
+                if isinstance(sample_id, str):
+                    sample_uuid = uuid.UUID(sample_id)
+                else:
+                    sample_uuid = sample_id
 
-            if not sample:
-                logger.error(f"Sample {sample_uuid} not found in database during update_sample_status!")
-                raise ValueError(f"Sample {sample_uuid} not found - may have been deleted or never created")
+                query = select(Sample).where(Sample.id == sample_uuid)
+                result = await db.execute(query)
+                sample = result.scalars().first()
 
-            sample.status = status
-            await db.commit()
-            logger.info(f"Updated sample {sample_id} status to {status.value}")
-    except Exception as e:
-        logger.exception(f"Error updating sample {sample_id} status: {e}")
-        raise
+                if not sample:
+                    if attempt < max_retries - 1:
+                        # Sample not found, but we have retries left - likely a visibility race condition
+                        logger.warning(
+                            f"Sample {sample_uuid} not found (attempt {attempt + 1}/{max_retries}). "
+                            f"Retrying in {retry_delay}s... This can happen when processing starts "
+                            f"before the database transaction is fully visible."
+                        )
+                        await asyncio.sleep(retry_delay)
+                        retry_delay *= 2  # Exponential backoff
+                        continue
+                    else:
+                        # Final attempt failed
+                        logger.error(
+                            f"Sample {sample_uuid} not found after {max_retries} attempts! "
+                            f"Sample may have been deleted or database has a serious consistency issue."
+                        )
+                        raise ValueError(
+                            f"Sample {sample_uuid} not found after {max_retries} retries - "
+                            f"may have been deleted or database transaction not visible"
+                        )
+
+                # Sample found - update status
+                sample.status = status
+                await db.commit()
+                logger.info(f"Updated sample {sample_id} status to {status.value}")
+                return  # Success - exit retry loop
+
+        except ValueError:
+            # ValueError is raised when sample not found after all retries
+            raise
+        except Exception as e:
+            logger.exception(f"Error updating sample {sample_id} status: {e}")
+            raise
 
 
 async def download_tiktok_video(url: str, sample_id: str) -> Dict[str, Any]:
