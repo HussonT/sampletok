@@ -11,7 +11,7 @@ import logging
 
 from app.core.database import get_db
 from app.core.config import settings
-from app.models import Collection, CollectionStatus, User, Stem, StemProcessingStatus, Sample
+from app.models import Collection, CollectionStatus, User, Stem, StemProcessingStatus, Sample, CollectionSample
 from app.services.credit_service import CreditService
 from app.inngest_functions import inngest_client
 import inngest
@@ -172,17 +172,20 @@ async def reset_collection_by_id(
     collection_id: str,
     x_admin_key: str = Header(..., description="Admin API key"),
     trigger: bool = False,
+    hard_reset: bool = False,
     db: AsyncSession = Depends(get_db)
 ):
     """
     Emergency endpoint to reset a specific collection and refund credits.
 
-    Optionally triggers Inngest processing immediately after reset.
+    Options:
+    - trigger: Automatically trigger Inngest processing after reset
+    - hard_reset: Delete all CollectionSample links to force re-fetch of all videos
 
     Requires X-Admin-Key header matching ADMIN_API_KEY for security.
 
     Example:
-        POST /api/v1/admin/reset-collection/2a3960d1-f762-4947-8f50-f2a736dd1bf6?trigger=true
+        POST /api/v1/admin/reset-collection/2a3960d1-f762-4947-8f50-f2a736dd1bf6?trigger=true&hard_reset=true
         X-Admin-Key: your-admin-api-key
     """
     # Verify admin key
@@ -236,6 +239,21 @@ async def reset_collection_by_id(
         f"balance: {old_credits} → {user.credits}"
     )
 
+    # Hard reset: Delete all CollectionSample links to force re-fetch
+    links_deleted = 0
+    if hard_reset:
+        try:
+            logger.info(f"Admin: Hard reset - deleting all CollectionSample links for collection {collection_id}")
+            delete_result = await db.execute(
+                text("DELETE FROM collection_samples WHERE collection_id = :collection_id"),
+                {"collection_id": collection_id}
+            )
+            links_deleted = delete_result.rowcount
+            await db.commit()
+            logger.info(f"Admin: Deleted {links_deleted} CollectionSample links for collection {collection_id}")
+        except Exception as e:
+            logger.error(f"Admin: Failed to delete CollectionSample links: {e}")
+
     # Optionally trigger Inngest processing immediately
     triggered = False
     trigger_error = None
@@ -270,6 +288,10 @@ async def reset_collection_by_id(
         "total_videos": collection.total_video_count,
         "videos_processed": 0
     }
+
+    if hard_reset:
+        response["hard_reset"] = True
+        response["links_deleted"] = links_deleted
 
     if trigger:
         response["triggered"] = triggered
