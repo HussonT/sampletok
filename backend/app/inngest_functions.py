@@ -133,7 +133,7 @@ async def process_tiktok_video(ctx: inngest.Context) -> Dict[str, Any]:
     hls_url = await ctx.step.run(
         "generate-hls-stream",
         generate_hls_stream,
-        audio_files["mp3_path"],
+        audio_files["wav_path"],  # Use WAV path (mp3_path not returned by extract_audio)
         video_metadata["temp_dir"],
         sample_id
     )
