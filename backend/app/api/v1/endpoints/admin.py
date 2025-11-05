@@ -171,15 +171,18 @@ async def reset_user_collections(
 async def reset_collection_by_id(
     collection_id: str,
     x_admin_key: str = Header(..., description="Admin API key"),
+    trigger: bool = False,
     db: AsyncSession = Depends(get_db)
 ):
     """
     Emergency endpoint to reset a specific collection and refund credits.
 
+    Optionally triggers Inngest processing immediately after reset.
+
     Requires X-Admin-Key header matching ADMIN_API_KEY for security.
 
     Example:
-        POST /api/v1/admin/reset-collection/2a3960d1-f762-4947-8f50-f2a736dd1bf6
+        POST /api/v1/admin/reset-collection/2a3960d1-f762-4947-8f50-f2a736dd1bf6?trigger=true
         X-Admin-Key: your-admin-api-key
     """
     # Verify admin key
@@ -188,7 +191,7 @@ async def reset_collection_by_id(
     if x_admin_key != settings.ADMIN_API_KEY:
         raise HTTPException(status_code=403, detail="Invalid admin key")
 
-    logger.info(f"Admin: Resetting collection {collection_id}")
+    logger.info(f"Admin: Resetting collection {collection_id} (trigger={trigger})")
 
     # Get collection
     collection_query = select(Collection).where(Collection.id == text(f"'{collection_id}'::uuid"))
@@ -233,7 +236,27 @@ async def reset_collection_by_id(
         f"balance: {old_credits} → {user.credits}"
     )
 
-    return {
+    # Optionally trigger Inngest processing immediately
+    triggered = False
+    trigger_error = None
+    if trigger:
+        try:
+            logger.info(f"Admin: Triggering Inngest processing for collection {collection_id}")
+            await inngest_client.send(
+                inngest.Event(
+                    name="collection/import.submitted",
+                    data={
+                        "collection_id": collection_id
+                    }
+                )
+            )
+            triggered = True
+            logger.info(f"Admin: Successfully triggered processing for collection {collection_id}")
+        except Exception as e:
+            trigger_error = str(e)
+            logger.error(f"Admin: Failed to trigger Inngest for collection {collection_id}: {e}")
+
+    response = {
         "message": "Successfully reset collection",
         "collection_id": collection_id,
         "collection_name": collection.name,
@@ -247,6 +270,13 @@ async def reset_collection_by_id(
         "total_videos": collection.total_video_count,
         "videos_processed": 0
     }
+
+    if trigger:
+        response["triggered"] = triggered
+        if trigger_error:
+            response["trigger_error"] = trigger_error
+
+    return response
 
 
 @router.post("/add-credits")
