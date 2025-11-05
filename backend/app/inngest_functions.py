@@ -466,111 +466,135 @@ def cleanup_temp_files(temp_dir: str) -> None:
 
 
 async def update_sample_complete(data: Dict[str, Any]) -> None:
-    """Update sample with processing results"""
-    try:
-        async with AsyncSessionLocal() as db:
-            sample_id = data["sample_id"]
-            metadata = data["metadata"]
-            urls = data["urls"]
-            analysis = data.get("analysis", {})
-            audio_metadata = data.get("audio_metadata", {})
+    """Update sample with processing results (with retry logic for race conditions)"""
+    sample_id = data["sample_id"]
+    metadata = data["metadata"]
+    urls = data["urls"]
+    analysis = data.get("analysis", {})
+    audio_metadata = data.get("audio_metadata", {})
 
-            # Convert sample_id to UUID if it's a string
-            if isinstance(sample_id, str):
-                sample_uuid = uuid.UUID(sample_id)
-            else:
-                sample_uuid = sample_id
+    # Convert sample_id to UUID if it's a string
+    if isinstance(sample_id, str):
+        sample_uuid = uuid.UUID(sample_id)
+    else:
+        sample_uuid = sample_id
 
-            logger.info(f"Looking for sample with ID: {sample_uuid}")
-            query = select(Sample).where(Sample.id == sample_uuid)
-            result = await db.execute(query)
-            sample = result.scalars().first()
+    max_retries = 3
+    retry_delay = 0.5
+    sample = None
 
-            if not sample:
-                logger.error(f"Sample {sample_uuid} not found in database during update_sample_complete!")
-                logger.error(f"Sample metadata: aweme_id={metadata.get('aweme_id')}, tiktok_id={metadata.get('tiktok_id')}")
+    # Retry loop to handle race conditions
+    for attempt in range(max_retries):
+        try:
+            async with AsyncSessionLocal() as db:
+                logger.info(f"Looking for sample with ID: {sample_uuid} (attempt {attempt + 1}/{max_retries})")
+                query = select(Sample).where(Sample.id == sample_uuid)
+                result = await db.execute(query)
+                sample = result.scalars().first()
 
-                # Try to find by aweme_id as fallback
-                aweme_id = metadata.get('aweme_id')
-                if aweme_id:
-                    logger.info(f"Attempting to find sample by aweme_id: {aweme_id}")
-                    query = select(Sample).where(Sample.aweme_id == aweme_id)
-                    result = await db.execute(query)
-                    sample = result.scalars().first()
-                    if sample:
-                        logger.info(f"Found sample by aweme_id: {sample.id}")
+                if not sample:
+                    # Try to find by aweme_id as fallback
+                    aweme_id = metadata.get('aweme_id')
+                    if aweme_id:
+                        logger.info(f"Sample not found by ID, trying aweme_id: {aweme_id}")
+                        query = select(Sample).where(Sample.aweme_id == aweme_id)
+                        result = await db.execute(query)
+                        sample = result.scalars().first()
+                        if sample:
+                            logger.info(f"Found sample by aweme_id: {sample.id}")
+
+                if not sample:
+                    if attempt < max_retries - 1:
+                        # Sample not found, but we have retries left
+                        logger.warning(
+                            f"Sample {sample_uuid} not found (attempt {attempt + 1}/{max_retries}). "
+                            f"Retrying in {retry_delay}s... (aweme_id={metadata.get('aweme_id')})"
+                        )
+                        await asyncio.sleep(retry_delay)
+                        retry_delay *= 2
+                        continue
                     else:
-                        logger.error(f"Sample not found by aweme_id either. Sample may have been deleted.")
-                        raise ValueError(f"Sample {sample_uuid} not found - may have been deleted or never created")
-                else:
-                    raise ValueError(f"Sample {sample_uuid} not found and no aweme_id available for fallback lookup")
+                        # Final attempt failed
+                        logger.error(
+                            f"Sample {sample_uuid} not found after {max_retries} attempts! "
+                            f"Sample metadata: aweme_id={metadata.get('aweme_id')}, tiktok_id={metadata.get('tiktok_id')}"
+                        )
+                        raise ValueError(
+                            f"Sample {sample_uuid} not found after {max_retries} retries - "
+                            f"may have been deleted or database transaction not visible"
+                        )
 
-            # Update metadata from TikTok API
-            # Only set tiktok_id if it's not already set (avoid unique constraint errors during reprocessing)
-            if not sample.tiktok_id and metadata.get("tiktok_id"):
-                sample.tiktok_id = metadata.get("tiktok_id")
-            sample.aweme_id = metadata.get("aweme_id")
-            # Clean title by removing hashtags
-            raw_title = metadata.get("title") or ""
-            sample.title = remove_hashtags(raw_title)
-            sample.region = metadata.get("region")
-            sample.creator_username = metadata.get("creator_username")
-            sample.creator_name = metadata.get("creator_name")
-            sample.description = metadata.get("description")
-            sample.view_count = metadata.get("view_count", 0)
-            sample.like_count = metadata.get("like_count", 0)
-            sample.comment_count = metadata.get("comment_count", 0)
-            sample.share_count = metadata.get("share_count", 0)
-            sample.upload_timestamp = metadata.get("upload_timestamp")
+                # Sample found - update metadata from TikTok API
+                # Only set tiktok_id if it's not already set (avoid unique constraint errors during reprocessing)
+                if not sample.tiktok_id and metadata.get("tiktok_id"):
+                    sample.tiktok_id = metadata.get("tiktok_id")
+                sample.aweme_id = metadata.get("aweme_id")
+                # Clean title by removing hashtags
+                raw_title = metadata.get("title") or ""
+                sample.title = remove_hashtags(raw_title)
+                sample.region = metadata.get("region")
+                sample.creator_username = metadata.get("creator_username")
+                sample.creator_name = metadata.get("creator_name")
+                sample.description = metadata.get("description")
+                sample.view_count = metadata.get("view_count", 0)
+                sample.like_count = metadata.get("like_count", 0)
+                sample.comment_count = metadata.get("comment_count", 0)
+                sample.share_count = metadata.get("share_count", 0)
+                sample.upload_timestamp = metadata.get("upload_timestamp")
 
-            # Extract hashtags from description and title
-            description_text = metadata.get("description", "")
-            title_text = metadata.get("title", "")
-            combined_text = f"{title_text} {description_text}"
-            hashtags = extract_hashtags(combined_text)
-            if hashtags:
-                sample.tags = hashtags
-                logger.info(f"Extracted {len(hashtags)} hashtags: {hashtags}")
+                # Extract hashtags from description and title
+                description_text = metadata.get("description", "")
+                title_text = metadata.get("title", "")
+                combined_text = f"{title_text} {description_text}"
+                hashtags = extract_hashtags(combined_text)
+                if hashtags:
+                    sample.tags = hashtags
+                    logger.info(f"Extracted {len(hashtags)} hashtags: {hashtags}")
 
-            # Use duration from audio metadata (extracted from actual audio file)
-            sample.duration_seconds = audio_metadata.get("duration", metadata.get("duration"))
+                # Use duration from audio metadata (extracted from actual audio file)
+                sample.duration_seconds = audio_metadata.get("duration", metadata.get("duration"))
 
-            # Update audio analysis results
-            if analysis.get("bpm"):
-                sample.bpm = analysis["bpm"]
-                logger.info(f"Set BPM: {analysis['bpm']}")
+                # Update audio analysis results
+                if analysis.get("bpm"):
+                    sample.bpm = analysis["bpm"]
+                    logger.info(f"Set BPM: {analysis['bpm']}")
 
-            if analysis.get("key") and analysis.get("scale"):
-                sample.key = f"{analysis['key']} {analysis['scale']}"
-                logger.info(f"Set key: {sample.key}")
+                if analysis.get("key") and analysis.get("scale"):
+                    sample.key = f"{analysis['key']} {analysis['scale']}"
+                    logger.info(f"Set key: {sample.key}")
 
-            # Update file URLs - All from our storage (R2/S3/GCS)
-            sample.video_url = urls.get("video")
-            sample.thumbnail_url = urls.get("thumbnail")
-            sample.cover_url = urls.get("cover")
-            sample.audio_url_wav = urls["wav"]
-            sample.audio_url_mp3 = urls["mp3"]
-            sample.audio_url_hls = urls.get("hls")
-            sample.waveform_url = urls["waveform"]
+                # Update file URLs - All from our storage (R2/S3/GCS)
+                sample.video_url = urls.get("video")
+                sample.thumbnail_url = urls.get("thumbnail")
+                sample.cover_url = urls.get("cover")
+                sample.audio_url_wav = urls["wav"]
+                sample.audio_url_mp3 = urls["mp3"]
+                sample.audio_url_hls = urls.get("hls")
+                sample.waveform_url = urls["waveform"]
 
-            # Calculate video file size if available
-            if metadata.get("file_size"):
-                sample.file_size_video = metadata["file_size"]
+                # Calculate video file size if available
+                if metadata.get("file_size"):
+                    sample.file_size_video = metadata["file_size"]
 
-            # Link to TikTok creator if available
-            tiktok_creator_id = metadata.get("tiktok_creator_id")
-            if tiktok_creator_id:
-                sample.tiktok_creator_id = uuid.UUID(tiktok_creator_id)
-                logger.info(f"Linked sample to creator {tiktok_creator_id}")
+                # Link to TikTok creator if available
+                tiktok_creator_id = metadata.get("tiktok_creator_id")
+                if tiktok_creator_id:
+                    sample.tiktok_creator_id = uuid.UUID(tiktok_creator_id)
+                    logger.info(f"Linked sample to creator {tiktok_creator_id}")
 
-            # Mark as completed
-            sample.status = ProcessingStatus.COMPLETED
+                # Mark as completed
+                sample.status = ProcessingStatus.COMPLETED
 
-            await db.commit()
-            logger.info(f"Sample {sample_id} processing completed successfully")
-    except Exception as e:
-        logger.exception(f"Error updating sample {sample_id} complete: {e}")
-        raise
+                await db.commit()
+                logger.info(f"Sample {sample_id} processing completed successfully")
+                return  # Success - exit retry loop
+
+        except ValueError:
+            # ValueError is raised when sample not found after all retries
+            raise
+        except Exception as e:
+            logger.exception(f"Error updating sample {sample_id} complete: {e}")
+            raise
 
 
 # Error handler function
@@ -579,22 +603,51 @@ async def update_sample_complete(data: Dict[str, Any]) -> None:
     trigger=inngest.TriggerEvent(event="tiktok/processing.failed")
 )
 async def handle_processing_error(ctx: inngest.Context) -> None:
-    """Handle processing failures"""
+    """Handle processing failures (with retry logic for race conditions)"""
     event_data = ctx.event.data
     sample_id = event_data.get("sample_id")
     error_message = event_data.get("error", "Unknown error occurred")
 
     async def update_failed_status():
-        async with AsyncSessionLocal() as db:
-            query = select(Sample).where(Sample.id == uuid.UUID(sample_id))
-            result = await db.execute(query)
-            sample = result.scalar_one()
+        sample_uuid = uuid.UUID(sample_id)
+        max_retries = 3
+        retry_delay = 0.5
 
-            sample.status = ProcessingStatus.FAILED
-            sample.error_message = error_message
+        for attempt in range(max_retries):
+            try:
+                async with AsyncSessionLocal() as db:
+                    logger.info(f"Marking sample {sample_uuid} as failed (attempt {attempt + 1}/{max_retries})")
+                    query = select(Sample).where(Sample.id == sample_uuid)
+                    result = await db.execute(query)
+                    sample = result.scalars().first()
 
-            await db.commit()
-            logger.exception(f"Sample {sample_id} processing failed: {error_message}")
+                    if not sample:
+                        if attempt < max_retries - 1:
+                            logger.warning(
+                                f"Sample {sample_uuid} not found in error handler (attempt {attempt + 1}/{max_retries}). "
+                                f"Retrying in {retry_delay}s..."
+                            )
+                            await asyncio.sleep(retry_delay)
+                            retry_delay *= 2
+                            continue
+                        else:
+                            logger.error(
+                                f"Sample {sample_uuid} not found after {max_retries} attempts in error handler. "
+                                f"Cannot mark as failed."
+                            )
+                            return  # Give up gracefully
+
+                    sample.status = ProcessingStatus.FAILED
+                    sample.error_message = error_message
+
+                    await db.commit()
+                    logger.error(f"Sample {sample_id} processing failed: {error_message}")
+                    return  # Success
+
+            except Exception as e:
+                logger.exception(f"Error in error handler for sample {sample_id}: {e}")
+                if attempt == max_retries - 1:
+                    raise
 
     await ctx.step.run("mark-as-failed", update_failed_status)
 
@@ -1585,37 +1638,56 @@ async def update_stems_status(stem_ids: List[str], status: StemProcessingStatus)
 
 
 async def download_sample_audio(sample_id: str) -> str:
-    """Download original sample audio from storage to temp directory"""
+    """Download original sample audio from storage to temp directory (with retry logic)"""
     temp_dir = Path(tempfile.gettempdir()) / f"stems_{sample_id}"
     temp_dir.mkdir(parents=True, exist_ok=True)
 
-    try:
-        async with AsyncSessionLocal() as db:
-            sample_uuid = uuid.UUID(sample_id)
-            query = select(Sample).where(Sample.id == sample_uuid)
-            result = await db.execute(query)
-            sample = result.scalars().first()
+    sample_uuid = uuid.UUID(sample_id)
+    max_retries = 3
+    retry_delay = 0.5
 
-            if not sample or not sample.audio_url_wav:
-                raise ValueError(f"Sample {sample_id} not found or has no audio")
+    for attempt in range(max_retries):
+        try:
+            async with AsyncSessionLocal() as db:
+                logger.info(f"Looking for sample {sample_uuid} for audio download (attempt {attempt + 1}/{max_retries})")
+                query = select(Sample).where(Sample.id == sample_uuid)
+                result = await db.execute(query)
+                sample = result.scalars().first()
 
-            # Download WAV file from storage
-            storage = S3Storage()
-            temp_audio_path = temp_dir / f"original.wav"
+                if not sample or not sample.audio_url_wav:
+                    if attempt < max_retries - 1:
+                        logger.warning(
+                            f"Sample {sample_uuid} not found or has no audio (attempt {attempt + 1}/{max_retries}). "
+                            f"Retrying in {retry_delay}s..."
+                        )
+                        await asyncio.sleep(retry_delay)
+                        retry_delay *= 2
+                        continue
+                    else:
+                        raise ValueError(
+                            f"Sample {sample_id} not found or has no audio after {max_retries} retries"
+                        )
 
-            # The actual storage key for audio files is samples/{sample_id}/audio.wav
-            file_key = f"samples/{sample_id}/audio.wav"
+                # Sample found - download WAV file from storage
+                storage = S3Storage()
+                temp_audio_path = temp_dir / f"original.wav"
 
-            logger.info(f"Attempting to download audio from key: {file_key}")
+                # The actual storage key for audio files is samples/{sample_id}/audio.wav
+                file_key = f"samples/{sample_id}/audio.wav"
 
-            await storage.download_file(file_key, str(temp_audio_path))
+                logger.info(f"Attempting to download audio from key: {file_key}")
 
-            logger.info(f"Downloaded original audio to {temp_audio_path}")
-            return str(temp_audio_path)
+                await storage.download_file(file_key, str(temp_audio_path))
 
-    except Exception as e:
-        logger.exception(f"Error downloading sample audio: {e}")
-        raise
+                logger.info(f"Downloaded original audio to {temp_audio_path}")
+                return str(temp_audio_path)
+
+        except ValueError:
+            # ValueError is raised when sample not found after all retries
+            raise
+        except Exception as e:
+            logger.exception(f"Error downloading sample audio: {e}")
+            raise
 
 
 async def separate_stem(audio_path: str, stem_type: str, sample_id: str) -> str:
@@ -1689,32 +1761,57 @@ async def separate_stem(audio_path: str, stem_type: str, sample_id: str) -> str:
 
 
 async def get_stem_metadata_from_parent(stem_file_path: str, sample_id: str) -> Dict[str, Any]:
-    """Get stem metadata by copying from parent sample (stems have same BPM/key as original)"""
+    """Get stem metadata by copying from parent sample (with retry logic for race conditions)"""
     try:
         # Get just the duration from the separated file to verify it was created
         processor = AudioProcessor()
         metadata = await processor.get_audio_metadata(stem_file_path)
 
-        # Get parent sample's BPM and key
-        async with AsyncSessionLocal() as db:
-            query = select(Sample).where(Sample.id == uuid.UUID(sample_id))
-            result = await db.execute(query)
-            parent_sample = result.scalars().first()
+        sample_uuid = uuid.UUID(sample_id)
+        max_retries = 3
+        retry_delay = 0.5
 
-            if not parent_sample:
-                raise ValueError(f"Parent sample {sample_id} not found")
+        # Retry loop to handle race conditions
+        for attempt in range(max_retries):
+            try:
+                async with AsyncSessionLocal() as db:
+                    logger.info(f"Looking for parent sample {sample_uuid} for stem metadata (attempt {attempt + 1}/{max_retries})")
+                    query = select(Sample).where(Sample.id == sample_uuid)
+                    result = await db.execute(query)
+                    parent_sample = result.scalars().first()
 
-            # Copy BPM, key, and duration from parent sample
-            # Stems are extracted from the same audio, so they have the same musical properties
-            logger.info(f"Copied metadata from parent sample: BPM={parent_sample.bpm}, Key={parent_sample.key}, Duration={metadata.get('duration'):.1f}s")
+                    if not parent_sample:
+                        if attempt < max_retries - 1:
+                            logger.warning(
+                                f"Parent sample {sample_uuid} not found (attempt {attempt + 1}/{max_retries}). "
+                                f"Retrying in {retry_delay}s..."
+                            )
+                            await asyncio.sleep(retry_delay)
+                            retry_delay *= 2
+                            continue
+                        else:
+                            raise ValueError(
+                                f"Parent sample {sample_id} not found after {max_retries} retries"
+                            )
 
-            return {
-                "bpm": parent_sample.bpm,
-                "key": parent_sample.key,
-                "duration": metadata.get("duration"),  # Use actual stem duration (should match parent)
-                "sample_rate": metadata.get("sample_rate"),
-                "channels": metadata.get("channels")
-            }
+                    # Copy BPM, key, and duration from parent sample
+                    # Stems are extracted from the same audio, so they have the same musical properties
+                    logger.info(f"Copied metadata from parent sample: BPM={parent_sample.bpm}, Key={parent_sample.key}, Duration={metadata.get('duration'):.1f}s")
+
+                    return {
+                        "bpm": parent_sample.bpm,
+                        "key": parent_sample.key,
+                        "duration": metadata.get("duration"),  # Use actual stem duration (should match parent)
+                        "sample_rate": metadata.get("sample_rate"),
+                        "channels": metadata.get("channels")
+                    }
+
+            except ValueError:
+                # ValueError is raised when parent sample not found after all retries
+                raise
+            except Exception as e:
+                logger.exception(f"Error getting stem metadata: {e}")
+                raise
 
     except Exception as e:
         logger.exception(f"Error getting stem metadata: {e}")
