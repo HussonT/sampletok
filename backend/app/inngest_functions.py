@@ -1244,9 +1244,25 @@ async def process_collection_video(
             sample_id = None
 
             if existing_sample:
-                logger.info(f"Sample already exists for aweme_id {aweme_id}: {existing_sample.id}")
+                logger.info(f"Sample already exists for aweme_id {aweme_id}: {existing_sample.id}, status: {existing_sample.status.value}")
                 sample_id = existing_sample.id
-                # Don't auto-create downloads - user must explicitly download
+
+                # If sample is not completed, retrigger processing
+                if existing_sample.status != ProcessingStatus.COMPLETED:
+                    logger.info(f"Sample {sample_id} status is {existing_sample.status.value}, retriggering processing")
+                    try:
+                        await inngest_client.send(
+                            inngest.Event(
+                                name="tiktok/video.submitted",
+                                data={
+                                    "sample_id": str(existing_sample.id),
+                                    "url": tiktok_url
+                                }
+                            )
+                        )
+                        logger.info(f"✓ Successfully retriggered processing for existing sample {sample_id}")
+                    except Exception as e:
+                        logger.error(f"✗ Failed to retrigger processing for existing sample {sample_id}: {e}")
             else:
                 # Create new sample and trigger processing
                 logger.info(f"Creating new sample for aweme_id {aweme_id}, video_id {video_id}, URL: {tiktok_url}")
