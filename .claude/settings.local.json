@@ -67,7 +67,13 @@
       "Bash(git log:*)",
       "Bash(alembic/versions/7459cff6a67f_reset_all_user_credits_to_0_for_.py)",
       "WebSearch",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(/tmp/backfill_request.json)",
+      "Bash(./deploy.sh:*)",
+      "Bash(/tmp/backfill_batch3.json)",
+      "Bash(/tmp/backfill_batch5.json)",
+      "Bash(/tmp/backfill_batch6.json)",
+      "Bash(/tmp/backfill_batch7.json)"
     ],
     "deny": [],
     "ask": []

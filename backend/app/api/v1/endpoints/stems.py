@@ -76,8 +76,9 @@ class FavoriteResponse(BaseModel):
 @router.post("/{sample_id}/separate-stems", response_model=StemSeparationResponse)
 @limiter.limit(f"{settings.STEM_SEPARATION_RATE_LIMIT_PER_MINUTE}/minute")
 async def submit_stem_separation(
+    request: Request,
     sample_id: UUID,
-    request: StemSeparationRequest,
+    req_body: StemSeparationRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
@@ -99,13 +100,13 @@ async def submit_stem_separation(
         )
 
     # Validate number of stems requested
-    if len(request.stems) > settings.MAX_STEMS_PER_REQUEST:
+    if len(req_body.stems) > settings.MAX_STEMS_PER_REQUEST:
         raise HTTPException(
             status_code=400,
-            detail=f"Too many stems requested. Maximum {settings.MAX_STEMS_PER_REQUEST} stems per request. You requested {len(request.stems)} stems."
+            detail=f"Too many stems requested. Maximum {settings.MAX_STEMS_PER_REQUEST} stems per request. You requested {len(req_body.stems)} stems."
         )
 
-    if len(request.stems) == 0:
+    if len(req_body.stems) == 0:
         raise HTTPException(
             status_code=400,
             detail="At least one stem type must be requested"
@@ -113,7 +114,7 @@ async def submit_stem_separation(
 
     # Validate stem types
     valid_stem_types = [e.value for e in StemType]
-    for stem_type in request.stems:
+    for stem_type in req_body.stems:
         if stem_type not in valid_stem_types:
             raise HTTPException(
                 status_code=400,
@@ -124,7 +125,7 @@ async def submit_stem_separation(
     existing_stems = await db.execute(
         select(Stem).where(
             Stem.parent_sample_id == sample_id,
-            Stem.stem_type.in_([StemType(s) for s in request.stems])
+            Stem.stem_type.in_([StemType(s) for s in req_body.stems])
         )
     )
     existing_stems = existing_stems.scalars().all()
@@ -154,7 +155,7 @@ async def submit_stem_separation(
         )
 
     # Calculate credits needed
-    num_stems = len(request.stems)
+    num_stems = len(req_body.stems)
     credits_needed = num_stems * settings.CREDITS_PER_STEM
 
     # Check and deduct credits atomically
@@ -183,7 +184,7 @@ async def submit_stem_separation(
 
         # Create stem records
         stem_records = []
-        for stem_type in request.stems:
+        for stem_type in req_body.stems:
             stem = Stem(
                 parent_sample_id=sample_id,
                 stem_type=StemType(stem_type),
