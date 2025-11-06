@@ -44,8 +44,13 @@ def upgrade() -> None:
           EXECUTE FUNCTION update_search_vector();
     ''')
 
+    # Create GIN index for full-text search
+    # Note: Index can be created on nullable column, it will just be empty until backfill
+    op.execute('CREATE INDEX ix_samples_search_vector ON samples USING GIN (search_vector)')
+
 
 def downgrade() -> None:
+    op.execute('DROP INDEX IF EXISTS ix_samples_search_vector')
     op.execute('DROP TRIGGER IF EXISTS samples_search_vector_update ON samples')
     op.execute('DROP FUNCTION IF EXISTS update_search_vector()')
     op.drop_column('samples', 'search_vector')

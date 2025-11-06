@@ -68,7 +68,7 @@ async def backfill_search_vectors():
               setweight(to_tsvector('english', coalesce(title, '')), 'A') ||
               setweight(to_tsvector('english', coalesce(description, '')), 'B') ||
               setweight(to_tsvector('english', coalesce(creator_username, '')), 'C') ||
-              setweight(to_tsvector('english', coalesce(array_to_string(tags, ' '), '')), 'D')
+              setweight(to_tsvector('english', coalesce((SELECT string_agg(value, ' ') FROM jsonb_array_elements_text(tags)), '')), 'D')
             WHERE search_vector IS NULL
         """)
 
@@ -80,7 +80,7 @@ async def backfill_search_vectors():
         # Create GIN index AFTER backfill (much faster this way)
         print("Creating GIN index...")
         await session.execute(text(
-            "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_samples_search_vector ON samples USING GIN (search_vector)"
+            "CREATE INDEX IF NOT EXISTS ix_samples_search_vector ON samples USING GIN (search_vector)"
         ))
         await session.commit()
 

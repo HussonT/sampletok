@@ -42,13 +42,26 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
   const [currentPage, setCurrentPage] = useState(1);
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
   const [hasSubscription, setHasSubscription] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchInput, setSearchInput] = useState(''); // Immediate input value
+  const [searchQuery, setSearchQuery] = useState(''); // Debounced search query
   const [tags, setTags] = useState<string[]>([]);
   const [bpmMin, setBpmMin] = useState<number | null>(null);
   const [bpmMax, setBpmMax] = useState<number | null>(null);
   const [musicalKey, setMusicalKey] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState('created_at_desc');
   const itemsPerPage = 20;
+
+  // Debounce search input (300ms delay)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearchQuery(searchInput);
+      if (searchInput !== searchQuery) {
+        setCurrentPage(1); // Reset to page 1 when search changes
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchInput]);
 
   // Convert tags array to string for consistent cache keys
   const tagsString = tags.join(',');
@@ -472,20 +485,22 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
                 <Input
                   type="text"
                   placeholder="Search samples by description, creator, tags..."
-                  value={searchQuery}
+                  value={searchInput}
                   onChange={(e) => {
-                    setSearchQuery(e.target.value);
-                    setCurrentPage(1); // Reset to page 1 when searching
+                    setSearchInput(e.target.value);
                   }}
+                  maxLength={200}
                   className="pl-10 pr-10"
                 />
-                {searchQuery && (
+                {searchInput && (
                   <button
                     onClick={() => {
+                      setSearchInput('');
                       setSearchQuery('');
                       setCurrentPage(1);
                     }}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    aria-label="Clear search"
                   >
                     <X className="h-4 w-4" />
                   </button>
@@ -529,7 +544,7 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
 
               {/* Active Filters */}
               <ActiveFilters
-                search={searchQuery}
+                search={searchInput}
                 tags={tags}
                 bpmMin={bpmMin}
                 bpmMax={bpmMax}
@@ -540,6 +555,7 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
                 }}
                 onClear={(filter) => {
                   if (filter === 'search') {
+                    setSearchInput('');
                     setSearchQuery('');
                   } else if (filter === 'bpm') {
                     setBpmMin(null);
@@ -550,6 +566,7 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
                   setCurrentPage(1);
                 }}
                 onClearAll={() => {
+                  setSearchInput('');
                   setSearchQuery('');
                   setTags([]);
                   setBpmMin(null);
@@ -561,6 +578,30 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
 
               {isLoadingPage ? (
                 <TableLoadingSkeleton rows={8} />
+              ) : filteredSamples.length === 0 && hasActiveFilters ? (
+                <div className="flex items-center justify-center h-96">
+                  <div className="text-center">
+                    <Search className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                    <h3 className="text-lg font-medium mb-2">No Samples Found</h3>
+                    <p className="text-muted-foreground mb-4">
+                      No samples match your current filters
+                    </p>
+                    <button
+                      onClick={() => {
+                        setSearchInput('');
+                        setSearchQuery('');
+                        setTags([]);
+                        setBpmMin(null);
+                        setBpmMax(null);
+                        setMusicalKey(null);
+                        setCurrentPage(1);
+                      }}
+                      className="text-primary hover:underline"
+                    >
+                      Clear all filters
+                    </button>
+                  </div>
+                </div>
               ) : (
                 <>
                   <SoundsTable

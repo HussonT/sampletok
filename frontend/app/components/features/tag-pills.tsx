@@ -25,26 +25,28 @@ export function TagPills({ activeTags, onToggleTag }: TagPillsProps) {
   }
 
   return (
-    <div className="flex flex-wrap gap-2 py-4">
-      {popularTags.map(({ tag, count }) => {
-        const isActive = activeTags.includes(tag);
+    <div className="overflow-x-auto py-4">
+      <div className="flex gap-2">
+        {popularTags.map(({ tag, count }) => {
+          const isActive = activeTags.includes(tag);
 
-        return (
-          <Badge
-            key={tag}
-            variant={isActive ? "default" : "outline"}
-            className={cn(
-              "cursor-pointer transition-colors",
-              "hover:bg-primary hover:text-primary-foreground",
-              isActive && "bg-primary text-primary-foreground"
-            )}
-            onClick={() => onToggleTag(tag)}
-          >
-            {tag}
-            <span className="ml-1.5 text-xs opacity-70">{count}</span>
-          </Badge>
-        );
-      })}
+          return (
+            <Badge
+              key={tag}
+              variant={isActive ? "default" : "outline"}
+              className={cn(
+                "cursor-pointer transition-colors whitespace-nowrap flex-shrink-0",
+                "hover:bg-primary hover:text-primary-foreground",
+                isActive && "bg-primary text-primary-foreground"
+              )}
+              onClick={() => onToggleTag(tag)}
+            >
+              {tag}
+              <span className="ml-1.5 text-xs opacity-70">{count}</span>
+            </Badge>
+          );
+        })}
+      </div>
     </div>
   );
 }

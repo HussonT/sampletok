@@ -230,9 +230,29 @@ class SampleSearchParams(BaseModel):
     @validator('tags')
     def validate_tags(cls, v):
         if v:
-            tag_list = v.split(',')
+            # Parse and clean tags
+            tag_list = [t.strip() for t in v.split(',') if t.strip()]
+
+            # Validate tag count
             if len(tag_list) > 20:
                 raise ValueError('Maximum 20 tags allowed')
+
+            # Validate each tag
+            for tag in tag_list:
+                # Check individual tag length
+                if len(tag) > 50:
+                    raise ValueError(f'Tag "{tag}" exceeds maximum length of 50 characters')
+
+                # Validate tag format (alphanumeric + hyphens/underscores)
+                # Allow only letters, numbers, hyphens, and underscores
+                if not tag.replace('-', '').replace('_', '').isalnum():
+                    raise ValueError(
+                        f'Tag "{tag}" contains invalid characters. '
+                        'Only letters, numbers, hyphens, and underscores are allowed'
+                    )
+
+            # Return cleaned tags (joined back)
+            return ','.join(tag_list) if tag_list else None
         return v
 
 

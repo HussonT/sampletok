@@ -184,7 +184,32 @@ async def get_samples(
 
     # Tag filter (OR logic - any tag matches)
     if tags:
-        tag_list = [t.strip().lower() for t in tags.split(",")]
+        # Parse and validate tags
+        tag_list = [t.strip().lower() for t in tags.split(",") if t.strip()]
+
+        # Validate tag count
+        if len(tag_list) > 20:
+            raise HTTPException(
+                status_code=400,
+                detail="Maximum 20 tags allowed per query"
+            )
+
+        # Validate each tag
+        for tag in tag_list:
+            # Check individual tag length
+            if len(tag) > 50:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Tag '{tag}' exceeds maximum length of 50 characters"
+                )
+
+            # Validate tag format (alphanumeric + hyphens/underscores)
+            if not tag.replace('-', '').replace('_', '').isalnum():
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Tag '{tag}' contains invalid characters. Only letters, numbers, hyphens, and underscores are allowed"
+                )
+
         # Use JSONB ?| operator: checks if any of the array elements exist
         query = query.where(
             Sample.tags.op('?|')(cast(tag_list, ARRAY(String)))

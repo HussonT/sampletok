@@ -44,6 +44,7 @@ export function ActiveFilters({
               onClear('search');
             }}
             className="inline-flex items-center justify-center pointer-events-auto cursor-pointer hover:text-destructive transition-colors"
+            aria-label="Remove search filter"
           >
             <X className="h-3 w-3 pointer-events-none" />
           </button>
@@ -61,6 +62,7 @@ export function ActiveFilters({
               onRemoveTag(tag);
             }}
             className="inline-flex items-center justify-center pointer-events-auto cursor-pointer hover:text-destructive transition-colors"
+            aria-label={`Remove tag filter: ${tag}`}
           >
             <X className="h-3 w-3 pointer-events-none" />
           </button>
@@ -69,7 +71,7 @@ export function ActiveFilters({
 
       {(bpmMin || bpmMax) && (
         <Badge variant="secondary" className="gap-2">
-          BPM: {bpmMin || 60}-{bpmMax || 180}
+          BPM: {bpmMin && bpmMax ? `${bpmMin}-${bpmMax}` : bpmMin ? `${bpmMin}+` : `≤${bpmMax}`}
           <button
             type="button"
             onClick={(e) => {
@@ -78,6 +80,7 @@ export function ActiveFilters({
               onClear('bpm');
             }}
             className="inline-flex items-center justify-center pointer-events-auto cursor-pointer hover:text-destructive transition-colors"
+            aria-label="Remove BPM filter"
           >
             <X className="h-3 w-3 pointer-events-none" />
           </button>
@@ -95,6 +98,7 @@ export function ActiveFilters({
               onClear('key');
             }}
             className="inline-flex items-center justify-center pointer-events-auto cursor-pointer hover:text-destructive transition-colors"
+            aria-label="Remove key filter"
           >
             <X className="h-3 w-3 pointer-events-none" />
           </button>
