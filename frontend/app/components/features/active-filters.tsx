@@ -36,40 +36,68 @@ export function ActiveFilters({
       {search && (
         <Badge variant="secondary" className="gap-2">
           Search: &quot;{search}&quot;
-          <X
-            className="h-3 w-3 cursor-pointer hover:text-destructive"
-            onClick={() => onClear('search')}
-          />
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onClear('search');
+            }}
+            className="inline-flex items-center justify-center pointer-events-auto cursor-pointer hover:text-destructive transition-colors"
+          >
+            <X className="h-3 w-3 pointer-events-none" />
+          </button>
         </Badge>
       )}
 
       {tags.map(tag => (
         <Badge key={tag} variant="secondary" className="gap-2">
           {tag}
-          <X
-            className="h-3 w-3 cursor-pointer hover:text-destructive"
-            onClick={() => onRemoveTag(tag)}
-          />
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onRemoveTag(tag);
+            }}
+            className="inline-flex items-center justify-center pointer-events-auto cursor-pointer hover:text-destructive transition-colors"
+          >
+            <X className="h-3 w-3 pointer-events-none" />
+          </button>
         </Badge>
       ))}
 
       {(bpmMin || bpmMax) && (
         <Badge variant="secondary" className="gap-2">
           BPM: {bpmMin || 60}-{bpmMax || 180}
-          <X
-            className="h-3 w-3 cursor-pointer hover:text-destructive"
-            onClick={() => onClear('bpm')}
-          />
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onClear('bpm');
+            }}
+            className="inline-flex items-center justify-center pointer-events-auto cursor-pointer hover:text-destructive transition-colors"
+          >
+            <X className="h-3 w-3 pointer-events-none" />
+          </button>
         </Badge>
       )}
 
       {musicalKey && (
         <Badge variant="secondary" className="gap-2">
           Key: {musicalKey}
-          <X
-            className="h-3 w-3 cursor-pointer hover:text-destructive"
-            onClick={() => onClear('key')}
-          />
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onClear('key');
+            }}
+            className="inline-flex items-center justify-center pointer-events-auto cursor-pointer hover:text-destructive transition-colors"
+          >
+            <X className="h-3 w-3 pointer-events-none" />
+          </button>
         </Badge>
       )}
 

@@ -22,6 +22,7 @@ def upgrade() -> None:
     op.add_column('samples', sa.Column('search_vector', TSVECTOR, nullable=True))
 
     # Create update function for trigger
+    # Note: tags is a JSONB column, so we use jsonb_array_elements_text() to convert it
     op.execute('''
         CREATE FUNCTION update_search_vector() RETURNS trigger AS $$
         BEGIN
@@ -29,7 +30,7 @@ def upgrade() -> None:
             setweight(to_tsvector('english', coalesce(NEW.title, '')), 'A') ||
             setweight(to_tsvector('english', coalesce(NEW.description, '')), 'B') ||
             setweight(to_tsvector('english', coalesce(NEW.creator_username, '')), 'C') ||
-            setweight(to_tsvector('english', coalesce(array_to_string(NEW.tags, ' '), '')), 'D');
+            setweight(to_tsvector('english', coalesce((SELECT string_agg(value, ' ') FROM jsonb_array_elements_text(NEW.tags)), '')), 'D');
           RETURN NEW;
         END;
         $$ LANGUAGE plpgsql;

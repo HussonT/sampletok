@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks, Body
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, text, cast, String
+from sqlalchemy import select, func, and_, or_, text, cast, String
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import selectinload
 from typing import List, Optional
@@ -185,9 +185,9 @@ async def get_samples(
     # Tag filter (OR logic - any tag matches)
     if tags:
         tag_list = [t.strip().lower() for t in tags.split(",")]
-        # Use overlap operator: any tag matches (OR logic)
+        # Use JSONB ?| operator: checks if any of the array elements exist
         query = query.where(
-            Sample.tags.op('&&')(cast(tag_list, ARRAY(String)))
+            Sample.tags.op('?|')(cast(tag_list, ARRAY(String)))
         )
 
     # Full-text search with PostgreSQL tsvector
@@ -195,11 +195,20 @@ async def get_samples(
         # Convert search query to tsquery
         ts_query = func.plainto_tsquery('english', search)
 
-        # Filter by tsvector match
-        query = query.where(Sample.search_vector.op('@@')(ts_query))
+        # Filter by tsvector match OR partial username match
+        # This allows searching for creator names like "lucy" matching "lucyparkmusic"
+        query = query.where(
+            or_(
+                Sample.search_vector.op('@@')(ts_query),
+                Sample.creator_username.ilike(f'%{search}%')
+            )
+        )
 
-        # Sort by relevance when searching
+        # Sort by relevance when searching (prioritize exact username matches)
         query = query.order_by(
+            # First: exact username matches
+            func.lower(Sample.creator_username).like(f'%{search.lower()}%').desc(),
+            # Then: full-text search relevance
             func.ts_rank(Sample.search_vector, ts_query).desc()
         )
     else:
@@ -281,7 +290,7 @@ async def get_popular_tags(
     """
     try:
         query = select(
-            func.unnest(Sample.tags).label('tag'),
+            func.jsonb_array_elements_text(Sample.tags).label('tag'),
             func.count().label('count')
         ).where(
             Sample.status == ProcessingStatus.COMPLETED

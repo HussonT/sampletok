@@ -8,14 +8,20 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 
-// Hard-coded options (no need to fetch from backend)
+// Hard-coded options (must match database format: lowercase "major"/"minor" with flat notation)
 const MUSICAL_KEYS = [
-  'C Major', 'C Minor', 'C# Major', 'C# Minor',
-  'D Major', 'D Minor', 'D# Major', 'D# Minor',
-  'E Major', 'E Minor', 'F Major', 'F Minor',
-  'F# Major', 'F# Minor', 'G Major', 'G Minor',
-  'G# Major', 'G# Minor', 'A Major', 'A Minor',
-  'A# Major', 'A# Minor', 'B Major', 'B Minor',
+  'A major', 'A minor',
+  'Ab major', 'Ab minor',
+  'B major', 'B minor',
+  'Bb major', 'Bb minor',
+  'C major', 'C minor',
+  'C# major', 'C# minor',
+  'D major', 'D minor',
+  'E major', 'E minor',
+  'Eb major',
+  'F major', 'F minor',
+  'F# major', 'F# minor',
+  'G major', 'G minor',
 ];
 
 const BPM_RANGES = [
@@ -30,6 +36,7 @@ interface FilterBarProps {
   bpmMax: number | null;
   musicalKey: string | null;
   sortBy: string;
+  hasSearch?: boolean;
   onBpmChange: (min: number | null, max: number | null) => void;
   onKeyChange: (key: string | null) => void;
   onSortChange: (sort: string) => void;
@@ -40,6 +47,7 @@ export function FilterBar({
   bpmMax,
   musicalKey,
   sortBy,
+  hasSearch = false,
   onBpmChange,
   onKeyChange,
   onSortChange,
@@ -86,16 +94,22 @@ export function FilterBar({
 
       {/* Sort */}
       <div className="ml-auto">
-        <Select value={sortBy} onValueChange={onSortChange}>
+        <Select value={hasSearch ? "relevance" : sortBy} onValueChange={onSortChange} disabled={hasSearch}>
           <SelectTrigger className="w-[180px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="created_at_desc">Newest</SelectItem>
-            <SelectItem value="created_at_asc">Oldest</SelectItem>
-            <SelectItem value="views_desc">Most Popular</SelectItem>
-            <SelectItem value="bpm_asc">BPM (Low to High)</SelectItem>
-            <SelectItem value="bpm_desc">BPM (High to Low)</SelectItem>
+            {hasSearch ? (
+              <SelectItem value="relevance">Relevance (Search Active)</SelectItem>
+            ) : (
+              <>
+                <SelectItem value="created_at_desc">Newest</SelectItem>
+                <SelectItem value="created_at_asc">Oldest</SelectItem>
+                <SelectItem value="views_desc">Most Popular</SelectItem>
+                <SelectItem value="bpm_asc">BPM (Low to High)</SelectItem>
+                <SelectItem value="bpm_desc">BPM (High to Low)</SelectItem>
+              </>
+            )}
           </SelectContent>
         </Select>
       </div>

@@ -50,9 +50,12 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
   const [sortBy, setSortBy] = useState('created_at_desc');
   const itemsPerPage = 20;
 
+  // Convert tags array to string for consistent cache keys
+  const tagsString = tags.join(',');
+
   // Fetch samples with useQuery
   const { data, isLoading: isLoadingPage } = useQuery({
-    queryKey: ['samples', currentPage, searchQuery, tags, bpmMin, bpmMax, musicalKey, sortBy],
+    queryKey: ['samples', currentPage, searchQuery, tagsString, bpmMin, bpmMax, musicalKey, sortBy],
     queryFn: async () => {
       const apiClient = createAuthenticatedClient(getToken);
       const params: any = {
@@ -66,10 +69,10 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
       if (tags.length > 0) {
         params.tags = tags.join(',');
       }
-      if (bpmMin) {
+      if (bpmMin !== null && bpmMin !== undefined) {
         params.bpm_min = bpmMin;
       }
-      if (bpmMax) {
+      if (bpmMax !== null && bpmMax !== undefined) {
         params.bpm_max = bpmMax;
       }
       if (musicalKey) {
@@ -78,7 +81,8 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
       const data = await apiClient.get<PaginatedResponse<Sample>>('/samples/', params);
       return data;
     },
-    initialData: currentPage === 1 ? {
+    // Only use initialData when on page 1 AND no filters are active
+    initialData: (currentPage === 1 && !searchQuery && tags.length === 0 && !bpmMin && !bpmMax && !musicalKey) ? {
       items: initialSamples,
       total: totalSamples,
       skip: 0,
@@ -88,9 +92,11 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
     staleTime: 30 * 1000, // Consider data fresh for 30 seconds
   });
 
-  const samples = data?.items || initialSamples;
+  // Only fall back to initialSamples if no filters are active
+  const hasActiveFilters = searchQuery || tags.length > 0 || bpmMin || bpmMax || musicalKey;
+  const samples = data?.items || (hasActiveFilters ? [] : initialSamples);
 
-  // Prefetch next page for instant navigation
+  // Prefetch next page for instant navigation (with current filters)
   useEffect(() => {
     const totalPages = Math.ceil((data?.total || totalSamples) / itemsPerPage);
     const nextPage = currentPage + 1;
@@ -98,20 +104,27 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
     // Only prefetch if there's a next page
     if (nextPage <= totalPages) {
       queryClient.prefetchQuery({
-        queryKey: ['samples', nextPage],
+        queryKey: ['samples', nextPage, searchQuery, tagsString, bpmMin, bpmMax, musicalKey, sortBy],
         queryFn: async () => {
           const apiClient = createAuthenticatedClient(getToken);
-          const data = await apiClient.get<PaginatedResponse<Sample>>('/samples/', {
+          const params: any = {
             skip: (nextPage - 1) * itemsPerPage,
             limit: itemsPerPage,
-            sort_by: 'recent'
-          });
+            sort_by: sortBy
+          };
+          if (searchQuery) params.search = searchQuery;
+          if (tagsString) params.tags = tagsString;
+          if (bpmMin !== null && bpmMin !== undefined) params.bpm_min = bpmMin;
+          if (bpmMax !== null && bpmMax !== undefined) params.bpm_max = bpmMax;
+          if (musicalKey) params.key = musicalKey;
+
+          const data = await apiClient.get<PaginatedResponse<Sample>>('/samples/', params);
           return data;
         },
         staleTime: 30 * 1000,
       });
     }
-  }, [currentPage, queryClient, getToken, itemsPerPage, data?.total, totalSamples]);
+  }, [currentPage, queryClient, getToken, itemsPerPage, data?.total, totalSamples, searchQuery, tagsString, bpmMin, bpmMax, musicalKey, sortBy]);
 
   // Fetch credit balance
   useEffect(() => {
@@ -498,6 +511,7 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
                 bpmMax={bpmMax}
                 musicalKey={musicalKey}
                 sortBy={sortBy}
+                hasSearch={!!searchQuery}
                 onBpmChange={(min, max) => {
                   setBpmMin(min);
                   setBpmMax(max);
