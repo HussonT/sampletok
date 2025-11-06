@@ -30,7 +30,12 @@ def upgrade() -> None:
             setweight(to_tsvector('english', coalesce(NEW.title, '')), 'A') ||
             setweight(to_tsvector('english', coalesce(NEW.description, '')), 'B') ||
             setweight(to_tsvector('english', coalesce(NEW.creator_username, '')), 'C') ||
-            setweight(to_tsvector('english', coalesce((SELECT string_agg(value, ' ') FROM jsonb_array_elements_text(NEW.tags)), '')), 'D');
+            setweight(to_tsvector('english',
+              CASE
+                WHEN NEW.tags IS NULL OR jsonb_array_length(NEW.tags) = 0 THEN ''
+                ELSE (SELECT string_agg(value, ' ') FROM jsonb_array_elements_text(NEW.tags))
+              END
+            ), 'D');
           RETURN NEW;
         END;
         $$ LANGUAGE plpgsql;

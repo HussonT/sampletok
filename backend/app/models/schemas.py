@@ -230,8 +230,8 @@ class SampleSearchParams(BaseModel):
     @validator('tags')
     def validate_tags(cls, v):
         if v:
-            # Parse and clean tags
-            tag_list = [t.strip() for t in v.split(',') if t.strip()]
+            # Parse, clean, and normalize tags to lowercase
+            tag_list = [t.strip().lower() for t in v.split(',') if t.strip()]
 
             # Validate tag count
             if len(tag_list) > 20:
@@ -251,7 +251,7 @@ class SampleSearchParams(BaseModel):
                         'Only letters, numbers, hyphens, and underscores are allowed'
                     )
 
-            # Return cleaned tags (joined back)
+            # Return cleaned and normalized tags (lowercase, joined back)
             return ','.join(tag_list) if tag_list else None
         return v
 

@@ -36,6 +36,24 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def escape_like_pattern(pattern: str) -> str:
+    """
+    Escape special LIKE/ILIKE pattern characters to prevent SQL injection.
+
+    PostgreSQL LIKE patterns use:
+    - % to match any sequence of characters
+    - _ to match any single character
+    - \ as escape character
+
+    This function escapes these characters so they're treated as literals.
+
+    Example:
+        escape_like_pattern("test%") -> "test\\%"
+        escape_like_pattern("a_b") -> "a\\_b"
+    """
+    return pattern.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+
+
 # Request/Response models
 class DownloadRequest(BaseModel):
     download_type: str  # "wav" or "mp3"
@@ -183,32 +201,10 @@ async def get_samples(
         query = query.where(Sample.key == key)
 
     # Tag filter (OR logic - any tag matches)
+    # Note: Validation is handled by SampleSearchParams Pydantic schema
     if tags:
-        # Parse and validate tags
+        # Parse tags (already validated and normalized by Pydantic schema)
         tag_list = [t.strip().lower() for t in tags.split(",") if t.strip()]
-
-        # Validate tag count
-        if len(tag_list) > 20:
-            raise HTTPException(
-                status_code=400,
-                detail="Maximum 20 tags allowed per query"
-            )
-
-        # Validate each tag
-        for tag in tag_list:
-            # Check individual tag length
-            if len(tag) > 50:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Tag '{tag}' exceeds maximum length of 50 characters"
-                )
-
-            # Validate tag format (alphanumeric + hyphens/underscores)
-            if not tag.replace('-', '').replace('_', '').isalnum():
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Tag '{tag}' contains invalid characters. Only letters, numbers, hyphens, and underscores are allowed"
-                )
 
         # Use JSONB ?| operator: checks if any of the array elements exist
         query = query.where(
@@ -220,19 +216,23 @@ async def get_samples(
         # Convert search query to tsquery
         ts_query = func.plainto_tsquery('english', search)
 
+        # Escape LIKE pattern special characters to prevent SQL injection
+        escaped_search = escape_like_pattern(search)
+
         # Filter by tsvector match OR partial username match
         # This allows searching for creator names like "lucy" matching "lucyparkmusic"
         query = query.where(
             or_(
                 Sample.search_vector.op('@@')(ts_query),
-                Sample.creator_username.ilike(f'%{search}%')
+                Sample.creator_username.ilike(f'%{escaped_search}%')
             )
         )
 
         # Sort by relevance when searching (prioritize exact username matches)
+        escaped_search_lower = escape_like_pattern(search.lower())
         query = query.order_by(
             # First: exact username matches
-            func.lower(Sample.creator_username).like(f'%{search.lower()}%').desc(),
+            func.lower(Sample.creator_username).like(f'%{escaped_search_lower}%').desc(),
             # Then: full-text search relevance
             func.ts_rank(Sample.search_vector, ts_query).desc()
         )
@@ -260,10 +260,10 @@ async def get_samples(
         )
         total = result.scalar_one()
     except asyncio.TimeoutError:
-        logger.error("Count query timeout")
+        logger.error("Count query timeout", extra={"search": search, "tags": tags})
         raise HTTPException(
             status_code=504,
-            detail="Search timeout. Try a simpler query."
+            detail="Database query took too long while counting results. Try using more specific filters or a shorter search term."
         )
 
     # Apply pagination and eager load creator
@@ -277,10 +277,10 @@ async def get_samples(
         )
         samples = result.scalars().all()
     except asyncio.TimeoutError:
-        logger.error("Search query timeout")
+        logger.error("Search query timeout", extra={"search": search, "tags": tags, "limit": limit})
         raise HTTPException(
             status_code=504,
-            detail="Search timeout. Try a simpler query."
+            detail="Database query took too long while fetching results. Try using more specific filters or a shorter search term."
         )
 
     # Enrich with user-specific data (favorites, downloads)
@@ -312,7 +312,15 @@ async def get_popular_tags(
     """
     Get most popular tags across all samples
     Returns list of {tag: str, count: int}
+
+    Performance note: This query uses jsonb_array_elements_text() which expands
+    all tag arrays. At scale (>10K samples), consider:
+    - Denormalized sample_tags table with indexes
+    - Materialized view refreshed hourly
+    - Redis caching with 5-minute TTL
     """
+    start_time = time.time()
+
     try:
         query = select(
             func.jsonb_array_elements_text(Sample.tags).label('tag'),
@@ -325,9 +333,25 @@ async def get_popular_tags(
             db.execute(query),
             timeout=3.0
         )
+
+        query_time = time.time() - start_time
+
+        # Log performance metrics
+        if query_time > 1.0:
+            logger.warning(
+                f"Slow popular tags query: {query_time:.2f}s - Consider implementing caching or denormalization",
+                extra={"duration": query_time, "limit": limit}
+            )
+        else:
+            logger.debug(f"Popular tags query completed in {query_time:.2f}s")
+
         return [{"tag": row.tag, "count": row.count} for row in result]
     except asyncio.TimeoutError:
-        logger.error("Popular tags query timeout")
+        query_time = time.time() - start_time
+        logger.error(
+            f"Popular tags query timeout after {query_time:.2f}s - Consider implementing caching or denormalization",
+            extra={"duration": query_time, "limit": limit}
+        )
         return []  # Return empty on timeout
 
 
