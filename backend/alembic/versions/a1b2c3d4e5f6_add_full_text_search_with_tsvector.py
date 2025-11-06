@@ -44,9 +44,10 @@ def upgrade() -> None:
           EXECUTE FUNCTION update_search_vector();
     ''')
 
-    # Create GIN index for full-text search
-    # Note: Index can be created on nullable column, it will just be empty until backfill
-    op.execute('CREATE INDEX ix_samples_search_vector ON samples USING GIN (search_vector)')
+    # Note: GIN index is NOT created here to avoid long-running migration
+    # The backfill script (scripts/backfill_search_vectors.py) will create it
+    # AFTER populating search_vector data using CREATE INDEX CONCURRENTLY
+    # This prevents table locks during deployment
 
 
 def downgrade() -> None:

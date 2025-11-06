@@ -107,7 +107,8 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
 
   // Only fall back to initialSamples if no filters are active
   const hasActiveFilters = searchQuery || tags.length > 0 || bpmMin || bpmMax || musicalKey;
-  const samples = data?.items || (hasActiveFilters ? [] : initialSamples);
+  // Check if data.items is defined (not just truthy) to handle empty arrays correctly
+  const samples = data?.items !== undefined ? data.items : (hasActiveFilters ? [] : initialSamples);
 
   // Prefetch next page for instant navigation (with current filters)
   useEffect(() => {
