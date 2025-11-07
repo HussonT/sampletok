@@ -67,7 +67,8 @@
       "Bash(git log:*)",
       "Bash(alembic/versions/7459cff6a67f_reset_all_user_credits_to_0_for_.py)",
       "WebSearch",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(psql:*)"
     ],
     "deny": [],
     "ask": []

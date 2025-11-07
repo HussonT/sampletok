@@ -8,7 +8,11 @@ import { SoundsTable } from '@/components/features/sounds-table';
 import { SamplesPagination } from '@/components/features/samples-pagination';
 import { ProcessingQueue, ProcessingTask } from '@/components/features/processing-queue';
 import { BottomPlayer } from '@/components/features/bottom-player';
-import { Download, Music, Coins } from 'lucide-react';
+import { FilterBar } from '@/components/features/filter-bar';
+import { TagPills } from '@/components/features/tag-pills';
+import { ActiveFilters } from '@/components/features/active-filters';
+import { Download, Music, Coins, Search, X } from 'lucide-react';
+import { Input } from '@/components/ui/input';
 import { Sample, SampleFilters, ProcessingStatus, PaginatedResponse } from '@/types/api';
 import { processTikTokUrl, deleteSample, getProcessingStatus } from '@/actions/samples';
 import { toast } from 'sonner';
@@ -38,21 +42,60 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
   const [currentPage, setCurrentPage] = useState(1);
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
   const [hasSubscription, setHasSubscription] = useState(false);
+  const [searchInput, setSearchInput] = useState(''); // Immediate input value
+  const [searchQuery, setSearchQuery] = useState(''); // Debounced search query
+  const [tags, setTags] = useState<string[]>([]);
+  const [bpmMin, setBpmMin] = useState<number | null>(null);
+  const [bpmMax, setBpmMax] = useState<number | null>(null);
+  const [musicalKey, setMusicalKey] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState('created_at_desc');
   const itemsPerPage = 20;
+
+  // Debounce search input (300ms delay)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearchQuery(searchInput);
+      if (searchInput !== searchQuery) {
+        setCurrentPage(1); // Reset to page 1 when search changes
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
+  // Convert tags array to string for consistent cache keys
+  const tagsString = tags.join(',');
 
   // Fetch samples with useQuery
   const { data, isLoading: isLoadingPage } = useQuery({
-    queryKey: ['samples', currentPage],
+    queryKey: ['samples', currentPage, searchQuery, tagsString, bpmMin, bpmMax, musicalKey, sortBy],
     queryFn: async () => {
       const apiClient = createAuthenticatedClient(getToken);
-      const data = await apiClient.get<PaginatedResponse<Sample>>('/samples/', {
+      const params: any = {
         skip: (currentPage - 1) * itemsPerPage,
         limit: itemsPerPage,
-        sort_by: 'recent'
-      });
+        sort_by: sortBy
+      };
+      if (searchQuery) {
+        params.search = searchQuery;
+      }
+      if (tags.length > 0) {
+        params.tags = tags.join(',');
+      }
+      if (bpmMin !== null && bpmMin !== undefined) {
+        params.bpm_min = bpmMin;
+      }
+      if (bpmMax !== null && bpmMax !== undefined) {
+        params.bpm_max = bpmMax;
+      }
+      if (musicalKey) {
+        params.key = musicalKey;
+      }
+      const data = await apiClient.get<PaginatedResponse<Sample>>('/samples/', params);
       return data;
     },
-    initialData: currentPage === 1 ? {
+    // Only use initialData when on page 1 AND no filters are active
+    initialData: (currentPage === 1 && !searchQuery && tags.length === 0 && !bpmMin && !bpmMax && !musicalKey) ? {
       items: initialSamples,
       total: totalSamples,
       skip: 0,
@@ -62,9 +105,12 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
     staleTime: 30 * 1000, // Consider data fresh for 30 seconds
   });
 
-  const samples = data?.items || initialSamples;
+  // Only fall back to initialSamples if no filters are active
+  const hasActiveFilters = searchQuery || tags.length > 0 || bpmMin || bpmMax || musicalKey;
+  // Check if data.items is defined (not just truthy) to handle empty arrays correctly
+  const samples = data?.items !== undefined ? data.items : (hasActiveFilters ? [] : initialSamples);
 
-  // Prefetch next page for instant navigation
+  // Prefetch next page for instant navigation (with current filters)
   useEffect(() => {
     const totalPages = Math.ceil((data?.total || totalSamples) / itemsPerPage);
     const nextPage = currentPage + 1;
@@ -72,20 +118,27 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
     // Only prefetch if there's a next page
     if (nextPage <= totalPages) {
       queryClient.prefetchQuery({
-        queryKey: ['samples', nextPage],
+        queryKey: ['samples', nextPage, searchQuery, tagsString, bpmMin, bpmMax, musicalKey, sortBy],
         queryFn: async () => {
           const apiClient = createAuthenticatedClient(getToken);
-          const data = await apiClient.get<PaginatedResponse<Sample>>('/samples/', {
+          const params: any = {
             skip: (nextPage - 1) * itemsPerPage,
             limit: itemsPerPage,
-            sort_by: 'recent'
-          });
+            sort_by: sortBy
+          };
+          if (searchQuery) params.search = searchQuery;
+          if (tagsString) params.tags = tagsString;
+          if (bpmMin !== null && bpmMin !== undefined) params.bpm_min = bpmMin;
+          if (bpmMax !== null && bpmMax !== undefined) params.bpm_max = bpmMax;
+          if (musicalKey) params.key = musicalKey;
+
+          const data = await apiClient.get<PaginatedResponse<Sample>>('/samples/', params);
           return data;
         },
         staleTime: 30 * 1000,
       });
     }
-  }, [currentPage, queryClient, getToken, itemsPerPage, data?.total, totalSamples]);
+  }, [currentPage, queryClient, getToken, itemsPerPage, data?.total, totalSamples, searchQuery, tagsString, bpmMin, bpmMax, musicalKey, sortBy]);
 
   // Fetch credit balance
   useEffect(() => {
@@ -427,8 +480,129 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
       <div className="flex-1 overflow-auto px-6 pb-6" style={{ paddingBottom: currentSample ? '160px' : '24px' }}>
           {activeSection === 'explore' && (
             <>
+              {/* Search Bar */}
+              <div className="mb-4 relative max-w-2xl">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  type="text"
+                  placeholder="Search samples by description, creator, tags..."
+                  value={searchInput}
+                  onChange={(e) => {
+                    setSearchInput(e.target.value);
+                  }}
+                  maxLength={200}
+                  className="pl-10 pr-10"
+                />
+                {searchInput && (
+                  <button
+                    onClick={() => {
+                      setSearchInput('');
+                      setSearchQuery('');
+                      setCurrentPage(1);
+                    }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    aria-label="Clear search"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+
+              {/* Tag Pills */}
+              <TagPills
+                activeTags={tags}
+                onToggleTag={(tag) => {
+                  setTags(prev =>
+                    prev.includes(tag)
+                      ? prev.filter(t => t !== tag)
+                      : [...prev, tag]
+                  );
+                  setCurrentPage(1);
+                }}
+              />
+
+              {/* Filter Bar */}
+              <FilterBar
+                bpmMin={bpmMin}
+                bpmMax={bpmMax}
+                musicalKey={musicalKey}
+                sortBy={sortBy}
+                hasSearch={!!searchQuery}
+                onBpmChange={(min, max) => {
+                  setBpmMin(min);
+                  setBpmMax(max);
+                  setCurrentPage(1);
+                }}
+                onKeyChange={(key) => {
+                  setMusicalKey(key);
+                  setCurrentPage(1);
+                }}
+                onSortChange={(sort) => {
+                  setSortBy(sort);
+                  setCurrentPage(1);
+                }}
+              />
+
+              {/* Active Filters */}
+              <ActiveFilters
+                search={searchInput}
+                tags={tags}
+                bpmMin={bpmMin}
+                bpmMax={bpmMax}
+                musicalKey={musicalKey}
+                onRemoveTag={(tag) => {
+                  setTags(prev => prev.filter(t => t !== tag));
+                  setCurrentPage(1);
+                }}
+                onClear={(filter) => {
+                  if (filter === 'search') {
+                    setSearchInput('');
+                    setSearchQuery('');
+                  } else if (filter === 'bpm') {
+                    setBpmMin(null);
+                    setBpmMax(null);
+                  } else if (filter === 'key') {
+                    setMusicalKey(null);
+                  }
+                  setCurrentPage(1);
+                }}
+                onClearAll={() => {
+                  setSearchInput('');
+                  setSearchQuery('');
+                  setTags([]);
+                  setBpmMin(null);
+                  setBpmMax(null);
+                  setMusicalKey(null);
+                  setCurrentPage(1);
+                }}
+              />
+
               {isLoadingPage ? (
                 <TableLoadingSkeleton rows={8} />
+              ) : filteredSamples.length === 0 && hasActiveFilters ? (
+                <div className="flex items-center justify-center h-96">
+                  <div className="text-center">
+                    <Search className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                    <h3 className="text-lg font-medium mb-2">No Samples Found</h3>
+                    <p className="text-muted-foreground mb-4">
+                      No samples match your current filters
+                    </p>
+                    <button
+                      onClick={() => {
+                        setSearchInput('');
+                        setSearchQuery('');
+                        setTags([]);
+                        setBpmMin(null);
+                        setBpmMax(null);
+                        setMusicalKey(null);
+                        setCurrentPage(1);
+                      }}
+                      className="text-primary hover:underline"
+                    >
+                      Clear all filters
+                    </button>
+                  </div>
+                </div>
               ) : (
                 <>
                   <SoundsTable

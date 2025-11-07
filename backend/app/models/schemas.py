@@ -201,6 +201,69 @@ class SampleDownloadResponse(BaseModel):
     expires_at: datetime
 
 
+# Search Schemas
+class SampleSearchParams(BaseModel):
+    """V3 Search parameters - with BPM, Key, and Tag filters"""
+    # Text search
+    search: Optional[str] = Field(None, max_length=200, description="Full-text search query")
+
+    # BPM filtering
+    bpm_min: Optional[int] = Field(None, ge=0, le=300, description="Minimum BPM")
+    bpm_max: Optional[int] = Field(None, ge=0, le=300, description="Maximum BPM")
+
+    # Key filtering
+    key: Optional[str] = Field(None, max_length=20, description="Musical key (e.g., 'C Major')")
+
+    # Tag filtering (comma-separated, OR logic)
+    tags: Optional[str] = Field(None, max_length=500, description="Comma-separated tags")
+
+    # Sorting
+    sort_by: str = Field(
+        "created_at_desc",
+        description="Sort order: created_at_desc, created_at_asc, views_desc, bpm_asc, bpm_desc"
+    )
+
+    # Pagination
+    skip: int = Field(0, ge=0, le=10000)
+    limit: int = Field(20, ge=1, le=100)
+
+    @validator('tags')
+    def validate_tags(cls, v):
+        if v:
+            # Parse, clean, and normalize tags to lowercase
+            tag_list = [t.strip().lower() for t in v.split(',') if t.strip()]
+
+            # Validate tag count
+            if len(tag_list) > 20:
+                raise ValueError('Maximum 20 tags allowed')
+
+            # Validate each tag
+            for tag in tag_list:
+                # Check individual tag length
+                if len(tag) > 50:
+                    raise ValueError(f'Tag "{tag}" exceeds maximum length of 50 characters')
+
+                # Validate tag format (alphanumeric + hyphens/underscores)
+                # Allow only letters, numbers, hyphens, and underscores
+                if not tag.replace('-', '').replace('_', '').isalnum():
+                    raise ValueError(
+                        f'Tag "{tag}" contains invalid characters. '
+                        'Only letters, numbers, hyphens, and underscores are allowed'
+                    )
+
+            # Return cleaned and normalized tags (lowercase, joined back)
+            return ','.join(tag_list) if tag_list else None
+        return v
+
+
+class SampleSearchResponse(BaseModel):
+    """V1 Search results (NO FACETS - defer to Elasticsearch phase)"""
+    samples: List[SampleResponse]
+    total: int
+    skip: int
+    limit: int
+
+
 # Processing Schemas
 class ProcessingTaskResponse(BaseModel):
     task_id: str

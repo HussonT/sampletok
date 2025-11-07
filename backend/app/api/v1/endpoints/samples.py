@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks, Body
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, func, and_, or_, text, cast, String
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import selectinload
 from typing import List, Optional
 from uuid import UUID
@@ -10,6 +11,7 @@ import httpx
 import inngest
 import asyncio
 import logging
+import time
 
 from app.core.database import get_db, AsyncSessionLocal
 from app.models import Sample, ProcessingStatus
@@ -20,7 +22,9 @@ from app.models.schemas import (
     PaginatedResponse,
     PaginationParams,
     ReprocessRequest,
-    ReprocessResponse
+    ReprocessResponse,
+    SampleSearchParams,
+    SampleSearchResponse
 )
 from app.api.deps import get_current_user, get_current_user_optional
 from app.services.user_service import UserDownloadService, UserFavoriteService
@@ -30,6 +34,24 @@ from app.services.user_service import UserDownloadService, UserFavoriteService
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def escape_like_pattern(pattern: str) -> str:
+    """
+    Escape special LIKE/ILIKE pattern characters to prevent SQL injection.
+
+    PostgreSQL LIKE patterns use:
+    - % to match any sequence of characters
+    - _ to match any single character
+    - \ as escape character
+
+    This function escapes these characters so they're treated as literals.
+
+    Example:
+        escape_like_pattern("test%") -> "test\\%"
+        escape_like_pattern("a_b") -> "a\\_b"
+    """
+    return pattern.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
 
 
 # Request/Response models
@@ -119,17 +141,28 @@ async def get_samples(
     genre: Optional[str] = None,
     status: Optional[str] = None,
     search: Optional[str] = None,
+    bpm_min: Optional[int] = Query(None, ge=0, le=300),
+    bpm_max: Optional[int] = Query(None, ge=0, le=300),
+    key: Optional[str] = Query(None, max_length=20),
+    tags: Optional[str] = Query(None, max_length=500),
+    sort_by: Optional[str] = Query("created_at_desc", description="Sort order: created_at_desc, created_at_asc, views_desc, bpm_asc, bpm_desc"),
     current_user: Optional[User] = Depends(get_current_user_optional),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    Get all samples with optional filtering.
-    Includes user-specific fields (is_favorited, is_downloaded) when authenticated.
-    """
-    query = select(Sample)
+    V3 Search endpoint - Text search with BPM, Key, and Tag filtering
 
-    # Filter out samples without essential data - only show completed, playable samples
-    query = query.where(
+    - Full-text search using PostgreSQL tsvector
+    - BPM range filtering
+    - Musical key filtering
+    - Tag filtering (OR logic - any tag matches)
+    - Sorted by relevance (if search) or created_at/views/bpm
+    - Includes user-specific fields (is_favorited, is_downloaded) when authenticated
+    """
+    start_time = time.time()
+
+    # Base query - only completed, playable samples
+    query = select(Sample).where(
         # Must have essential metadata
         Sample.creator_username.isnot(None),
         Sample.creator_username != '',
@@ -157,26 +190,109 @@ async def get_samples(
     if genre:
         query = query.where(Sample.genre == genre)
 
-    if search:
+    # BPM range filter
+    if bpm_min is not None:
+        query = query.where(Sample.bpm >= bpm_min)
+    if bpm_max is not None:
+        query = query.where(Sample.bpm <= bpm_max)
+
+    # Key filter
+    if key:
+        query = query.where(Sample.key == key)
+
+    # Tag filter (OR logic - any tag matches)
+    # Note: Validation is handled by SampleSearchParams Pydantic schema
+    if tags:
+        # Parse tags (already validated and normalized by Pydantic schema)
+        tag_list = [t.strip().lower() for t in tags.split(",") if t.strip()]
+
+        # Use JSONB ?| operator: checks if any of the array elements exist
         query = query.where(
-            Sample.description.ilike(f"%{search}%") |
-            Sample.creator_username.ilike(f"%{search}%")
+            Sample.tags.op('?|')(cast(tag_list, ARRAY(String)))
         )
 
-    # Get total count
+    # Full-text search with PostgreSQL tsvector
+    if search:
+        # Convert search query to tsquery
+        ts_query = func.plainto_tsquery('english', search)
+
+        # Escape LIKE pattern special characters to prevent SQL injection
+        escaped_search = escape_like_pattern(search)
+
+        # Filter by tsvector match OR partial username match
+        # This allows searching for creator names like "lucy" matching "lucyparkmusic"
+        query = query.where(
+            or_(
+                Sample.search_vector.op('@@')(ts_query),
+                Sample.creator_username.ilike(f'%{escaped_search}%')
+            )
+        )
+
+        # Sort by relevance when searching (prioritize exact username matches)
+        escaped_search_lower = escape_like_pattern(search.lower())
+        query = query.order_by(
+            # First: exact username matches
+            func.lower(Sample.creator_username).like(f'%{escaped_search_lower}%').desc(),
+            # Then: full-text search relevance
+            func.ts_rank(Sample.search_vector, ts_query).desc()
+        )
+    else:
+        # Apply sorting when not searching
+        if sort_by == "created_at_desc":
+            query = query.order_by(Sample.created_at.desc())
+        elif sort_by == "created_at_asc":
+            query = query.order_by(Sample.created_at.asc())
+        elif sort_by == "views_desc":
+            query = query.order_by(Sample.view_count.desc())
+        elif sort_by == "bpm_asc":
+            query = query.order_by(Sample.bpm.asc())
+        elif sort_by == "bpm_desc":
+            query = query.order_by(Sample.bpm.desc())
+        else:
+            query = query.order_by(Sample.created_at.desc())
+
+    # Get total count with timeout
     count_query = select(func.count()).select_from(query.subquery())
-    result = await db.execute(count_query)
-    total = result.scalar_one()
+    try:
+        result = await asyncio.wait_for(
+            db.execute(count_query),
+            timeout=5.0
+        )
+        total = result.scalar_one()
+    except asyncio.TimeoutError:
+        logger.error("Count query timeout", extra={"search": search, "tags": tags})
+        raise HTTPException(
+            status_code=504,
+            detail="Database query took too long while counting results. Try using more specific filters or a shorter search term."
+        )
 
     # Apply pagination and eager load creator
-    query = query.options(selectinload(Sample.tiktok_creator)).offset(skip).limit(limit).order_by(Sample.created_at.desc())
+    query = query.options(selectinload(Sample.tiktok_creator)).offset(skip).limit(limit)
 
-    # Execute query
-    result = await db.execute(query)
-    samples = result.scalars().all()
+    # Execute main query with timeout
+    try:
+        result = await asyncio.wait_for(
+            db.execute(query),
+            timeout=5.0
+        )
+        samples = result.scalars().all()
+    except asyncio.TimeoutError:
+        logger.error("Search query timeout", extra={"search": search, "tags": tags, "limit": limit})
+        raise HTTPException(
+            status_code=504,
+            detail="Database query took too long while fetching results. Try using more specific filters or a shorter search term."
+        )
 
     # Enrich with user-specific data (favorites, downloads)
     items = await enrich_samples_with_user_data(samples, current_user, db)
+
+    # Log slow queries
+    query_time = time.time() - start_time
+    if query_time > 1.0:
+        logger.warning(
+            f"Slow search query: {query_time:.2f}s",
+            extra={"search": search, "duration": query_time}
+        )
 
     return PaginatedResponse(
         items=items,
@@ -186,6 +302,57 @@ async def get_samples(
         has_more=(skip + limit) < total,
         next_cursor=None
     )
+
+
+@router.get("/tags/popular", response_model=List[dict])
+async def get_popular_tags(
+    limit: int = Query(50, ge=1, le=100, description="Maximum number of tags to return"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get most popular tags across all samples
+    Returns list of {tag: str, count: int}
+
+    Performance note: This query uses jsonb_array_elements_text() which expands
+    all tag arrays. At scale (>10K samples), consider:
+    - Denormalized sample_tags table with indexes
+    - Materialized view refreshed hourly
+    - Redis caching with 5-minute TTL
+    """
+    start_time = time.time()
+
+    try:
+        query = select(
+            func.jsonb_array_elements_text(Sample.tags).label('tag'),
+            func.count().label('count')
+        ).where(
+            Sample.status == ProcessingStatus.COMPLETED
+        ).group_by('tag').order_by(text('count DESC')).limit(limit)
+
+        result = await asyncio.wait_for(
+            db.execute(query),
+            timeout=3.0
+        )
+
+        query_time = time.time() - start_time
+
+        # Log performance metrics
+        if query_time > 1.0:
+            logger.warning(
+                f"Slow popular tags query: {query_time:.2f}s - Consider implementing caching or denormalization",
+                extra={"duration": query_time, "limit": limit}
+            )
+        else:
+            logger.debug(f"Popular tags query completed in {query_time:.2f}s")
+
+        return [{"tag": row.tag, "count": row.count} for row in result]
+    except asyncio.TimeoutError:
+        query_time = time.time() - start_time
+        logger.error(
+            f"Popular tags query timeout after {query_time:.2f}s - Consider implementing caching or denormalization",
+            extra={"duration": query_time, "limit": limit}
+        )
+        return []  # Return empty on timeout
 
 
 @router.get("/{sample_id}", response_model=SampleResponse)
