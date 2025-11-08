@@ -13,16 +13,19 @@ from uuid import UUID
 
 from app.core.config import settings
 from app.services.tiktok.downloader import TikTokDownloader
+from app.services.instagram.downloader import InstagramDownloader
 from app.services.audio.processor import AudioProcessor
 from app.services.audio.analyzer import AudioAnalyzer
 from app.services.audio.lalal_service import LalalAIService
 from app.services.storage.s3 import S3Storage
 from app.models import Sample, ProcessingStatus, TikTokCreator, Collection, CollectionSample, CollectionStatus, Stem, StemType, StemProcessingStatus
+from app.models.instagram_creator import InstagramCreator
 from app.models.user import UserDownload
 from app.core.database import AsyncSessionLocal
 from sqlalchemy import select, or_
 from sqlalchemy.exc import IntegrityError
 from app.services.tiktok.creator_service import CreatorService
+from app.services.instagram.creator_service import CreatorService as InstagramCreatorService
 from app.services.tiktok.collection_service import TikTokCollectionService
 from app.services.credit_service import refund_credits_atomic, CreditService
 from app.utils import extract_hashtags, remove_hashtags, utcnow_naive
@@ -182,6 +185,134 @@ async def process_tiktok_video(ctx: inngest.Context) -> Dict[str, Any]:
     }
 
 
+@inngest_client.create_function(
+    fn_id="process-instagram-video",
+    trigger=inngest.TriggerEvent(event="instagram/video.submitted"),
+    retries=3
+)
+async def process_instagram_video(ctx: inngest.Context) -> Dict[str, Any]:
+    """
+    Process an Instagram video through multiple steps:
+    1. Download video from Instagram
+    2. Upload video to our storage
+    3. Upload thumbnail to our storage
+    4. Extract audio (WAV and MP3)
+    5. Generate waveform visualization
+    6. Generate HLS stream
+    7. Analyze audio features (BPM, key detection)
+    8. Update database with results
+    9. Clean up temp files
+    """
+    event_data = ctx.event.data
+    sample_id = event_data.get("sample_id")
+    instagram_url = event_data.get("url")
+    shortcode = event_data.get("shortcode")
+
+    logger.info(f"Processing Instagram video: {instagram_url} for sample: {sample_id}")
+
+    # Step 1: Update status to processing
+    await ctx.step.run(
+        "update-status-processing",
+        update_sample_status,
+        sample_id,
+        ProcessingStatus.PROCESSING
+    )
+
+    # Step 2: Download video and get metadata
+    video_metadata = await ctx.step.run(
+        "download-instagram-video",
+        download_instagram_video,
+        shortcode,
+        sample_id
+    )
+
+    # Step 3: Upload video file to our storage
+    video_url = await ctx.step.run(
+        "upload-video",
+        upload_video_to_storage,
+        video_metadata["video_path"],
+        sample_id
+    )
+
+    # Step 4: Upload thumbnail to our storage
+    media_urls = await ctx.step.run(
+        "upload-media",
+        upload_media_to_storage,
+        sample_id,
+        video_metadata.get("thumbnail_url"),
+        None  # Instagram doesn't have a separate cover URL
+    )
+
+    # Step 5: Extract audio (creates WAV and MP3, uploads to storage, returns URLs)
+    audio_files = await ctx.step.run(
+        "extract-audio",
+        extract_audio_from_video,
+        video_metadata["video_path"],
+        video_metadata["temp_dir"],
+        sample_id
+    )
+
+    # Step 6: Generate waveform (generates PNG, uploads to storage, returns URL)
+    waveform_url = await ctx.step.run(
+        "generate-waveform",
+        generate_waveform,
+        audio_files["wav_path"],
+        video_metadata["temp_dir"],
+        sample_id
+    )
+
+    # Step 7: Generate HLS stream (generates m3u8 + segments, uploads to storage, returns playlist URL)
+    hls_url = await ctx.step.run(
+        "generate-hls-stream",
+        generate_hls_stream,
+        audio_files["wav_path"],
+        video_metadata["temp_dir"],
+        sample_id
+    )
+
+    # Step 8: Analyze audio features (BPM, key detection)
+    audio_analysis = await ctx.step.run(
+        "analyze-audio-features",
+        analyze_audio_features,
+        audio_files["wav_path"]
+    )
+
+    # Step 9: Update database with results (all URLs are from our storage)
+    await ctx.step.run(
+        "update-database",
+        update_instagram_sample_complete,
+        {
+            "sample_id": sample_id,
+            "metadata": video_metadata,
+            "urls": {
+                "video": video_url,
+                "thumbnail": media_urls.get("thumbnail"),
+                "wav": audio_files["wav_url"],
+                "mp3": audio_files["mp3_url"],
+                "hls": hls_url,
+                "waveform": waveform_url
+            },
+            "analysis": audio_analysis,
+            "audio_metadata": audio_files.get("metadata", {})
+        }
+    )
+
+    # Step 10: Clean up temp files
+    await ctx.step.run(
+        "cleanup-temp-files",
+        cleanup_temp_files,
+        video_metadata["temp_dir"]
+    )
+
+    return {
+        "sample_id": sample_id,
+        "status": "completed",
+        "video_url": video_url,
+        "audio_url": audio_files["mp3_url"],
+        "waveform_url": waveform_url
+    }
+
+
 async def update_sample_status(sample_id: str, status: ProcessingStatus) -> None:
     """Update sample processing status in database with retry logic for race conditions"""
     max_retries = 3
@@ -266,6 +397,46 @@ async def download_tiktok_video(url: str, sample_id: str) -> Dict[str, Any]:
                 # Continue without creator link
 
         logger.info(f"Downloaded video: {metadata.get('aweme_id')} to {temp_dir}")
+        metadata['temp_dir'] = str(temp_dir)  # Pass temp_dir to next steps
+        return metadata
+    except Exception as e:
+        # Clean up on error
+        import shutil
+        if temp_dir.exists():
+            shutil.rmtree(temp_dir)
+        raise
+
+
+async def download_instagram_video(shortcode: str, sample_id: str) -> Dict[str, Any]:
+    """Download Instagram video and extract metadata"""
+    # Use a persistent temp directory for this sample
+    temp_dir = Path(tempfile.gettempdir()) / f"sampletok_{sample_id}"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        downloader = InstagramDownloader()
+        metadata = await downloader.download_video(shortcode, str(temp_dir))
+
+        # Get or create Instagram creator using creator service (with smart caching)
+        # Instagram API returns creator data with the post, so we just need to cache it
+        if metadata.get('creator_instagram_id') and metadata.get('creator_username'):
+            try:
+                logger.info(f"Getting or creating Instagram creator @{metadata['creator_username']}")
+                async with AsyncSessionLocal() as db:
+                    instagram_creator_service = InstagramCreatorService(db)
+                    creator = await instagram_creator_service.get_or_create_creator(metadata)
+
+                    if creator:
+                        # Store creator ID in metadata to link the sample
+                        metadata['instagram_creator_id'] = str(creator.id)
+                        logger.info(f"Linked Instagram creator @{creator.username}")
+                    else:
+                        logger.warning(f"Could not create Instagram creator @{metadata['creator_username']}")
+            except Exception as e:
+                logger.exception(f"Failed to get/create Instagram creator: {e}")
+                # Continue without creator link
+
+        logger.info(f"Downloaded Instagram video: {shortcode} to {temp_dir}")
         metadata['temp_dir'] = str(temp_dir)  # Pass temp_dir to next steps
         return metadata
     except Exception as e:
@@ -597,6 +768,149 @@ async def update_sample_complete(data: Dict[str, Any]) -> None:
             raise
 
 
+async def update_instagram_sample_complete(data: Dict[str, Any]) -> None:
+    """Update Instagram sample with processing results (with retry logic for race conditions)"""
+    sample_id = data["sample_id"]
+    metadata = data["metadata"]
+    urls = data["urls"]
+    analysis = data.get("analysis", {})
+    audio_metadata = data.get("audio_metadata", {})
+
+    # Convert sample_id to UUID if it's a string
+    if isinstance(sample_id, str):
+        sample_uuid = uuid.UUID(sample_id)
+    else:
+        sample_uuid = sample_id
+
+    max_retries = 3
+    retry_delay = 0.5
+    sample = None
+
+    # Retry loop to handle race conditions
+    for attempt in range(max_retries):
+        try:
+            async with AsyncSessionLocal() as db:
+                logger.info(f"Looking for Instagram sample with ID: {sample_uuid} (attempt {attempt + 1}/{max_retries})")
+                query = select(Sample).where(Sample.id == sample_uuid)
+                result = await db.execute(query)
+                sample = result.scalars().first()
+
+                if not sample:
+                    # Try to find by instagram_id or shortcode as fallback
+                    instagram_id = metadata.get('instagram_id')
+                    instagram_shortcode = metadata.get('instagram_shortcode')
+                    if instagram_id or instagram_shortcode:
+                        logger.info(f"Sample not found by ID, trying instagram_id: {instagram_id} or shortcode: {instagram_shortcode}")
+                        query = select(Sample).where(
+                            or_(
+                                Sample.instagram_id == instagram_id if instagram_id else False,
+                                Sample.instagram_shortcode == instagram_shortcode if instagram_shortcode else False
+                            )
+                        )
+                        result = await db.execute(query)
+                        sample = result.scalars().first()
+                        if sample:
+                            logger.info(f"Found sample by instagram metadata: {sample.id}")
+
+                if not sample:
+                    if attempt < max_retries - 1:
+                        # Sample not found, but we have retries left
+                        logger.warning(
+                            f"Sample {sample_uuid} not found (attempt {attempt + 1}/{max_retries}). "
+                            f"Retrying in {retry_delay}s... (instagram_id={metadata.get('instagram_id')})"
+                        )
+                        await asyncio.sleep(retry_delay)
+                        retry_delay *= 2
+                        continue
+                    else:
+                        # Final attempt failed
+                        logger.error(
+                            f"Sample {sample_uuid} not found after {max_retries} attempts! "
+                            f"Sample metadata: instagram_id={metadata.get('instagram_id')}, shortcode={metadata.get('instagram_shortcode')}"
+                        )
+                        raise ValueError(
+                            f"Sample {sample_uuid} not found after {max_retries} retries - "
+                            f"may have been deleted or database transaction not visible"
+                        )
+
+                # Sample found - update metadata from Instagram API
+                # Only set instagram_id if it's not already set (avoid unique constraint errors during reprocessing)
+                if not sample.instagram_id and metadata.get("instagram_id"):
+                    sample.instagram_id = metadata.get("instagram_id")
+                if not sample.instagram_shortcode and metadata.get("instagram_shortcode"):
+                    sample.instagram_shortcode = metadata.get("instagram_shortcode")
+
+                # Set Instagram-specific fields
+                sample.title = metadata.get("title")
+                sample.creator_username = metadata.get("creator_username")
+                sample.creator_name = metadata.get("creator_full_name")
+                sample.description = metadata.get("caption") or metadata.get("description", "")
+                sample.view_count = metadata.get("view_count", 0)
+                sample.like_count = metadata.get("like_count", 0)
+                sample.comment_count = metadata.get("comment_count", 0)
+                sample.share_count = 0  # Instagram doesn't provide share count in this API
+                sample.region = None  # Instagram doesn't provide region data
+
+                # Convert Instagram taken_at to upload_timestamp
+                taken_at = metadata.get("taken_at")
+                if taken_at:
+                    sample.upload_timestamp = taken_at
+
+                # Extract hashtags from both title and caption/description
+                title_text = metadata.get("title", "")
+                description_text = metadata.get("caption") or metadata.get("description", "")
+                combined_text = f"{title_text} {description_text}"
+                hashtags = extract_hashtags(combined_text)
+                if hashtags:
+                    sample.tags = hashtags
+                    logger.info(f"Extracted {len(hashtags)} hashtags: {hashtags}")
+
+                # Use duration from audio metadata (extracted from actual audio file)
+                sample.duration_seconds = audio_metadata.get("duration", metadata.get("duration"))
+
+                # Update audio analysis results
+                if analysis.get("bpm"):
+                    sample.bpm = analysis["bpm"]
+                    logger.info(f"Set BPM: {analysis['bpm']}")
+
+                if analysis.get("key") and analysis.get("scale"):
+                    sample.key = f"{analysis['key']} {analysis['scale']}"
+                    logger.info(f"Set key: {sample.key}")
+
+                # Update file URLs - All from our storage (R2/S3/GCS)
+                sample.video_url = urls.get("video")
+                sample.thumbnail_url = urls.get("thumbnail")
+                sample.cover_url = urls.get("thumbnail")  # Instagram uses same for both
+                sample.audio_url_wav = urls["wav"]
+                sample.audio_url_mp3 = urls["mp3"]
+                sample.audio_url_hls = urls.get("hls")
+                sample.waveform_url = urls["waveform"]
+
+                # Calculate video file size if available
+                if metadata.get("file_size"):
+                    sample.file_size_video = metadata["file_size"]
+
+                # Link to Instagram creator if available
+                instagram_creator_id = metadata.get("instagram_creator_id")
+                if instagram_creator_id:
+                    sample.instagram_creator_id = uuid.UUID(instagram_creator_id)
+                    logger.info(f"Linked sample to Instagram creator {instagram_creator_id}")
+
+                # Mark as completed
+                sample.status = ProcessingStatus.COMPLETED
+
+                await db.commit()
+                logger.info(f"Instagram sample {sample_id} processing completed successfully")
+                return  # Success - exit retry loop
+
+        except ValueError:
+            # ValueError is raised when sample not found after all retries
+            raise
+        except Exception as e:
+            logger.exception(f"Error updating Instagram sample {sample_id} complete: {e}")
+            raise
+
+
 # Error handler function
 @inngest_client.create_function(
     fn_id="handle-processing-error",
@@ -646,6 +960,61 @@ async def handle_processing_error(ctx: inngest.Context) -> None:
 
             except Exception as e:
                 logger.exception(f"Error in error handler for sample {sample_id}: {e}")
+                if attempt == max_retries - 1:
+                    raise
+
+    await ctx.step.run("mark-as-failed", update_failed_status)
+
+
+# Instagram error handler function
+@inngest_client.create_function(
+    fn_id="handle-instagram-processing-error",
+    trigger=inngest.TriggerEvent(event="instagram/processing.failed")
+)
+async def handle_instagram_processing_error(ctx: inngest.Context) -> None:
+    """Handle Instagram processing failures (with retry logic for race conditions)"""
+    event_data = ctx.event.data
+    sample_id = event_data.get("sample_id")
+    error_message = event_data.get("error", "Unknown error occurred")
+
+    async def update_failed_status():
+        sample_uuid = uuid.UUID(sample_id)
+        max_retries = 3
+        retry_delay = 0.5
+
+        for attempt in range(max_retries):
+            try:
+                async with AsyncSessionLocal() as db:
+                    logger.info(f"Marking Instagram sample {sample_uuid} as failed (attempt {attempt + 1}/{max_retries})")
+                    query = select(Sample).where(Sample.id == sample_uuid)
+                    result = await db.execute(query)
+                    sample = result.scalars().first()
+
+                    if not sample:
+                        if attempt < max_retries - 1:
+                            logger.warning(
+                                f"Instagram sample {sample_uuid} not found in error handler (attempt {attempt + 1}/{max_retries}). "
+                                f"Retrying in {retry_delay}s..."
+                            )
+                            await asyncio.sleep(retry_delay)
+                            retry_delay *= 2
+                            continue
+                        else:
+                            logger.error(
+                                f"Instagram sample {sample_uuid} not found after {max_retries} attempts in error handler. "
+                                f"Cannot mark as failed."
+                            )
+                            return  # Give up gracefully
+
+                    sample.status = ProcessingStatus.FAILED
+                    sample.error_message = error_message
+
+                    await db.commit()
+                    logger.error(f"Instagram sample {sample_id} processing failed: {error_message}")
+                    return  # Success
+
+            except Exception as e:
+                logger.exception(f"Error in Instagram error handler for sample {sample_id}: {e}")
                 if attempt == max_retries - 1:
                     raise
 
@@ -1957,7 +2326,9 @@ def get_all_functions():
     """Return all Inngest functions to be served"""
     return [
         process_tiktok_video,
+        process_instagram_video,
         handle_processing_error,
+        handle_instagram_processing_error,
         process_collection,
         handle_collection_error,
         process_stem_separation,

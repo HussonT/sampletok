@@ -19,17 +19,32 @@ class ProcessingStatus(enum.Enum):
 # Note: user_samples table removed - replaced with UserDownload model for better tracking
 
 
+class SampleSource(enum.Enum):
+    TIKTOK = "tiktok"
+    INSTAGRAM = "instagram"
+
+
 class Sample(Base):
     __tablename__ = "samples"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
+    # Source platform
+    source = Column(Enum(SampleSource), default=SampleSource.TIKTOK, index=True)
+
     # TikTok metadata
-    tiktok_url = Column(String, nullable=False, index=True)
-    tiktok_id = Column(String, unique=True, index=True)
-    aweme_id = Column(String, unique=True, index=True)  # TikTok's internal ID
+    tiktok_url = Column(String, nullable=True, index=True)
+    tiktok_id = Column(String, unique=True, index=True, nullable=True)
+    aweme_id = Column(String, unique=True, index=True, nullable=True)  # TikTok's internal ID
     title = Column(String)  # Separate title field
     region = Column(String)  # Country/region code
+
+    # Instagram metadata
+    instagram_url = Column(String, nullable=True, index=True)
+    instagram_id = Column(String, unique=True, index=True, nullable=True)
+    instagram_shortcode = Column(String, unique=True, index=True, nullable=True)
+
+    # Common metadata (used by both platforms)
     creator_username = Column(String, index=True)
     creator_name = Column(String)
     description = Column(Text)
@@ -37,7 +52,7 @@ class Sample(Base):
     like_count = Column(Integer, default=0)
     share_count = Column(Integer, default=0)
     comment_count = Column(Integer, default=0)
-    upload_timestamp = Column(Integer)  # Unix timestamp from TikTok
+    upload_timestamp = Column(Integer)  # Unix timestamp from platform
 
     # Audio metadata
     duration_seconds = Column(Float)
@@ -72,8 +87,9 @@ class Sample(Base):
     # User who added the sample
     creator_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=True)
 
-    # TikTok creator relationship
+    # Creator relationships (platform-specific)
     tiktok_creator_id = Column(UUID(as_uuid=True), ForeignKey('tiktok_creators.id'), nullable=True)
+    instagram_creator_id = Column(UUID(as_uuid=True), ForeignKey('instagram_creators.id'), nullable=True)
 
     created_at = Column(DateTime, default=utcnow_naive, index=True)
     updated_at = Column(DateTime, default=utcnow_naive, onupdate=utcnow_naive)
@@ -81,6 +97,7 @@ class Sample(Base):
     # Relationships
     creator = relationship("User", back_populates="samples", foreign_keys=[creator_id])
     tiktok_creator = relationship("TikTokCreator", back_populates="samples")
+    instagram_creator = relationship("InstagramCreator", back_populates="samples")
     user_downloads = relationship("UserDownload", back_populates="sample", cascade="all, delete-orphan")
     user_favorites = relationship("UserFavorite", back_populates="sample", cascade="all, delete-orphan")
     collection_samples = relationship("CollectionSample", back_populates="sample", cascade="all, delete-orphan")

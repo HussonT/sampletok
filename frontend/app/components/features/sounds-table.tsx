@@ -602,6 +602,36 @@ export function SoundsTable({
                         </div>
                       </div>
                     </CreatorHoverCard>
+                  ) : sample.instagram_creator ? (
+                    <CreatorHoverCard creator={sample.instagram_creator}>
+                      <div className="flex items-center gap-2.5 cursor-pointer">
+                        <Image
+                          src={getAvatarWithFallback(
+                            sample.instagram_creator.profile_pic_url,
+                            sample.instagram_creator.username
+                          )}
+                          alt={`@${sample.instagram_creator.username}`}
+                          width={40}
+                          height={40}
+                          className="w-10 h-10 rounded object-cover flex-shrink-0"
+                          unoptimized
+                          onError={(e) => {
+                            // Fallback to generated avatar on error
+                            const target = e.target as HTMLImageElement;
+                            target.src = getAvatarWithFallback(null, sample.instagram_creator!.username);
+                          }}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-medium hover:text-primary transition-colors truncate">
+                            @{sample.instagram_creator.username}
+                          </div>
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <Users className="w-3 h-3 flex-shrink-0" />
+                            <span>{formatFollowers(sample.instagram_creator.follower_count)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </CreatorHoverCard>
                   ) : (
                     <div className="flex items-center gap-2.5">
                       <Image

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, HttpUrl, Field, validator
+from pydantic import BaseModel, EmailStr, HttpUrl, Field, validator, model_validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 from uuid import UUID
@@ -57,6 +57,18 @@ class TikTokURLInput(BaseModel):
         tiktok_pattern = r'(https?://)?(www\.)?(tiktok\.com|vm\.tiktok\.com)/.*'
         if not re.match(tiktok_pattern, url_str):
             raise ValueError('Invalid TikTok URL format')
+        return v
+
+
+class InstagramURLInput(BaseModel):
+    url: HttpUrl
+
+    @validator('url')
+    def validate_instagram_url(cls, v):
+        url_str = str(v)
+        instagram_pattern = r'(https?://)?(www\.)?(instagram\.com|instagr\.am)/.*'
+        if not re.match(instagram_pattern, url_str):
+            raise ValueError('Invalid Instagram URL format')
         return v
 
 
@@ -136,6 +148,22 @@ class TikTokCreatorResponse(BaseModel):
         from_attributes = True
 
 
+class InstagramCreatorResponse(BaseModel):
+    id: UUID
+    instagram_id: str
+    username: str
+    full_name: Optional[str] = None
+    profile_pic_url: Optional[str] = None
+    is_verified: bool = False
+    is_private: bool = False
+    follower_count: int = 0
+    following_count: int = 0
+    media_count: int = 0
+
+    class Config:
+        from_attributes = True
+
+
 class SampleResponse(BaseModel):
     id: UUID
     tiktok_url: Optional[str] = None
@@ -145,16 +173,16 @@ class SampleResponse(BaseModel):
     region: Optional[str] = None
     creator_username: Optional[str] = None
     creator_name: Optional[str] = None
-    creator_avatar_url: Optional[str] = None
-    creator_avatar_thumb: Optional[str] = None
-    creator_avatar_medium: Optional[str] = None
-    creator_avatar_large: Optional[str] = None
-    creator_signature: Optional[str] = None
+    creator_avatar_url: Optional[str] = None  # Populated from tiktok_creator or instagram_creator
+    creator_avatar_thumb: Optional[str] = None  # Populated from tiktok_creator or instagram_creator
+    creator_avatar_medium: Optional[str] = None  # TikTok only
+    creator_avatar_large: Optional[str] = None  # TikTok only
+    creator_signature: Optional[str] = None  # TikTok only
     creator_verified: Optional[bool] = False
     creator_follower_count: Optional[int] = 0
     creator_following_count: Optional[int] = 0
-    creator_heart_count: Optional[int] = 0
-    creator_video_count: Optional[int] = 0
+    creator_heart_count: Optional[int] = 0  # TikTok only
+    creator_video_count: Optional[int] = 0  # TikTok: video_count, Instagram: media_count
     description: Optional[str] = None
     view_count: Optional[int] = 0
     like_count: Optional[int] = 0
@@ -181,8 +209,9 @@ class SampleResponse(BaseModel):
     processed_at: Optional[datetime] = None
     download_count: Optional[int] = 0
 
-    # Nested creator object
+    # Nested creator objects (platform-specific)
     tiktok_creator: Optional[TikTokCreatorResponse] = None
+    instagram_creator: Optional[InstagramCreatorResponse] = None
 
     # User-specific fields (only present when authenticated)
     is_favorited: Optional[bool] = None
@@ -190,6 +219,32 @@ class SampleResponse(BaseModel):
     downloaded_at: Optional[str] = None  # ISO datetime string
     download_type: Optional[str] = None  # "wav" or "mp3"
     favorited_at: Optional[str] = None  # ISO datetime string
+
+    @model_validator(mode='after')
+    def populate_creator_fields(self) -> 'SampleResponse':
+        """Populate top-level creator fields from nested tiktok_creator or instagram_creator"""
+        # TikTok creator takes precedence
+        if self.tiktok_creator:
+            self.creator_avatar_url = self.tiktok_creator.avatar_large or self.tiktok_creator.avatar_medium or self.tiktok_creator.avatar_thumb
+            self.creator_avatar_thumb = self.tiktok_creator.avatar_thumb
+            self.creator_avatar_medium = self.tiktok_creator.avatar_medium
+            self.creator_avatar_large = self.tiktok_creator.avatar_large
+            self.creator_signature = self.tiktok_creator.signature
+            self.creator_verified = self.tiktok_creator.verified
+            self.creator_follower_count = self.tiktok_creator.follower_count
+            self.creator_following_count = self.tiktok_creator.following_count
+            self.creator_heart_count = self.tiktok_creator.heart_count
+            self.creator_video_count = self.tiktok_creator.video_count
+        elif self.instagram_creator:
+            # Instagram creators don't have multiple avatar sizes
+            self.creator_avatar_url = self.instagram_creator.profile_pic_url
+            self.creator_avatar_thumb = self.instagram_creator.profile_pic_url
+            self.creator_verified = self.instagram_creator.is_verified
+            self.creator_follower_count = self.instagram_creator.follower_count
+            self.creator_following_count = self.instagram_creator.following_count
+            self.creator_video_count = self.instagram_creator.media_count
+
+        return self
 
     class Config:
         from_attributes = True
