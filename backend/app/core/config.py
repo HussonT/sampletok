@@ -87,6 +87,10 @@ class Settings(BaseSettings):
     RAPIDAPI_KEY: str  # Required - no default for security
     RAPIDAPI_HOST: str = "tiktok-video-no-watermark2.p.rapidapi.com"
 
+    # Instagram RapidAPI Settings
+    RAPIDAPI_INSTAGRAM_KEY: Optional[str] = None  # Required for Instagram feature
+    RAPIDAPI_INSTAGRAM_HOST: str = "instagram-best-experience.p.rapidapi.com"
+
     # La La AI Settings
     LALAL_API_KEY: Optional[str] = None  # Required for stem separation
     MAX_STEMS_PER_REQUEST: int = 5  # Maximum number of stems that can be requested at once

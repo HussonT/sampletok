@@ -280,6 +280,7 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
     if (processingTasks.size === 0) return;
 
     const pollStatus = async () => {
+      // Get current tasks at the time of polling (not from closure)
       const currentTasks = Array.from(processingTasks.entries());
 
       for (const [taskId, task] of currentTasks) {
@@ -315,22 +316,27 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
                   removeProcessingTask(taskId);
                 }, 5000);
               }
+            } else {
+              // Task not found (404) or error - remove it to stop polling
+              console.log('Task not found or error, removing:', taskId);
+              removeProcessingTask(taskId);
             }
           } catch (error) {
             console.error('Failed to poll status for task', taskId, error);
+            // Remove task on error to stop endless polling
+            removeProcessingTask(taskId);
           }
         }
       }
     };
 
-    // Initial poll
-    pollStatus();
-
-    // Set up interval
+    // Set up interval - no initial poll to avoid duplicate requests
     const interval = setInterval(pollStatus, 2000); // Poll every 2 seconds
 
     return () => clearInterval(interval);
-  }, [processingTasks, updateProcessingTask, removeProcessingTask, router]);
+  }, [updateProcessingTask, removeProcessingTask, router]);
+  // REMOVED processingTasks from dependencies to prevent infinite loop
+  // The interval will keep running and check the latest processingTasks on each poll
 
   const handleSamplePreview = (sample: Sample) => {
     if (currentSample?.id === sample.id) {

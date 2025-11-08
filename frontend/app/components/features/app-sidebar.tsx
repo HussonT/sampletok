@@ -21,6 +21,7 @@ import {
   useUser,
 } from '@clerk/nextjs';
 import { AddSampleDialog } from './add-sample-dialog';
+import { AddInstagramDialog } from './add-instagram-dialog';
 import { CreditBalance } from './credit-balance';
 
 interface AppSidebarProps {
@@ -83,6 +84,10 @@ export function AppSidebar({ activeSection, onSectionChange, onProcessingStarted
               </div>
               <div className="space-y-1 mt-1">
                 <AddSampleDialog
+                  onProcessingStarted={onProcessingStarted}
+                  variant="sidebar"
+                />
+                <AddInstagramDialog
                   onProcessingStarted={onProcessingStarted}
                   variant="sidebar"
                 />

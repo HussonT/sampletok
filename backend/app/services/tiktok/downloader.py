@@ -20,6 +20,14 @@ class TikTokDownloader:
     def __init__(self):
         self.api_key = settings.RAPIDAPI_KEY
         self.api_host = settings.RAPIDAPI_HOST
+
+        # Validate API keys are configured
+        if not self.api_key or not self.api_host:
+            raise ValueError(
+                "TikTok API keys not configured. "
+                "Please set RAPIDAPI_KEY and RAPIDAPI_HOST environment variables."
+            )
+
         self.headers = {
             'x-rapidapi-key': self.api_key,
             'x-rapidapi-host': self.api_host
@@ -98,15 +106,17 @@ class TikTokDownloader:
                 raise
 
     async def _download_file(self, url: str, output_path: str) -> None:
-        """Download a file from URL to the specified path"""
+        """Download a file from URL to the specified path using streaming to reduce memory usage"""
         async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
             try:
-                response = await client.get(url)
-                response.raise_for_status()
+                # Use streaming to avoid loading entire file into memory
+                async with client.stream('GET', url) as response:
+                    response.raise_for_status()
 
-                # Write the content to file
-                with open(output_path, 'wb') as f:
-                    f.write(response.content)
+                    # Write the content to file in chunks
+                    with open(output_path, 'wb') as f:
+                        async for chunk in response.aiter_bytes(chunk_size=8192):
+                            f.write(chunk)
 
             except httpx.HTTPStatusError as e:
                 logger.error(f"HTTP error downloading file: {e.response.status_code}")

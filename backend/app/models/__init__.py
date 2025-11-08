@@ -1,6 +1,7 @@
 from app.models.user import User, UserDownload, UserStemDownload, UserFavorite, UserStemFavorite
-from app.models.sample import Sample, ProcessingStatus
+from app.models.sample import Sample, ProcessingStatus, SampleSource
 from app.models.tiktok_creator import TikTokCreator
+from app.models.instagram_creator import InstagramCreator
 from app.models.collection import Collection, CollectionSample, CollectionStatus
 from app.models.subscription import Subscription
 from app.models.credit_transaction import CreditTransaction
@@ -15,7 +16,9 @@ __all__ = [
     "UserStemFavorite",
     "Sample",
     "ProcessingStatus",
+    "SampleSource",
     "TikTokCreator",
+    "InstagramCreator",
     "Collection",
     "CollectionSample",
     "CollectionStatus",

@@ -16,11 +16,28 @@ export interface TikTokCreator {
   video_count: number;
 }
 
+export interface InstagramCreator {
+  id: string;
+  instagram_id: string;
+  username: string;
+  full_name?: string;
+  profile_pic_url?: string;
+  is_verified: boolean;
+  is_private: boolean;
+  follower_count: number;
+  following_count: number;
+  media_count: number;
+}
+
 export interface Sample {
   id: string;
+  source?: 'tiktok' | 'instagram';
   tiktok_url?: string;
   tiktok_id?: string;
   aweme_id?: string;
+  instagram_url?: string;
+  instagram_id?: string;
+  instagram_shortcode?: string;
   title?: string;
   region?: string;
   creator_username?: string;
@@ -54,6 +71,7 @@ export interface Sample {
   processed_at?: string;
   download_count?: number;
   tiktok_creator?: TikTokCreator;
+  instagram_creator?: InstagramCreator;
   // User-specific fields (only present when authenticated)
   is_favorited?: boolean;
   is_downloaded?: boolean;
@@ -95,6 +113,10 @@ export interface ProcessingStatusResponse {
 }
 
 export interface TikTokURLInput {
+  url: string;
+}
+
+export interface InstagramURLInput {
   url: string;
 }
 

@@ -266,8 +266,11 @@ async def get_samples(
             detail="Database query took too long while counting results. Try using more specific filters or a shorter search term."
         )
 
-    # Apply pagination and eager load creator
-    query = query.options(selectinload(Sample.tiktok_creator)).offset(skip).limit(limit)
+    # Apply pagination and eager load creators (both TikTok and Instagram)
+    query = query.options(
+        selectinload(Sample.tiktok_creator),
+        selectinload(Sample.instagram_creator)
+    ).offset(skip).limit(limit)
 
     # Execute main query with timeout
     try:
@@ -365,7 +368,10 @@ async def get_sample(
     Get a specific sample by ID.
     Includes user-specific fields (is_favorited, is_downloaded) when authenticated.
     """
-    query = select(Sample).options(selectinload(Sample.tiktok_creator)).where(Sample.id == sample_id)
+    query = select(Sample).options(
+        selectinload(Sample.tiktok_creator),
+        selectinload(Sample.instagram_creator)
+    ).where(Sample.id == sample_id)
     result = await db.execute(query)
     sample = result.scalar_one_or_none()
 

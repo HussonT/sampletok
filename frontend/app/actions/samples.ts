@@ -2,7 +2,7 @@
 
 import { revalidatePath, revalidateTag } from 'next/cache';
 import { backendApi } from '@/lib/api-client';
-import { Sample, SampleUpdate, ProcessingTaskResponse, ProcessingStatusResponse, TikTokURLInput } from '@/types/api';
+import { Sample, SampleUpdate, ProcessingTaskResponse, ProcessingStatusResponse, TikTokURLInput, InstagramURLInput } from '@/types/api';
 
 export async function processTikTokUrl(url: string) {
   try {
@@ -20,6 +20,29 @@ export async function processTikTokUrl(url: string) {
     return { success: true, data: response };
   } catch (error) {
     console.error('Failed to process TikTok URL:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to process URL'
+    };
+  }
+}
+
+export async function processInstagramUrl(url: string) {
+  try {
+    const input: InstagramURLInput = { url };
+
+    const response = await backendApi.post<ProcessingTaskResponse>(
+      '/process/instagram',
+      input
+    );
+
+    // Revalidate the samples list to show the new pending item
+    revalidatePath('/');
+    revalidateTag('samples');
+
+    return { success: true, data: response };
+  } catch (error) {
+    console.error('Failed to process Instagram URL:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Failed to process URL'
