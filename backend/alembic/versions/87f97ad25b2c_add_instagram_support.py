@@ -54,6 +54,11 @@ def upgrade() -> None:
     op.create_index(op.f('ix_samples_instagram_url'), 'samples', ['instagram_url'], unique=False)
     op.create_index(op.f('ix_samples_source'), 'samples', ['source'], unique=False)
     op.create_foreign_key(None, 'samples', 'instagram_creators', ['instagram_creator_id'], ['id'])
+
+    # Recreate the indexes that were dropped (needed for BPM/key filtering and tag search)
+    op.create_index(op.f('ix_samples_bpm'), 'samples', ['bpm'], unique=False)
+    op.create_index(op.f('ix_samples_key'), 'samples', ['key'], unique=False)
+    op.create_index(op.f('ix_samples_tags_gin'), 'samples', ['tags'], unique=False, postgresql_using='gin')
     # ### end Alembic commands ###
 
 

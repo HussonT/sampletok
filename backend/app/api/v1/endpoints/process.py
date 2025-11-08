@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 import inngest
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 import uuid
 import logging
 
@@ -202,8 +203,28 @@ async def process_instagram_url(
         status=ProcessingStatus.PENDING
     )
     db.add(sample)
-    await db.commit()
-    await db.refresh(sample)
+
+    # Handle race condition where another request created the same sample concurrently
+    try:
+        await db.commit()
+        await db.refresh(sample)
+    except IntegrityError as e:
+        await db.rollback()
+        # Duplicate shortcode detected - fetch the existing sample
+        logger.warning(f"Duplicate Instagram shortcode {shortcode} detected during commit: {str(e)}")
+        result = await db.execute(
+            select(Sample).where(Sample.instagram_shortcode == shortcode)
+        )
+        existing_sample = result.scalars().first()
+        if existing_sample:
+            return ProcessingTaskResponse(
+                task_id=str(existing_sample.id),
+                status="queued" if existing_sample.status == ProcessingStatus.PENDING else existing_sample.status.value,
+                message="Sample already exists (created concurrently)",
+                sample_id=existing_sample.id
+            )
+        # If we can't find it, re-raise the error
+        raise HTTPException(status_code=500, detail=f"Database integrity error: {str(e)}")
 
     # Send event to Inngest for processing
     try:
