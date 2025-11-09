@@ -43,10 +43,9 @@ export function CreatorHoverCard({ creator, children }: CreatorHoverCardProps) {
   const getDisplayName = () => {
     if (isTikTokCreator(creator)) {
       return creator.nickname || creator.username;
-    } else if (isInstagramCreator(creator)) {
+    } else {
       return creator.full_name || creator.username;
     }
-    return creator.username;
   };
 
   // Get verification status based on creator type
