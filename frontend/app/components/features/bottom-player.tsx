@@ -156,7 +156,9 @@ export function BottomPlayer({
           <Avatar className="w-12 h-12 flex-shrink-0 rounded-md">
             <AvatarImage
               src={getAvatarWithFallback(
-                sample.tiktok_creator?.avatar_thumb || sample.tiktok_creator?.avatar_medium,
+                sample.tiktok_creator?.avatar_thumb ||
+                sample.tiktok_creator?.avatar_medium ||
+                sample.instagram_creator?.profile_pic_url,
                 sample.creator_username || sample.id
               )}
               alt={sample.creator_username || 'Creator'}
@@ -184,7 +186,10 @@ export function BottomPlayer({
               variant="ghost"
               size="sm"
               className="w-8 h-8 p-0"
-              onClick={() => sample.tiktok_url && window.open(sample.tiktok_url, '_blank')}
+              onClick={() => {
+                const platformUrl = sample.source === 'instagram' ? sample.instagram_url : sample.tiktok_url;
+                platformUrl && window.open(platformUrl, '_blank');
+              }}
             >
               <ExternalLink className="w-4 h-4" />
             </Button>

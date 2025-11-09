@@ -124,7 +124,7 @@ export function AudioPlayer({
           <div className="flex items-center gap-4 mb-3">
             <Avatar className="w-12 h-12 shrink-0">
               <AvatarImage
-                src={sample.tiktok_creator?.avatar_thumb || sample.thumbnail_url}
+                src={sample.tiktok_creator?.avatar_thumb || sample.instagram_creator?.profile_pic_url || sample.thumbnail_url}
                 alt={sample.creator_username || 'Creator'}
               />
               <AvatarFallback>
@@ -145,7 +145,10 @@ export function AudioPlayer({
                 size="sm"
                 variant="ghost"
                 className="w-8 h-8"
-                onClick={() => window.open(sample.tiktok_url, '_blank')}
+                onClick={() => {
+                  const platformUrl = sample.source === 'instagram' ? sample.instagram_url : sample.tiktok_url;
+                  platformUrl && window.open(platformUrl, '_blank');
+                }}
               >
                 <ExternalLink className="w-4 h-4" />
               </Button>

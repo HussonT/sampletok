@@ -166,9 +166,13 @@ class InstagramCreatorResponse(BaseModel):
 
 class SampleResponse(BaseModel):
     id: UUID
+    source: Optional[str] = None  # 'tiktok' or 'instagram'
     tiktok_url: Optional[str] = None
     tiktok_id: Optional[str] = None
     aweme_id: Optional[str] = None
+    instagram_url: Optional[str] = None
+    instagram_id: Optional[str] = None
+    instagram_shortcode: Optional[str] = None
     title: Optional[str] = None
     region: Optional[str] = None
     creator_username: Optional[str] = None

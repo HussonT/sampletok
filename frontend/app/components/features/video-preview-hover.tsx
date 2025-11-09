@@ -21,16 +21,35 @@ const TikTokIcon = ({ className }: { className?: string }) => (
   </svg>
 );
 
+// Instagram icon component
+const InstagramIcon = ({ className }: { className?: string }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    className={className}
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
+  </svg>
+);
+
 interface VideoPreviewHoverProps {
   videoUrl?: string;
-  tiktokUrl: string;
+  tiktokUrl?: string;
+  instagramUrl?: string;
+  source?: 'tiktok' | 'instagram';
 }
 
-export function VideoPreviewHover({ videoUrl, tiktokUrl }: VideoPreviewHoverProps) {
+export function VideoPreviewHover({ videoUrl, tiktokUrl, instagramUrl, source = 'tiktok' }: VideoPreviewHoverProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
   const videoRef = useRef<HTMLVideoElement>(null);
+
+  // Determine which URL and icon to use based on source
+  const platformUrl = source === 'instagram' ? instagramUrl : tiktokUrl;
+  const PlatformIcon = source === 'instagram' ? InstagramIcon : TikTokIcon;
+  const platformName = source === 'instagram' ? 'Instagram' : 'TikTok';
 
   const handleOpenChange = (open: boolean) => {
     setIsOpen(open);
@@ -67,13 +86,13 @@ export function VideoPreviewHover({ videoUrl, tiktokUrl }: VideoPreviewHoverProp
   if (!videoUrl) {
     return (
       <a
-        href={tiktokUrl || '#'}
+        href={platformUrl || '#'}
         target="_blank"
         rel="noopener noreferrer"
         className="flex items-center justify-center w-8 h-8 hover:bg-secondary/50 rounded-md transition-colors group"
-        title="View on TikTok"
+        title={`View on ${platformName}`}
       >
-        <TikTokIcon className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
+        <PlatformIcon className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
       </a>
     );
   }
@@ -82,11 +101,11 @@ export function VideoPreviewHover({ videoUrl, tiktokUrl }: VideoPreviewHoverProp
     <HoverCard open={isOpen} onOpenChange={handleOpenChange} openDelay={0} closeDelay={100}>
       <HoverCardTrigger asChild>
         <a
-          href={tiktokUrl || '#'}
+          href={platformUrl || '#'}
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center justify-center w-8 h-8 hover:bg-secondary/50 rounded-md transition-colors group"
-          title="View on TikTok"
+          title={`View on ${platformName}`}
           onMouseEnter={() => setIsOpen(true)}
           onMouseLeave={(e) => {
             // Only close if not moving to the content
@@ -96,7 +115,7 @@ export function VideoPreviewHover({ videoUrl, tiktokUrl }: VideoPreviewHoverProp
             }
           }}
         >
-          <TikTokIcon className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
+          <PlatformIcon className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
         </a>
       </HoverCardTrigger>
       <HoverCardContent
@@ -121,7 +140,7 @@ export function VideoPreviewHover({ videoUrl, tiktokUrl }: VideoPreviewHoverProp
             <div className="w-full h-full flex items-center justify-center text-muted-foreground text-sm">
               <div className="text-center p-4">
                 <p>Video preview unavailable</p>
-                <p className="text-xs mt-2">Click to view on TikTok</p>
+                <p className="text-xs mt-2">Click to view on {platformName}</p>
               </div>
             </div>
           )}

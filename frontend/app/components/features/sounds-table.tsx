@@ -468,7 +468,7 @@ export function SoundsTable({
             <th className="text-left py-3 px-4 font-normal whitespace-nowrap" style={{ width: '80px' }}>Duration</th>
             <th className="text-left py-3 px-4 font-normal whitespace-nowrap" style={{ width: '100px' }}>Key</th>
             <th className="text-left py-3 px-4 font-normal whitespace-nowrap" style={{ width: '70px' }}>BPM</th>
-            <th className="text-left py-3 px-4 font-normal whitespace-nowrap" style={{ width: '100px' }}>TikTok</th>
+            <th className="text-left py-3 px-4 font-normal whitespace-nowrap" style={{ width: '100px' }}>Link</th>
             <th className="text-left py-3 px-4 font-normal whitespace-nowrap" style={{ width: '70px' }}>Stems</th>
             <th className="text-left py-3 px-4 font-normal whitespace-nowrap" style={{ width: '70px' }}>Audio</th>
             <th className="text-left py-3 px-4 font-normal whitespace-nowrap" style={{ width: '70px' }}>Video</th>
@@ -774,7 +774,9 @@ export function SoundsTable({
                   ) : (
                     <VideoPreviewHover
                       videoUrl={sample.video_url}
-                      tiktokUrl={sample.tiktok_url || '#'}
+                      tiktokUrl={sample.tiktok_url}
+                      instagramUrl={sample.instagram_url}
+                      source={sample.source}
                     />
                   )}
                 </td>
