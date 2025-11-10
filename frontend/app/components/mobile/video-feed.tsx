@@ -5,12 +5,40 @@ import { Sample } from '@/types/api';
 import { VideoFeedItem } from './video-feed-item';
 import { Loader2 } from 'lucide-react';
 
+/**
+ * Video Feed Component
+ *
+ * Tinder-style vertical scrolling feed for sample discovery.
+ * Implements snap scrolling, infinite loading, and autoplay.
+ *
+ * Key Features:
+ * - Snap scroll (one video per viewport)
+ * - Infinite scroll with Intersection Observer
+ * - Autoplay when video is 70% visible
+ * - Global mute state (shared across all videos)
+ * - View tracking for auth prompt
+ *
+ * Architecture:
+ * - Container uses snap-y snap-mandatory for Tinder feel
+ * - Two IntersectionObservers: one for infinite scroll, one for autoplay
+ * - Scroll sentinel at bottom triggers loadMore
+ * - Each video item tracks visibility for autoplay
+ */
 interface VideoFeedProps {
+  /** Array of samples to display in feed */
   samples: Sample[];
+  /** Callback to load more samples (infinite scroll) */
   onLoadMore: () => void;
+  /** Whether more samples are available */
   hasMore: boolean;
+  /** Loading state for infinite scroll */
   isLoading: boolean;
+  /** Optional callback when favorite state changes */
   onFavoriteChange?: (sampleId: string, isFavorited: boolean) => void;
+  /** Optional callback when user scrolls to new video (for auth prompt tracking) */
+  onVideoChange?: (videoIndex: number) => void;
+  /** Optional callback when user attempts action requiring authentication */
+  onAuthRequired?: () => void;
 }
 
 export function VideoFeed({
@@ -18,20 +46,30 @@ export function VideoFeed({
   onLoadMore,
   hasMore,
   isLoading,
-  onFavoriteChange
+  onFavoriteChange,
+  onVideoChange,
+  onAuthRequired
 }: VideoFeedProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const observerRef = useRef<IntersectionObserver | null>(null);
   const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
   const [globalMuted, setGlobalMuted] = useState(true); // Global mute state shared across all videos
 
-  // Setup intersection observer for infinite scroll
+  /**
+   * Infinite Scroll with Intersection Observer
+   *
+   * Watches the scroll sentinel element at the bottom of the feed.
+   * When sentinel comes into view (within 100px), triggers onLoadMore.
+   *
+   * Optimization: Only observes when hasMore=true and not currently loading
+   * to prevent duplicate API calls.
+   */
   useEffect(() => {
     if (!hasMore || isLoading) return;
 
     const options = {
       root: null,
-      rootMargin: '100px',
+      rootMargin: '100px', // Trigger 100px before reaching sentinel
       threshold: 0.1,
     };
 
@@ -55,14 +93,28 @@ export function VideoFeed({
     };
   }, [hasMore, isLoading, onLoadMore]);
 
-  // Track which video is currently in view for autoplay
+  /**
+   * Video View Tracking with Intersection Observer
+   *
+   * Tracks which video is currently "in view" for:
+   * 1. Autoplay (VideoFeedItem gets isActive prop)
+   * 2. Auth prompt tracking (onVideoChange callback)
+   *
+   * Threshold: 70% - video must be mostly visible to count as viewed.
+   * This prevents "scroll-through" from counting as views.
+   *
+   * Integration with Auth Prompt:
+   * - Each time a new video becomes 70% visible, onVideoChange is called
+   * - Parent component (MobileFeedPage) increments auth prompt view count
+   * - After 7 unique video views, auth modal is triggered
+   */
   useEffect(() => {
     if (!containerRef.current) return;
 
     const options = {
       root: containerRef.current,
       rootMargin: '0px',
-      threshold: 0.7, // Video must be 70% visible to be considered "in view"
+      threshold: 0.7, // Video must be 70% visible to count as "viewed"
     };
 
     const observer = new IntersectionObserver((entries) => {
@@ -71,16 +123,18 @@ export function VideoFeed({
 
         if (entry.isIntersecting && entry.intersectionRatio >= 0.7) {
           setCurrentVideoIndex(videoIndex);
+          // Notify parent component about video change (for auth prompt tracking)
+          onVideoChange?.(videoIndex);
         }
       });
     }, options);
 
-    // Observe all video items
+    // Observe all video items (each has data-index attribute)
     const videoElements = containerRef.current.querySelectorAll('[data-index]');
     videoElements.forEach((el) => observer.observe(el));
 
     return () => observer.disconnect();
-  }, [samples.length]);
+  }, [samples.length, onVideoChange]);
 
   return (
     <div
@@ -105,6 +159,7 @@ export function VideoFeed({
           index={index}
           isActive={index === currentVideoIndex}
           onFavoriteChange={onFavoriteChange}
+          onAuthRequired={onAuthRequired}
           globalMuted={globalMuted}
           onMuteChange={setGlobalMuted}
         />

@@ -100,6 +100,7 @@ class Sample(Base):
     instagram_creator = relationship("InstagramCreator", back_populates="samples")
     user_downloads = relationship("UserDownload", back_populates="sample", cascade="all, delete-orphan")
     user_favorites = relationship("UserFavorite", back_populates="sample", cascade="all, delete-orphan")
+    user_dismissals = relationship("SampleDismissal", back_populates="sample", cascade="all, delete-orphan")
     collection_samples = relationship("CollectionSample", back_populates="sample", cascade="all, delete-orphan")
     stems = relationship("Stem", back_populates="parent_sample", cascade="all, delete-orphan")
     

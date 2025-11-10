@@ -1,17 +1,69 @@
 'use client';
 
 import { VideoFeed } from '@/components/mobile/video-feed';
+import { AuthPromptModal } from '@/components/mobile/auth-prompt-modal';
 import { useSampleQueue } from '@/hooks/use-sample-queue';
+import { useAuthPrompt } from '@/hooks/use-auth-prompt';
 import { useAuth } from '@clerk/nextjs';
 import { useState, useEffect, useCallback } from 'react';
 import { createAuthenticatedClient, publicApi } from '@/lib/api-client';
 import { Loader2 } from 'lucide-react';
 
+/**
+ * Mobile Feed Page
+ *
+ * Main entry point for the mobile PWA's Tinder-style video discovery experience.
+ * Integrates video feed with strategic authentication prompts to convert guest users.
+ *
+ * Key Features:
+ * - Infinite scroll video feed with sample queue management
+ * - Auth prompt triggered after 7 video views (only for guests)
+ * - Automatic API client switching on authentication state change
+ * - Optimistic UI updates for favorites/downloads
+ *
+ * Authentication Flow:
+ * 1. Guest browses videos using public API
+ * 2. Auth prompt shows after 7 videos (strategic timing)
+ * 3. User signs up/in via Clerk modal
+ * 4. API client switches to authenticated mode
+ * 5. User can now favorite/download samples
+ * 6. TanStack Query automatically refetches with auth headers
+ */
 export default function MobileFeedPage() {
   const { isSignedIn, getToken } = useAuth();
   const [apiClient, setApiClient] = useState(publicApi);
 
-  // Create authenticated API client when user is signed in
+  /**
+   * Auth Prompt Management - Value First Approach
+   *
+   * No modals on page load - let users explore and see value first!
+   * Auth prompt only shows when:
+   * 1. User clicks save/favorite button (needs account to save)
+   * 2. User tries to download (needs account)
+   * 3. User has viewed exactly 10 distinct samples (seen enough value)
+   *
+   * Once dismissed, won't show again this session.
+   */
+  const {
+    shouldShowModal,
+    triggerAuthPrompt,
+    incrementViewCount,
+    dismissModal,
+    closeModal,
+  } = useAuthPrompt({
+    triggerCount: 10, // Show auth after 10 distinct samples viewed
+    enabled: !isSignedIn, // Only track guest users
+  });
+
+  /**
+   * API Client Switching
+   *
+   * Automatically switches between public and authenticated API clients
+   * based on authentication state. This ensures:
+   * - Guests use public API (limited access)
+   * - Authenticated users get their personalized data (favorites, downloads)
+   * - TanStack Query automatically refetches when client changes
+   */
   useEffect(() => {
     if (isSignedIn && getToken) {
       setApiClient(createAuthenticatedClient(getToken));
@@ -20,6 +72,7 @@ export default function MobileFeedPage() {
     }
   }, [isSignedIn, getToken]);
 
+  // Sample queue management with infinite scroll
   const {
     samples,
     loadMore,
@@ -28,12 +81,61 @@ export default function MobileFeedPage() {
     reset,
   } = useSampleQueue({ apiClient });
 
-  // Handle favorite change (optimistic update in feed component)
+  /**
+   * Track favorited samples locally to persist across feed navigation.
+   * This ensures heart icons remain filled even when scrolling away and back.
+   */
+  const [favoritedSamples, setFavoritedSamples] = useState<Set<string>>(new Set());
+
+  /**
+   * Initialize favorited samples from API data when samples load.
+   * This ensures any pre-favorited samples (for authenticated users) are tracked.
+   */
+  useEffect(() => {
+    if (samples.length > 0 && isSignedIn) {
+      const newFavorites = samples
+        .filter(sample => sample.is_favorited)
+        .map(sample => sample.id);
+
+      if (newFavorites.length > 0) {
+        setFavoritedSamples(prev => {
+          const next = new Set(prev);
+          newFavorites.forEach(id => next.add(id));
+          return next;
+        });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [samples.length, isSignedIn]); // Only re-run when sample count or auth changes, not on every sample mutation
+
+  /**
+   * Handles favorite state changes from video feed.
+   * Updates local state to remember which samples are favorited.
+   */
   const handleFavoriteChange = useCallback((sampleId: string, isFavorited: boolean) => {
-    // The VideoFeedItem component handles the API call and optimistic update
-    // This callback can be used for additional tracking if needed
+    setFavoritedSamples(prev => {
+      const next = new Set(prev);
+      if (isFavorited) {
+        next.add(sampleId);
+      } else {
+        next.delete(sampleId);
+      }
+      return next;
+    });
     console.log(`Sample ${sampleId} favorited: ${isFavorited}`);
   }, []);
+
+  /**
+   * Tracks when user scrolls to a new video in the feed.
+   * Increments view count for auth prompt timing.
+   *
+   * This is called by VideoFeed component via IntersectionObserver when
+   * a video becomes 70% visible (threshold for "in view").
+   */
+  const handleVideoChange = useCallback((videoIndex: number) => {
+    // Increment view count for auth prompt tracking (guests only)
+    incrementViewCount();
+  }, [incrementViewCount]);
 
   // Loading state (initial load)
   if (isLoading && samples.length === 0) {
@@ -64,13 +166,42 @@ export default function MobileFeedPage() {
     );
   }
 
+  // Merge favorited state with samples
+  const enrichedSamples = samples.map(sample => ({
+    ...sample,
+    is_favorited: favoritedSamples.has(sample.id) || sample.is_favorited || false,
+  }));
+
   return (
-    <VideoFeed
-      samples={samples}
-      onLoadMore={loadMore}
-      hasMore={hasMore}
-      isLoading={isLoading}
-      onFavoriteChange={handleFavoriteChange}
-    />
+    <>
+      {/* Main video feed with infinite scroll */}
+      <VideoFeed
+        samples={enrichedSamples}
+        onLoadMore={loadMore}
+        hasMore={hasMore}
+        isLoading={isLoading}
+        onFavoriteChange={handleFavoriteChange}
+        onVideoChange={handleVideoChange} // Tracks views for auth prompt (auto-trigger at 10 views)
+        onAuthRequired={triggerAuthPrompt} // Triggers auth prompt on save/download attempts
+      />
+
+      {/*
+        Auth Prompt Modal - Value First Approach
+
+        No modals on page load! Users start browsing immediately.
+
+        Shows strategically when:
+        1. User clicks save/favorite (needs account to persist favorites)
+        2. User tries to download (needs account for downloads)
+        3. User has viewed exactly 10 samples (crossed threshold, seen enough value)
+
+        Once dismissed, won't show again this session - respects user choice.
+      */}
+      <AuthPromptModal
+        isOpen={shouldShowModal}
+        onClose={closeModal}
+        onDismiss={dismissModal}
+      />
+    </>
   );
 }

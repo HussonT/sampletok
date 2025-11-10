@@ -16,6 +16,7 @@ interface VideoFeedItemProps {
   index: number;
   isActive: boolean;
   onFavoriteChange?: (sampleId: string, isFavorited: boolean) => void;
+  onAuthRequired?: () => void;
   globalMuted: boolean;
   onMuteChange: (muted: boolean) => void;
 }
@@ -25,6 +26,7 @@ export function VideoFeedItem({
   index,
   isActive,
   onFavoriteChange,
+  onAuthRequired,
   globalMuted,
   onMuteChange
 }: VideoFeedItemProps) {
@@ -83,13 +85,9 @@ export function VideoFeedItem({
   }, [globalMuted]);
 
   const handleFavorite = async () => {
-    // Open sign-up modal if not authenticated
+    // Trigger auth prompt if not authenticated
     if (!isSignedIn) {
-      const currentUrl = window.location.pathname + window.location.search;
-      openSignUp({
-        redirectUrl: currentUrl,
-        afterSignUpUrl: currentUrl,
-      });
+      onAuthRequired?.();
       return;
     }
 
@@ -205,48 +203,48 @@ export function VideoFeedItem({
       <div className="absolute inset-0 bg-black/30 pointer-events-none z-10" />
 
       {/* MAIN AUDIO-FOCUSED LAYOUT */}
-      <div className="relative z-20 w-full h-full flex flex-col p-5 pt-14 pb-6">
+      <div className="relative z-20 w-full h-full flex flex-col p-4 pt-16 pb-28">
 
         {/* TOP: Large Audio Metadata Cards */}
-        <div className="flex gap-4 mb-6">
+        <div className="flex gap-3 mb-4">
           {/* BPM Card */}
-          <div className="flex-1 bg-gradient-to-br from-[hsl(338,82%,65%)]/20 to-[hsl(338,82%,65%)]/5 backdrop-blur-md rounded-2xl p-3 border border-[hsl(338,82%,65%)]/30">
-            <div className="flex items-center gap-1.5 mb-2">
-              <Activity className="w-3.5 h-3.5 text-[hsl(338,82%,65%)] stroke-[1.5]" />
-              <span className="text-[10px] text-gray-400 uppercase tracking-wide">BPM</span>
+          <div className="flex-1 bg-gradient-to-br from-[hsl(338,82%,65%)]/20 to-[hsl(338,82%,65%)]/5 backdrop-blur-md rounded-xl p-2.5 border border-[hsl(338,82%,65%)]/30">
+            <div className="flex items-center gap-1 mb-1">
+              <Activity className="w-3 h-3 text-[hsl(338,82%,65%)] stroke-[1.5]" />
+              <span className="text-[9px] text-gray-400 uppercase tracking-wide">BPM</span>
             </div>
-            <div className="text-3xl font-bold text-white leading-none">
+            <div className="text-2xl font-bold text-white leading-none">
               {sample.bpm ? Math.round(sample.bpm) : '--'}
             </div>
           </div>
 
           {/* Key Card */}
-          <div className="flex-1 bg-gradient-to-br from-[hsl(338,82%,65%)]/20 to-[hsl(338,82%,65%)]/5 backdrop-blur-md rounded-2xl p-3 border border-[hsl(338,82%,65%)]/30">
-            <div className="flex items-center gap-1.5 mb-2">
-              <Music2 className="w-3.5 h-3.5 text-[hsl(338,82%,65%)] stroke-[1.5]" />
-              <span className="text-[10px] text-gray-400 uppercase tracking-wide">Key</span>
+          <div className="flex-1 bg-gradient-to-br from-[hsl(338,82%,65%)]/20 to-[hsl(338,82%,65%)]/5 backdrop-blur-md rounded-xl p-2.5 border border-[hsl(338,82%,65%)]/30">
+            <div className="flex items-center gap-1 mb-1">
+              <Music2 className="w-3 h-3 text-[hsl(338,82%,65%)] stroke-[1.5]" />
+              <span className="text-[9px] text-gray-400 uppercase tracking-wide">Key</span>
             </div>
-            <div className="text-3xl font-bold text-white leading-none">
+            <div className="text-2xl font-bold text-white leading-none">
               {sample.key || '--'}
             </div>
           </div>
 
           {/* Duration Card */}
-          <div className="flex-1 bg-gradient-to-br from-[hsl(338,82%,65%)]/20 to-[hsl(338,82%,65%)]/5 backdrop-blur-md rounded-2xl p-3 border border-[hsl(338,82%,65%)]/30">
-            <div className="flex items-center gap-1.5 mb-2">
-              <Clock className="w-3.5 h-3.5 text-[hsl(338,82%,65%)] stroke-[1.5]" />
-              <span className="text-[10px] text-gray-400 uppercase tracking-wide">Length</span>
+          <div className="flex-1 bg-gradient-to-br from-[hsl(338,82%,65%)]/20 to-[hsl(338,82%,65%)]/5 backdrop-blur-md rounded-xl p-2.5 border border-[hsl(338,82%,65%)]/30">
+            <div className="flex items-center gap-1 mb-1">
+              <Clock className="w-3 h-3 text-[hsl(338,82%,65%)] stroke-[1.5]" />
+              <span className="text-[9px] text-gray-400 uppercase tracking-wide">Length</span>
             </div>
-            <div className="text-3xl font-bold text-white leading-none">
+            <div className="text-2xl font-bold text-white leading-none">
               {sample.duration_seconds ? formatDuration(sample.duration_seconds) : '--'}
             </div>
           </div>
         </div>
 
         {/* Creator Card */}
-        <div className="bg-white/5 backdrop-blur-md rounded-xl border border-white/10 p-3 mb-3">
-          <div className="flex gap-3">
-            <Avatar className="w-12 h-12 ring-2 ring-[hsl(338,82%,65%)]/30 flex-shrink-0">
+        <div className="bg-white/5 backdrop-blur-md rounded-xl border border-white/10 p-2.5 mb-3">
+          <div className="flex gap-2.5">
+            <Avatar className="w-11 h-11 ring-2 ring-[hsl(338,82%,65%)]/30 flex-shrink-0">
               <AvatarImage
                 src={creator.avatar || getAvatarWithFallback(null, creator.username)}
                 alt={creator.name}
@@ -258,34 +256,34 @@ export function VideoFeedItem({
 
             <div className="flex-1 min-w-0">
               {/* Name and username */}
-              <div className="mb-1.5">
-                <div className="flex items-center gap-1.5">
+              <div className="mb-1">
+                <div className="flex items-center gap-1">
                   <span className="font-semibold text-white text-sm truncate">{creator.name}</span>
                   {creator.verified && (
-                    <CheckCircle className="w-3.5 h-3.5 text-[hsl(338,82%,65%)] fill-[hsl(338,82%,65%)] flex-shrink-0" />
+                    <CheckCircle className="w-3 h-3 text-[hsl(338,82%,65%)] fill-[hsl(338,82%,65%)] flex-shrink-0" />
                   )}
                 </div>
-                <p className="text-xs text-gray-400 truncate">{creator.username}</p>
+                <p className="text-[11px] text-gray-400 truncate">{creator.username}</p>
               </div>
 
               {/* Bio/Signature (TikTok) or Private indicator (Instagram) */}
               {sample.source === 'tiktok' && sample.tiktok_creator?.signature && (
-                <p className="text-xs text-gray-400 line-clamp-2 mb-2">
+                <p className="text-[11px] text-gray-400 line-clamp-1 mb-1.5">
                   {sample.tiktok_creator.signature}
                 </p>
               )}
               {sample.source === 'instagram' && sample.instagram_creator?.is_private && (
-                <p className="text-xs text-gray-400 italic mb-2">
+                <p className="text-[11px] text-gray-400 italic mb-1.5">
                   🔒 Private account
                 </p>
               )}
 
               {/* Stats Grid */}
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-3 gap-1.5">
                 {/* Followers */}
-                <div className="flex flex-col items-center bg-white/5 rounded-lg py-1.5">
-                  <div className="flex items-center gap-1 text-xs font-semibold text-white">
-                    <Users className="w-3 h-3" />
+                <div className="flex flex-col items-center bg-white/5 rounded-lg py-1">
+                  <div className="flex items-center gap-0.5 text-[11px] font-semibold text-white">
+                    <Users className="w-2.5 h-2.5" />
                     <span>
                       {sample.source === 'tiktok' && sample.tiktok_creator
                         ? formatCount(sample.tiktok_creator.follower_count)
@@ -294,33 +292,33 @@ export function VideoFeedItem({
                         : '--'}
                     </span>
                   </div>
-                  <span className="text-[10px] text-gray-400">Followers</span>
+                  <span className="text-[9px] text-gray-400">Followers</span>
                 </div>
 
                 {/* Likes (TikTok) or Posts (Instagram) */}
-                <div className="flex flex-col items-center bg-white/5 rounded-lg py-1.5">
-                  <div className="flex items-center gap-1 text-xs font-semibold text-white">
+                <div className="flex flex-col items-center bg-white/5 rounded-lg py-1">
+                  <div className="flex items-center gap-0.5 text-[11px] font-semibold text-white">
                     {sample.source === 'tiktok' ? (
                       <>
-                        <Heart className="w-3 h-3" />
+                        <Heart className="w-2.5 h-2.5" />
                         <span>{sample.tiktok_creator ? formatCount(sample.tiktok_creator.heart_count) : '--'}</span>
                       </>
                     ) : (
                       <>
-                        <ImageIcon className="w-3 h-3" />
+                        <ImageIcon className="w-2.5 h-2.5" />
                         <span>{sample.instagram_creator ? formatCount(sample.instagram_creator.media_count) : '--'}</span>
                       </>
                     )}
                   </div>
-                  <span className="text-[10px] text-gray-400">
+                  <span className="text-[9px] text-gray-400">
                     {sample.source === 'tiktok' ? 'Likes' : 'Posts'}
                   </span>
                 </div>
 
                 {/* Videos/Media */}
-                <div className="flex flex-col items-center bg-white/5 rounded-lg py-1.5">
-                  <div className="flex items-center gap-1 text-xs font-semibold text-white">
-                    <Video className="w-3 h-3" />
+                <div className="flex flex-col items-center bg-white/5 rounded-lg py-1">
+                  <div className="flex items-center gap-0.5 text-[11px] font-semibold text-white">
+                    <Video className="w-2.5 h-2.5" />
                     <span>
                       {sample.source === 'tiktok' && sample.tiktok_creator
                         ? formatCount(sample.tiktok_creator.video_count)
@@ -329,7 +327,7 @@ export function VideoFeedItem({
                         : '--'}
                     </span>
                   </div>
-                  <span className="text-[10px] text-gray-400">
+                  <span className="text-[9px] text-gray-400">
                     {sample.source === 'tiktok' ? 'Videos' : 'Media'}
                   </span>
                 </div>
@@ -339,15 +337,15 @@ export function VideoFeedItem({
 
           {/* Sample title/description */}
           {(sample.title || sample.description) && (
-            <p className="text-sm text-white/80 mt-2.5 pt-2.5 border-t border-white/10 line-clamp-2">
+            <p className="text-[11px] text-white/80 mt-2 pt-2 border-t border-white/10 line-clamp-1">
               {sample.title || sample.description}
             </p>
           )}
         </div>
 
         {/* WAVEFORM */}
-        <div className="mb-3">
-          <div className="w-full h-28">
+        <div className="mb-4">
+          <div className="w-full h-24">
             {sample.waveform_url && !waveformError ? (
               <Image
                 src={sample.waveform_url}
@@ -392,7 +390,7 @@ export function VideoFeedItem({
       </div>
 
       {/* RIGHT SIDE: Vertical Action Button Stack (TikTok-style) */}
-      <div className="absolute right-4 bottom-24 z-30 flex flex-col gap-3">
+      <div className="absolute right-3 bottom-32 z-30 flex flex-col gap-3">
         {/* Save Sample Button - Primary CTA */}
         <button
           onClick={handleFavorite}
@@ -409,7 +407,14 @@ export function VideoFeedItem({
 
         {/* Download Button */}
         <button
-          onClick={() => {/* TODO: Implement download */}}
+          onClick={() => {
+            if (!isSignedIn) {
+              onAuthRequired?.();
+              return;
+            }
+            // TODO: Implement actual download logic for authenticated users
+            toast.info('Download feature coming soon!');
+          }}
           className="rounded-xl w-14 h-14 bg-white/10 border border-white/20 backdrop-blur-md hover:bg-white/20 active:scale-95 transition-all flex items-center justify-center"
         >
           <Download className="w-6 h-6 text-white" />

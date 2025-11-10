@@ -15,7 +15,7 @@ import time
 
 from app.core.database import get_db, AsyncSessionLocal
 from app.models import Sample, ProcessingStatus
-from app.models.user import User, UserDownload, UserFavorite
+from app.models.user import User, UserDownload, UserFavorite, SampleDismissal
 from app.models.schemas import (
     SampleResponse,
     SampleUpdate,
@@ -27,7 +27,7 @@ from app.models.schemas import (
     SampleSearchResponse
 )
 from app.api.deps import get_current_user, get_current_user_optional
-from app.services.user_service import UserDownloadService, UserFavoriteService
+from app.services.user_service import UserDownloadService, UserFavoriteService, SampleDismissalService
 
 # TODO: Add rate limiting to download endpoints to prevent abuse (e.g., max 100 downloads per hour per user)
 
@@ -726,6 +726,57 @@ async def remove_favorite(
     """
     # Remove from favorites (idempotent)
     await UserFavoriteService.remove_favorite(
+        db=db,
+        user_id=current_user.id,
+        sample_id=sample_id
+    )
+
+    return None  # 204 No Content
+
+
+@router.post("/{sample_id}/dismiss", status_code=201)
+async def dismiss_sample(
+    sample_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Dismiss a sample for mobile feed personalization - requires authentication.
+    Idempotent: returns success even if already dismissed.
+    """
+    # Verify sample exists
+    query = select(Sample).where(Sample.id == sample_id)
+    result = await db.execute(query)
+    sample = result.scalar_one_or_none()
+
+    if not sample:
+        raise HTTPException(status_code=404, detail="Sample not found")
+
+    # Add to dismissals (idempotent)
+    dismissal = await SampleDismissalService.add_dismissal(
+        db=db,
+        user_id=current_user.id,
+        sample_id=sample_id
+    )
+
+    return {
+        "is_dismissed": True,
+        "dismissed_at": dismissal.dismissed_at.isoformat()
+    }
+
+
+@router.delete("/{sample_id}/dismiss", status_code=204)
+async def undismiss_sample(
+    sample_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Remove a sample from user's dismissals - requires authentication.
+    Idempotent: returns success even if not dismissed.
+    """
+    # Remove from dismissals (idempotent)
+    await SampleDismissalService.remove_dismissal(
         db=db,
         user_id=current_user.id,
         sample_id=sample_id
