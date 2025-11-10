@@ -1,9 +1,10 @@
 'use client';
 
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { Sample } from '@/types/api';
+import { Sample, ProcessingStatus } from '@/types/api';
 import { VideoFeedItem } from './video-feed-item';
 import { Loader2 } from 'lucide-react';
+import { useMobileSettings } from '@/hooks/use-mobile-settings';
 
 /**
  * Video Feed Component
@@ -39,6 +40,8 @@ interface VideoFeedProps {
   onVideoChange?: (videoIndex: number) => void;
   /** Optional callback when user attempts action requiring authentication */
   onAuthRequired?: () => void;
+  /** Show loading skeleton instead of samples */
+  showLoadingSkeleton?: boolean;
 }
 
 export function VideoFeed({
@@ -48,12 +51,14 @@ export function VideoFeed({
   isLoading,
   onFavoriteChange,
   onVideoChange,
-  onAuthRequired
+  onAuthRequired,
+  showLoadingSkeleton = false
 }: VideoFeedProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const observerRef = useRef<IntersectionObserver | null>(null);
   const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
   const [globalMuted, setGlobalMuted] = useState(true); // Global mute state shared across all videos
+  const { settings } = useMobileSettings();
 
   /**
    * Infinite Scroll with Intersection Observer
@@ -136,6 +141,25 @@ export function VideoFeed({
     return () => observer.disconnect();
   }, [samples.length, onVideoChange]);
 
+  // Create a mock sample for skeleton loading
+  const mockSample: Sample = {
+    id: 'loading-skeleton',
+    title: '',
+    description: '',
+    creator_name: 'Unknown Creator',
+    creator_username: '',
+    source: 'tiktok',
+    status: ProcessingStatus.PENDING,
+    created_at: new Date().toISOString(),
+    is_favorited: false,
+    download_count: 0,
+    view_count: 0,
+    like_count: 0,
+    share_count: 0,
+    comment_count: 0,
+    tags: [],
+  };
+
   return (
     <div
       ref={containerRef}
@@ -152,7 +176,26 @@ export function VideoFeed({
         }
       `}</style>
 
-      {samples.map((sample, index) => (
+      {/* Show skeleton when loading initially */}
+      {showLoadingSkeleton && (
+        <VideoFeedItem
+          key="loading-skeleton"
+          sample={mockSample}
+          index={0}
+          isActive={true}
+          isLoading={true}
+          onFavoriteChange={onFavoriteChange}
+          onAuthRequired={onAuthRequired}
+          globalMuted={globalMuted}
+          onMuteChange={setGlobalMuted}
+          autoPlayEnabled={settings.autoPlayVideos}
+          hapticFeedbackEnabled={settings.hapticFeedback}
+          dataSaverMode={settings.dataSaverMode}
+        />
+      )}
+
+      {/* Actual samples */}
+      {!showLoadingSkeleton && samples.map((sample, index) => (
         <VideoFeedItem
           key={sample.id}
           sample={sample}
@@ -162,11 +205,14 @@ export function VideoFeed({
           onAuthRequired={onAuthRequired}
           globalMuted={globalMuted}
           onMuteChange={setGlobalMuted}
+          autoPlayEnabled={settings.autoPlayVideos}
+          hapticFeedbackEnabled={settings.hapticFeedback}
+          dataSaverMode={settings.dataSaverMode}
         />
       ))}
 
       {/* Loading sentinel for infinite scroll */}
-      {hasMore && (
+      {!showLoadingSkeleton && hasMore && (
         <div
           id="scroll-sentinel"
           className="h-screen flex items-center justify-center snap-start bg-[hsl(0,0%,17%)]"
@@ -179,12 +225,12 @@ export function VideoFeed({
       )}
 
       {/* No more content */}
-      {!hasMore && samples.length > 0 && (
+      {!showLoadingSkeleton && !hasMore && samples.length > 0 && (
         <div className="h-screen flex items-center justify-center snap-start bg-[hsl(0,0%,17%)]">
           <div className="text-center p-6">
             <span className="text-6xl mb-4 block">🎉</span>
             <h2 className="text-2xl font-bold text-white mb-2">
-              You've seen them all!
+              You&apos;ve seen them all!
             </h2>
             <p className="text-gray-400">
               Check back later for more samples

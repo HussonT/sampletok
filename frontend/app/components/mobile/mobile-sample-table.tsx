@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { useHapticFeedback } from '@/hooks/use-haptics';
 
 interface MobileSampleTableProps {
   samples: Sample[];
@@ -37,6 +38,9 @@ export function MobileSampleTable({
   const [downloading, setDownloading] = useState(false);
   const [togglingFavorite, setTogglingFavorite] = useState<string | null>(null);
 
+  // Haptic feedback
+  const { onMedium, onSuccess, onError } = useHapticFeedback();
+
   const formatDuration = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
@@ -48,12 +52,18 @@ export function MobileSampleTable({
   };
 
   const handlePlayPreview = (sample: Sample) => {
+    // Haptic feedback on button press
+    onMedium();
+
     if (!isProcessing(sample)) {
       onSamplePreview?.(sample);
     }
   };
 
   const handleDownloadClick = (sample: Sample) => {
+    // Haptic feedback on button press
+    onMedium();
+
     if (!isSignedIn) {
       const currentUrl = window.location.pathname + window.location.search;
       openSignUp({
@@ -67,27 +77,35 @@ export function MobileSampleTable({
     setDownloadModalOpen(true);
   };
 
-  const handleDownload = async (format: 'wav' | 'mp3') => {
+  const handleDownload = async (format: 'wav' | 'mp3' | 'video') => {
     if (!selectedSample || !isSignedIn) return;
 
     try {
       setDownloading(true);
-      toast.loading(`Starting ${format.toUpperCase()} download...`, { id: 'audio-download' });
+
+      const downloadLabel = format === 'video' ? 'Video' : format.toUpperCase();
+      toast.loading(`Starting ${downloadLabel} download...`, { id: 'download' });
 
       const apiUrl = process.env.NEXT_PUBLIC_API_URL;
       if (!apiUrl) {
         throw new Error('API URL not configured');
       }
 
-      const response = await fetch(
-        `${apiUrl}/api/v1/samples/${selectedSample.id}/download?download_type=${format}`,
-        {
-          method: 'GET',
-          headers: {
-            'Authorization': `Bearer ${await getToken()}`,
-          },
-        }
-      );
+      // Different endpoints for audio vs video
+      const endpoint = format === 'video'
+        ? `${apiUrl}/api/v1/samples/${selectedSample.id}/download-video`
+        : `${apiUrl}/api/v1/samples/${selectedSample.id}/download`;
+
+      const body = format === 'video' ? {} : { download_type: format };
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${await getToken()}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
@@ -98,17 +116,25 @@ export function MobileSampleTable({
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `${selectedSample.id}.${format}`;
+
+      // Set appropriate file extension
+      const fileExt = format === 'video' ? 'mp4' : format;
+      link.download = `${selectedSample.id}.${fileExt}`;
+
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
 
+      // Haptic feedback for success
+      onSuccess();
+
+      const formatLabel = format === 'video' ? 'Video' : format.toUpperCase();
       toast.success('Download complete!', {
-        id: 'audio-download',
+        id: 'download',
         description: selectedSample.is_downloaded
-          ? `${format.toUpperCase()} file saved (Free re-download)`
-          : `${format.toUpperCase()} file saved (1 credit used)`,
+          ? `${formatLabel} file saved (Free re-download)`
+          : `${formatLabel} file saved (1 credit used)`,
       });
 
       setDownloadModalOpen(false);
@@ -116,8 +142,11 @@ export function MobileSampleTable({
       console.error('Download error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
 
+      // Haptic feedback for error
+      onError();
+
       toast.error('Download failed', {
-        id: 'audio-download',
+        id: 'download',
         description: errorMessage,
       });
     } finally {
@@ -153,13 +182,19 @@ export function MobileSampleTable({
       );
 
       if (!response.ok) {
+        // Haptic feedback for error
+        onError();
         throw new Error('Failed to update favorite');
       }
 
       onFavoriteChange?.(sample.id, newFavoritedState);
 
+      // Haptic feedback for success (different pattern for favorite vs unfavorite)
       if (newFavoritedState) {
+        onSuccess(); // Double tap for adding to favorites
         toast.success('Added to favorites');
+      } else {
+        onMedium(); // Single tap for removing
       }
     } catch (error) {
       console.error('Error toggling favorite:', error);
@@ -322,6 +357,16 @@ export function MobileSampleTable({
               <div className="flex flex-col items-center">
                 <div className="font-semibold">WAV (48kHz)</div>
                 <div className="text-xs opacity-80">Lossless quality for production</div>
+              </div>
+            </Button>
+            <Button
+              onClick={() => handleDownload('video')}
+              disabled={downloading}
+              className="w-full bg-white/10 hover:bg-white/20 text-white border border-white/20 h-14"
+            >
+              <div className="flex flex-col items-center">
+                <div className="font-semibold">Video (MP4)</div>
+                <div className="text-xs opacity-80">Original video with audio</div>
               </div>
             </Button>
           </div>

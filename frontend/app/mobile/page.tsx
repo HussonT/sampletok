@@ -2,8 +2,10 @@
 
 import { VideoFeed } from '@/components/mobile/video-feed';
 import { AuthPromptModal } from '@/components/mobile/auth-prompt-modal';
+import { PullToRefreshIndicator } from '@/components/mobile/pull-to-refresh-indicator';
 import { useSampleQueue } from '@/hooks/use-sample-queue';
 import { useAuthPrompt } from '@/hooks/use-auth-prompt';
+import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 import { useAuth } from '@clerk/nextjs';
 import { useState, useEffect, useCallback } from 'react';
 import { createAuthenticatedClient, publicApi } from '@/lib/api-client';
@@ -79,7 +81,20 @@ export default function MobileFeedPage() {
     hasMore,
     isLoading,
     reset,
+    refetch,
   } = useSampleQueue({ apiClient });
+
+  /**
+   * Pull-to-refresh functionality
+   * Refreshes the feed by resetting the queue and fetching new samples
+   */
+  const { isRefreshing, pullDistance, isThresholdReached } = usePullToRefresh({
+    onRefresh: async () => {
+      await refetch();
+    },
+    enabled: !isLoading && samples.length > 0, // Only enable when feed is loaded
+    threshold: 80,
+  });
 
   /**
    * Track favorited samples locally to persist across feed navigation.
@@ -137,15 +152,19 @@ export default function MobileFeedPage() {
     incrementViewCount();
   }, [incrementViewCount]);
 
-  // Loading state (initial load)
+  // Loading state (initial load) - Show skeleton feed item
   if (isLoading && samples.length === 0) {
     return (
-      <div className="flex items-center justify-center h-screen bg-[hsl(0,0%,17%)]">
-        <div className="text-center">
-          <Loader2 className="w-12 h-12 animate-spin text-[hsl(338,82%,65%)] mx-auto mb-4" />
-          <p className="text-gray-400">Loading samples...</p>
-        </div>
-      </div>
+      <VideoFeed
+        samples={[]}
+        onLoadMore={() => {}}
+        hasMore={false}
+        isLoading={true}
+        onFavoriteChange={handleFavoriteChange}
+        onVideoChange={handleVideoChange}
+        onAuthRequired={triggerAuthPrompt}
+        showLoadingSkeleton={true}
+      />
     );
   }
 
@@ -174,6 +193,14 @@ export default function MobileFeedPage() {
 
   return (
     <>
+      {/* Pull-to-refresh indicator */}
+      <PullToRefreshIndicator
+        pullDistance={pullDistance}
+        isThresholdReached={isThresholdReached}
+        isRefreshing={isRefreshing}
+        threshold={80}
+      />
+
       {/* Main video feed with infinite scroll */}
       <VideoFeed
         samples={enrichedSamples}

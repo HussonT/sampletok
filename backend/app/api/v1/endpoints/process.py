@@ -7,7 +7,7 @@ import uuid
 import logging
 
 from app.core.database import get_db
-from app.models import Sample, ProcessingStatus
+from app.models import Sample, ProcessingStatus, User
 from app.models.sample import SampleSource
 from app.models.schemas import (
     TikTokURLInput,
@@ -20,19 +20,65 @@ from app.services.tiktok.validator import TikTokURLValidator
 from app.services.tiktok.downloader import TikTokDownloader
 from app.services.instagram.validator import InstagramURLValidator
 from app.inngest_functions import inngest_client
+from app.api.deps import get_current_user
+from app.services.credit_service import CreditService
+from pydantic import BaseModel
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
+class UniversalURLInput(BaseModel):
+    """Auto-detect URL input for TikTok or Instagram"""
+    url: str
+
+
+@router.post("/submit", response_model=ProcessingTaskResponse)
+async def submit_url(
+    input_data: UniversalURLInput,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Universal endpoint that auto-detects TikTok or Instagram URLs
+    and routes to the appropriate processor.
+
+    Requires authentication and costs 1 credit per sample.
+    """
+    url_str = str(input_data.url).strip()
+
+    # Try TikTok first
+    is_tiktok, _ = TikTokURLValidator.validate_url(url_str)
+    if is_tiktok:
+        logger.info(f"Detected TikTok URL: {url_str}")
+        tiktok_input = TikTokURLInput(url=url_str)
+        return await process_tiktok_url(tiktok_input, db, current_user)
+
+    # Try Instagram
+    is_instagram, _ = InstagramURLValidator.validate_url(url_str)
+    if is_instagram:
+        logger.info(f"Detected Instagram URL: {url_str}")
+        instagram_input = InstagramURLInput(url=url_str)
+        return await process_instagram_url(instagram_input, db, current_user)
+
+    # Neither TikTok nor Instagram
+    raise HTTPException(
+        status_code=400,
+        detail="URL must be a valid TikTok or Instagram link"
+    )
+
+
 @router.post("/tiktok", response_model=ProcessingTaskResponse)
 async def process_tiktok_url(
     input_data: TikTokURLInput,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
-    Process a TikTok URL to extract audio sample
-    This endpoint queues the video for processing and returns immediately
+    Process a TikTok URL to extract audio sample.
+    This endpoint queues the video for processing and returns immediately.
+
+    Requires authentication and costs 1 credit per sample.
     """
     url_str = str(input_data.url)
 
@@ -57,22 +103,47 @@ async def process_tiktok_url(
             return ProcessingTaskResponse(
                 task_id=str(existing_sample.id),
                 status="completed",
-                message="Sample already processed",
+                message="Sample already processed (no credits charged)",
                 sample_id=existing_sample.id
             )
         elif existing_sample.status == ProcessingStatus.PROCESSING:
             return ProcessingTaskResponse(
                 task_id=str(existing_sample.id),
                 status="processing",
-                message="Sample is currently being processed",
+                message="Sample is currently being processed (no credits charged)",
                 sample_id=existing_sample.id
             )
 
-    # Create new sample record
+    # Check credits before processing
+    credit_service = CreditService(db)
+    if current_user.credits < 1:
+        raise HTTPException(
+            status_code=402,
+            detail=f"Insufficient credits. You need 1 credit to process this sample but only have {current_user.credits}."
+        )
+
+    # Deduct credits atomically
+    credits_deducted = await credit_service.deduct_credits_atomic(
+        user_id=current_user.id,
+        credits_needed=1,
+        transaction_type="sample_processing",
+        description=f"Process TikTok sample: {normalized_url}"
+    )
+
+    if not credits_deducted:
+        raise HTTPException(
+            status_code=402,
+            detail=f"Insufficient credits. You need 1 credit to process this sample."
+        )
+
+    logger.info(f"Deducted 1 credit from user {current_user.id} for sample processing")
+
+    # Create new sample record with creator reference
     sample = Sample(
         source=SampleSource.TIKTOK,
         tiktok_url=normalized_url,
-        status=ProcessingStatus.PENDING
+        status=ProcessingStatus.PENDING,
+        creator_id=current_user.id  # Associate with user who submitted it
     )
     db.add(sample)
     await db.commit()
@@ -113,11 +184,14 @@ async def process_tiktok_url(
 @router.post("/instagram", response_model=ProcessingTaskResponse)
 async def process_instagram_url(
     input_data: InstagramURLInput,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
     """
-    Process an Instagram URL to extract audio sample
-    This endpoint queues the video for processing and returns immediately
+    Process an Instagram URL to extract audio sample.
+    This endpoint queues the video for processing and returns immediately.
+
+    Requires authentication and costs 1 credit per sample.
     """
     url_str = str(input_data.url)
 
@@ -146,18 +220,18 @@ async def process_instagram_url(
             return ProcessingTaskResponse(
                 task_id=str(existing_sample.id),
                 status="completed",
-                message="Sample already processed",
+                message="Sample already processed (no credits charged)",
                 sample_id=existing_sample.id
             )
         elif existing_sample.status == ProcessingStatus.PROCESSING:
             return ProcessingTaskResponse(
                 task_id=str(existing_sample.id),
                 status="processing",
-                message="Sample is currently being processed",
+                message="Sample is currently being processed (no credits charged)",
                 sample_id=existing_sample.id
             )
         elif existing_sample.status in (ProcessingStatus.FAILED, ProcessingStatus.PENDING):
-            # Retry failed or stuck samples
+            # Retry failed or stuck samples (no additional credits charged)
             logger.info(f"Retrying sample {existing_sample.id} with status {existing_sample.status}")
             existing_sample.status = ProcessingStatus.PENDING
             existing_sample.error_message = None
@@ -191,16 +265,41 @@ async def process_instagram_url(
             return ProcessingTaskResponse(
                 task_id=str(existing_sample.id),
                 status="queued",
-                message="Instagram sample queued for processing (retry)",
+                message="Instagram sample queued for processing (retry - no credits charged)",
                 sample_id=existing_sample.id
             )
 
-    # Create new sample record
+    # Check credits before processing
+    credit_service = CreditService(db)
+    if current_user.credits < 1:
+        raise HTTPException(
+            status_code=402,
+            detail=f"Insufficient credits. You need 1 credit to process this sample but only have {current_user.credits}."
+        )
+
+    # Deduct credits atomically
+    credits_deducted = await credit_service.deduct_credits_atomic(
+        user_id=current_user.id,
+        credits_needed=1,
+        transaction_type="sample_processing",
+        description=f"Process Instagram sample: {normalized_url}"
+    )
+
+    if not credits_deducted:
+        raise HTTPException(
+            status_code=402,
+            detail=f"Insufficient credits. You need 1 credit to process this sample."
+        )
+
+    logger.info(f"Deducted 1 credit from user {current_user.id} for Instagram sample processing")
+
+    # Create new sample record with creator reference
     sample = Sample(
         source=SampleSource.INSTAGRAM,
         instagram_url=normalized_url,
         instagram_shortcode=shortcode,
-        status=ProcessingStatus.PENDING
+        status=ProcessingStatus.PENDING,
+        creator_id=current_user.id  # Associate with user who submitted it
     )
     db.add(sample)
 

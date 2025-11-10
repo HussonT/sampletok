@@ -34,6 +34,118 @@ export function MobileMiniPlayer({
     }
   }, [sample?.id, sample?.duration_seconds]);
 
+  /**
+   * Media Session API Integration
+   *
+   * Enables background playback controls on mobile devices.
+   * Shows media notifications with playback controls in:
+   * - Lock screen
+   * - Notification center
+   * - Control center (iOS)
+   * - System media controls (Android)
+   *
+   * Features:
+   * - Play/pause controls
+   * - Track metadata (title, artist, artwork)
+   * - Seek forward/backward (10 seconds)
+   * - Previous/next track (if available)
+   */
+  useEffect(() => {
+    if (!sample || typeof window === 'undefined' || !('mediaSession' in navigator)) {
+      return;
+    }
+
+    const creator = getCreatorInfo();
+
+    try {
+      // Set metadata for the current track
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: sample.title || sample.description || 'Unknown Track',
+        artist: creator.name,
+        album: 'SampleTok',
+        artwork: [
+          // Use thumbnail as artwork
+          {
+            src: sample.thumbnail_url || sample.cover_url || '/icon-192x192.png',
+            sizes: '192x192',
+            type: 'image/png'
+          },
+          {
+            src: sample.thumbnail_url || sample.cover_url || '/icon-512x512.png',
+            sizes: '512x512',
+            type: 'image/png'
+          }
+        ]
+      });
+
+      // Set playback state
+      navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+
+      // Action handlers
+      navigator.mediaSession.setActionHandler('play', () => {
+        onPlayPause?.();
+      });
+
+      navigator.mediaSession.setActionHandler('pause', () => {
+        onPlayPause?.();
+      });
+
+      // Seek forward 10 seconds
+      navigator.mediaSession.setActionHandler('seekforward', () => {
+        if (audioRef.current) {
+          audioRef.current.currentTime = Math.min(
+            audioRef.current.currentTime + 10,
+            duration
+          );
+        }
+      });
+
+      // Seek backward 10 seconds
+      navigator.mediaSession.setActionHandler('seekbackward', () => {
+        if (audioRef.current) {
+          audioRef.current.currentTime = Math.max(
+            audioRef.current.currentTime - 10,
+            0
+          );
+        }
+      });
+
+      // Update position state (for progress bar in notifications)
+      const updatePositionState = () => {
+        if ('setPositionState' in navigator.mediaSession && audioRef.current) {
+          try {
+            navigator.mediaSession.setPositionState({
+              duration: duration || audioRef.current.duration || 0,
+              playbackRate: audioRef.current.playbackRate,
+              position: audioRef.current.currentTime || 0,
+            });
+          } catch (error) {
+            // Some browsers don't support all position state features
+            console.debug('Media Session position state error:', error);
+          }
+        }
+      };
+
+      // Update position state periodically
+      const positionInterval = setInterval(updatePositionState, 1000);
+
+      // Cleanup on unmount or sample change
+      return () => {
+        clearInterval(positionInterval);
+        if ('mediaSession' in navigator) {
+          navigator.mediaSession.metadata = null;
+          navigator.mediaSession.setActionHandler('play', null);
+          navigator.mediaSession.setActionHandler('pause', null);
+          navigator.mediaSession.setActionHandler('seekforward', null);
+          navigator.mediaSession.setActionHandler('seekbackward', null);
+        }
+      };
+    } catch (error) {
+      // Silent fail - Media Session API is enhancement, not critical
+      console.debug('Media Session API error:', error);
+    }
+  }, [sample, isPlaying, duration, onPlayPause]);
+
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio || !sample) return;

@@ -10,6 +10,7 @@ import { Heart, Volume2, VolumeX, Play, Pause, Users, Download, Music2, Waves, A
 import { getAvatarWithFallback } from '@/lib/avatar';
 import { useAuth, useClerk } from '@clerk/nextjs';
 import { toast } from 'sonner';
+import { useHaptics } from '@/hooks/use-haptics';
 
 interface VideoFeedItemProps {
   sample: Sample;
@@ -19,6 +20,10 @@ interface VideoFeedItemProps {
   onAuthRequired?: () => void;
   globalMuted: boolean;
   onMuteChange: (muted: boolean) => void;
+  autoPlayEnabled: boolean;
+  hapticFeedbackEnabled: boolean;
+  dataSaverMode: boolean;
+  isLoading?: boolean;
 }
 
 export function VideoFeedItem({
@@ -28,7 +33,11 @@ export function VideoFeedItem({
   onFavoriteChange,
   onAuthRequired,
   globalMuted,
-  onMuteChange
+  onMuteChange,
+  autoPlayEnabled,
+  hapticFeedbackEnabled,
+  dataSaverMode,
+  isLoading = false
 }: VideoFeedItemProps) {
   const { isSignedIn, getToken } = useAuth();
   const { openSignUp } = useClerk();
@@ -38,11 +47,17 @@ export function VideoFeedItem({
   const [isTogglingFavorite, setIsTogglingFavorite] = useState(false);
   const [waveformError, setWaveformError] = useState(false);
 
-  // Auto-play/pause based on whether this video is in view
+  // Haptic feedback (respects mobile settings)
+  const { triggerHaptic } = useHaptics({ enabled: hapticFeedbackEnabled });
+  const onMedium = () => triggerHaptic('medium');
+  const onSuccess = () => triggerHaptic('success');
+  const onError = () => triggerHaptic('error');
+
+  // Auto-play/pause based on whether this video is in view (respects autoPlayEnabled setting)
   useEffect(() => {
     if (!videoRef.current) return;
 
-    if (isActive) {
+    if (isActive && autoPlayEnabled) {
       // Auto-play when scrolled into view (muted by default for autoplay policy)
       videoRef.current.play().catch((err) => {
         console.error('Autoplay failed:', err);
@@ -50,14 +65,17 @@ export function VideoFeedItem({
       });
       setIsPlaying(true);
     } else {
-      // Pause when scrolled out of view
+      // Pause when scrolled out of view or autoplay is disabled
       videoRef.current.pause();
       setIsPlaying(false);
     }
-  }, [isActive]);
+  }, [isActive, autoPlayEnabled]);
 
   const togglePlayPause = () => {
     if (!videoRef.current) return;
+
+    // Haptic feedback on button press
+    onMedium();
 
     if (isPlaying) {
       videoRef.current.pause();
@@ -72,6 +90,10 @@ export function VideoFeedItem({
 
   const toggleMute = () => {
     if (!videoRef.current) return;
+
+    // Haptic feedback on button press
+    onMedium();
+
     const newMutedState = !globalMuted;
     videoRef.current.muted = newMutedState;
     onMuteChange(newMutedState);
@@ -112,15 +134,20 @@ export function VideoFeedItem({
       if (!response.ok) {
         // Revert on error
         setIsFavorited(!newFavoritedState);
+        // Haptic feedback for error
+        onError();
         throw new Error('Failed to update favorite');
       }
 
       // Notify parent component
       onFavoriteChange?.(sample.id, newFavoritedState);
 
-      // Show subtle feedback
+      // Haptic feedback for success (different pattern for favorite vs unfavorite)
       if (newFavoritedState) {
+        onSuccess(); // Double tap for adding to favorites
         toast.success('Added to favorites');
+      } else {
+        onMedium(); // Single tap for removing
       }
     } catch (error) {
       console.error('Error toggling favorite:', error);
@@ -170,6 +197,109 @@ export function VideoFeedItem({
   };
 
   const creator = getCreatorInfo();
+
+  // Loading skeleton state
+  if (isLoading) {
+    return (
+      <div
+        data-index={index}
+        className="relative h-screen w-full snap-start snap-always flex items-center justify-center bg-[hsl(0,0%,17%)]"
+      >
+        {/* Gradient background */}
+        <div className="absolute inset-0 bg-gradient-to-b from-gray-900 to-black" />
+        <div className="absolute inset-0 bg-black/30 pointer-events-none z-10" />
+
+        {/* Loading content */}
+        <div className="relative z-20 w-full h-full flex flex-col p-4 pt-16 pb-28">
+          {/* TOP: Audio Metadata Cards - Skeleton */}
+          <div className="flex gap-3 mb-4">
+            {[1, 2, 3].map((i) => (
+              <div
+                key={i}
+                className="flex-1 bg-white/5 backdrop-blur-md rounded-xl p-2.5 border border-white/10 animate-pulse"
+              >
+                <div className="h-3 bg-white/10 rounded w-12 mb-2" />
+                <div className="h-7 bg-white/20 rounded w-16" />
+              </div>
+            ))}
+          </div>
+
+          {/* Creator Card - Skeleton */}
+          <div className="bg-white/5 backdrop-blur-md rounded-xl border border-white/10 p-2.5 mb-3">
+            <div className="flex gap-2.5 animate-pulse">
+              {/* Avatar skeleton */}
+              <div className="w-11 h-11 rounded-full bg-white/10 flex-shrink-0" />
+
+              <div className="flex-1 min-w-0">
+                {/* Name skeleton */}
+                <div className="h-4 bg-white/10 rounded w-32 mb-2" />
+                <div className="h-3 bg-white/10 rounded w-24 mb-2" />
+
+                {/* Stats Grid - Skeleton */}
+                <div className="grid grid-cols-3 gap-1.5">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="flex flex-col items-center bg-white/5 rounded-lg py-1">
+                      <div className="h-4 bg-white/10 rounded w-12 mb-1" />
+                      <div className="h-2 bg-white/10 rounded w-10" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Waveform - Skeleton with animated bars */}
+          <div className="mb-4">
+            <div className="w-full h-24 flex items-center justify-center gap-1">
+              {Array.from({ length: 50 }).map((_, i) => {
+                // Use deterministic height based on index to avoid hydration errors
+                const height = ((i * 7) % 60) + 20; // Generates values between 20-80
+                return (
+                  <div
+                    key={i}
+                    className="flex-1 bg-gradient-to-t from-[hsl(338,82%,65%)]/30 to-[hsl(338,82%,65%)]/10 rounded-full animate-pulse"
+                    style={{
+                      height: `${height}%`,
+                      animationDelay: `${i * 20}ms`,
+                      animationDuration: '1.5s',
+                    }}
+                  />
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Spacer */}
+          <div className="flex-1" />
+
+          {/* Loading text */}
+          <div className="text-center">
+            <div className="inline-flex items-center gap-2 bg-white/5 backdrop-blur-md rounded-full px-4 py-2 border border-white/10">
+              <div className="w-4 h-4 border-2 border-[hsl(338,82%,65%)] border-t-transparent rounded-full animate-spin" />
+              <span className="text-sm text-white/70">Loading sample...</span>
+            </div>
+          </div>
+        </div>
+
+        {/* RIGHT SIDE: Action Buttons - Disabled state */}
+        <div className="absolute right-3 bottom-32 z-30 flex flex-col gap-3 opacity-50">
+          <div className="rounded-xl w-14 h-14 bg-white/10 border border-white/20 backdrop-blur-md flex flex-col items-center justify-center gap-0.5">
+            <Heart className="w-6 h-6 text-white" />
+            <span className="text-[9px] leading-tight text-white">Save</span>
+          </div>
+          <div className="rounded-xl w-14 h-14 bg-white/10 border border-white/20 backdrop-blur-md flex items-center justify-center">
+            <Download className="w-6 h-6 text-white" />
+          </div>
+          <div className="rounded-xl w-14 h-14 bg-white/10 border border-white/20 backdrop-blur-md flex items-center justify-center">
+            <Play className="w-6 h-6 text-white" />
+          </div>
+          <div className="rounded-xl w-14 h-14 bg-white/10 border border-white/20 backdrop-blur-md flex items-center justify-center">
+            <VolumeX className="w-6 h-6 text-white" />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div

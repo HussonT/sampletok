@@ -61,5 +61,6 @@ export function useSampleQueue({ apiClient, enabled = true }: UseSampleQueueOpti
     hasMore: hasNextPage || false,
     isLoading: isLoading || isFetchingNextPage,
     reset,
+    refetch: reset, // Alias for consistency
   };
 }
