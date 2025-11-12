@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Icon Generator</title>
+  <style>
+    body {
+      font-family: system-ui;
+      padding: 20px;
+      background: #1a1a1a;
+      color: white;
+    }
+    canvas {
+      border: 1px solid #333;
+      margin: 10px;
+      background: #000;
+    }
+    .preview {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+      margin-top: 20px;
+    }
+    .preview-item {
+      text-align: center;
+    }
+    button {
+      background: #ec4899;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 16px;
+      margin: 5px;
+    }
+    button:hover {
+      background: #db2777;
+    }
+  </style>
+</head>
+<body>
+  <h1>SampleTok Icon Generator</h1>
+  <p>Click the buttons below to download each icon size:</p>
+
+  <div id="buttons"></div>
+  <div class="preview" id="preview"></div>
+
+  <script>
+    const sizes = [
+      { name: 'favicon-16x16', size: 16, rounded: 2 },
+      { name: 'favicon-32x32', size: 32, rounded: 4 },
+      { name: 'apple-touch-icon', size: 180, rounded: 36 },
+      { name: 'icon-192x192', size: 192, rounded: 38 },
+      { name: 'icon-512x512', size: 512, rounded: 102 },
+      { name: 'icon-192x192-maskable', size: 192, rounded: 38, maskable: true },
+      { name: 'icon-512x512-maskable', size: 512, rounded: 102, maskable: true }
+    ];
+
+    function drawIcon(canvas, size, rounded, maskable = false) {
+      const ctx = canvas.getContext('2d');
+      const scale = maskable ? 0.7 : 1; // Maskable icons need safe zone padding
+      const offset = maskable ? size * 0.15 : 0;
+      const iconSize = size * scale;
+
+      canvas.width = size;
+      canvas.height = size;
+
+      // Clear canvas
+      ctx.clearRect(0, 0, size, size);
+
+      // Draw rounded rectangle background with gradient
+      const gradient = ctx.createLinearGradient(0, 0, size, size);
+      gradient.addColorStop(0, '#ec4899'); // Pink
+      gradient.addColorStop(1, '#db2777'); // Rose
+
+      ctx.fillStyle = gradient;
+
+      // Rounded rectangle path
+      ctx.beginPath();
+      ctx.roundRect(0, 0, size, size, rounded);
+      ctx.fill();
+
+      // Draw music note icon
+      ctx.fillStyle = 'white';
+
+      // Scale note to fit with padding
+      const noteScale = iconSize * 0.5;
+      const centerX = size / 2;
+      const centerY = size / 2;
+
+      ctx.save();
+      ctx.translate(centerX + offset, centerY + offset);
+      ctx.scale(noteScale / 24, noteScale / 24); // SVG viewBox is 24x24
+      ctx.translate(-12, -12); // Center the icon
+
+      // Music note path (similar to lucide-react Music icon)
+      const path = new Path2D('M9 18V5l12-2v13M9 18c0 1.66-1.34 3-3 3s-3-1.34-3-3 1.34-3 3-3 3 1.34 3 3zm12-2c0 1.66-1.34 3-3 3s-3-1.34-3-3 1.34-3 3-3 3 1.34 3 3z');
+      ctx.fill(path);
+
+      ctx.restore();
+    }
+
+    function downloadCanvas(canvas, filename) {
+      canvas.toBlob(blob => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+      });
+    }
+
+    // Generate all icons
+    const buttonsDiv = document.getElementById('buttons');
+    const previewDiv = document.getElementById('preview');
+
+    sizes.forEach(({ name, size, rounded, maskable }) => {
+      const canvas = document.createElement('canvas');
+      drawIcon(canvas, size, rounded, maskable);
+
+      // Add download button
+      const button = document.createElement('button');
+      button.textContent = `Download ${name}.png`;
+      button.onclick = () => downloadCanvas(canvas, `${name}.png`);
+      buttonsDiv.appendChild(button);
+
+      // Add preview
+      const previewItem = document.createElement('div');
+      previewItem.className = 'preview-item';
+      previewItem.innerHTML = `
+        <div>${name}</div>
+        <div>${size}x${size}${maskable ? ' (maskable)' : ''}</div>
+      `;
+
+      const previewCanvas = canvas.cloneNode();
+      const ctx = previewCanvas.getContext('2d');
+      ctx.drawImage(canvas, 0, 0);
+      previewCanvas.style.width = '100px';
+      previewCanvas.style.height = '100px';
+      previewCanvas.style.imageRendering = size < 64 ? 'pixelated' : 'auto';
+
+      previewItem.appendChild(previewCanvas);
+      previewDiv.appendChild(previewItem);
+    });
+
+    // Add download all button
+    const downloadAllBtn = document.createElement('button');
+    downloadAllBtn.textContent = '⬇️ Download All Icons';
+    downloadAllBtn.style.background = '#10b981';
+    downloadAllBtn.onclick = () => {
+      sizes.forEach(({ name, size, rounded, maskable }) => {
+        const canvas = document.createElement('canvas');
+        drawIcon(canvas, size, rounded, maskable);
+        setTimeout(() => downloadCanvas(canvas, `${name}.png`), sizes.indexOf({ name, size, rounded, maskable }) * 100);
+      });
+    };
+    buttonsDiv.insertBefore(downloadAllBtn, buttonsDiv.firstChild);
+  </script>
+</body>
+</html>

@@ -1,9 +1,40 @@
 // Custom Service Worker handlers for SampleTok PWA
 // This file contains custom logic that extends the auto-generated service worker
 
-// Cache names
+// Cache names and limits
 const CACHE_VERSION = 'v1';
 const OFFLINE_CACHE = `offline-${CACHE_VERSION}`;
+const MAX_CACHE_SIZE = 50 * 1024 * 1024; // 50MB limit
+const MAX_CACHED_ITEMS = 100; // Maximum number of cached items
+
+// Helper function to manage cache size
+async function addToCache(cacheName, request, response) {
+  const cache = await caches.open(cacheName);
+
+  // Only cache specific resource types (not API responses or dynamic content)
+  const url = new URL(request.url);
+  const shouldCache =
+    request.destination === 'image' ||
+    request.destination === 'font' ||
+    request.destination === 'style' ||
+    request.destination === 'script' ||
+    url.pathname.match(/\.(png|jpg|jpeg|svg|gif|webp|woff2?|ttf|css|js)$/i);
+
+  if (!shouldCache) {
+    return; // Don't cache API responses, HTML, or other dynamic content
+  }
+
+  // Add to cache
+  await cache.put(request, response);
+
+  // Check cache size and cleanup if needed
+  const keys = await cache.keys();
+  if (keys.length > MAX_CACHED_ITEMS) {
+    // Remove oldest items (first in cache) - FIFO eviction policy
+    await cache.delete(keys[0]);
+    console.log('[SW] Cache limit reached, removed oldest item');
+  }
+}
 
 // Install event - cache offline page
 self.addEventListener('install', (event) => {
@@ -102,10 +133,10 @@ self.addEventListener('fetch', (event) => {
         // Clone the response before caching
         const responseToCache = response.clone();
 
-        // Cache successful responses
+        // Cache successful responses with size limits
         if (response.status === 200) {
-          caches.open(OFFLINE_CACHE).then((cache) => {
-            cache.put(request, responseToCache);
+          addToCache(OFFLINE_CACHE, request, responseToCache).catch((err) => {
+            console.warn('[SW] Failed to cache response:', err);
           });
         }
 

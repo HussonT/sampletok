@@ -75,6 +75,8 @@ class Settings(BaseSettings):
     COLLECTIONS_LIST_RATE_LIMIT_PER_MINUTE: int = 60  # Max collection list requests per minute per user
     STEM_SEPARATION_RATE_LIMIT_PER_MINUTE: int = 5  # Max stem separation requests per minute per user
     STEM_DOWNLOAD_RATE_LIMIT_PER_MINUTE: int = 30  # Max stem download requests per minute per user
+    MOBILE_FEED_RATE_LIMIT_PER_MINUTE: int = 120  # Max mobile feed requests per minute (allows smooth swipe experience)
+    MOBILE_SYNC_RATE_LIMIT_PER_MINUTE: int = 5  # Max mobile batch sync requests per minute
 
     # Audio Processing
     AUDIO_SAMPLE_RATE: int = 48000

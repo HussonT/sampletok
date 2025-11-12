@@ -6,7 +6,7 @@ Provides:
 - Batch sync endpoint for guest data migration
 """
 
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, Query, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, or_
 from sqlalchemy.orm import selectinload
@@ -15,12 +15,15 @@ from uuid import UUID
 from pydantic import BaseModel
 
 from app.core.database import get_db
+from app.core.rate_limit import limiter
+from app.core.config import settings
 from app.models import Sample, ProcessingStatus
 from app.models.user import User, UserFavorite, SampleDismissal
 from app.models.schemas import SampleResponse, PaginatedResponse
 from app.api.deps import get_current_user, get_current_user_optional
 from app.services.user_service import UserFavoriteService, SampleDismissalService
 from app.api.v1.endpoints.samples import enrich_samples_with_user_data
+from app.utils.datetime import utcnow_naive
 
 router = APIRouter()
 
@@ -39,7 +42,9 @@ class BatchSyncResponse(BaseModel):
 
 
 @router.get("/feed", response_model=PaginatedResponse)
+@limiter.limit(f"{settings.MOBILE_FEED_RATE_LIMIT_PER_MINUTE}/minute")
 async def get_mobile_feed(
+    request: Request,
     limit: int = Query(10, ge=1, le=20, description="Number of samples to return"),
     skip: int = Query(0, ge=0, description="Number of samples to skip"),
     current_user: Optional[User] = Depends(get_current_user_optional),
@@ -129,7 +134,9 @@ async def get_mobile_feed(
 
 
 @router.post("/sync", response_model=BatchSyncResponse)
+@limiter.limit(f"{settings.MOBILE_SYNC_RATE_LIMIT_PER_MINUTE}/minute")
 async def batch_sync_guest_data(
+    request: Request,
     sync_data: BatchSyncRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
@@ -156,28 +163,40 @@ async def batch_sync_guest_data(
     favorites_synced = 0
     dismissals_synced = 0
 
-    # Batch add favorites
+    # Batch add favorites - optimized to avoid N+1 queries
     if sync_data.favorited_sample_ids:
-        for sample_id in sync_data.favorited_sample_ids:
-            # Verify sample exists before adding
-            sample_query = select(Sample).where(Sample.id == sample_id)
-            sample_result = await db.execute(sample_query)
-            sample = sample_result.scalar_one_or_none()
+        # Single query: Verify all samples exist
+        valid_samples_query = select(Sample.id).where(
+            Sample.id.in_(sync_data.favorited_sample_ids)
+        )
+        valid_samples_result = await db.execute(valid_samples_query)
+        valid_sample_ids = set(valid_samples_result.scalars().all())
 
-            if sample:
-                # Check if not already favorited
-                is_favorited = await UserFavoriteService.check_if_favorited(
-                    db=db,
+        # Single query: Get existing favorites
+        existing_favorites_query = select(UserFavorite.sample_id).where(
+            and_(
+                UserFavorite.user_id == current_user.id,
+                UserFavorite.sample_id.in_(valid_sample_ids)
+            )
+        )
+        existing_favorites_result = await db.execute(existing_favorites_query)
+        existing_favorite_ids = set(existing_favorites_result.scalars().all())
+
+        # Calculate which samples need new favorites
+        new_favorite_ids = valid_sample_ids - existing_favorite_ids
+
+        # Batch insert new favorites
+        if new_favorite_ids:
+            new_favorites = [
+                UserFavorite(
                     user_id=current_user.id,
-                    sample_id=sample_id
+                    sample_id=sample_id,
+                    favorited_at=utcnow_naive()
                 )
-                if not is_favorited:
-                    await UserFavoriteService.add_favorite(
-                        db=db,
-                        user_id=current_user.id,
-                        sample_id=sample_id
-                    )
-                    favorites_synced += 1
+                for sample_id in new_favorite_ids
+            ]
+            db.add_all(new_favorites)
+            favorites_synced = len(new_favorite_ids)
 
     # Batch add dismissals
     if sync_data.dismissed_sample_ids:

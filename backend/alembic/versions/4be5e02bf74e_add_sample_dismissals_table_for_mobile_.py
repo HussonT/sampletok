@@ -4,12 +4,6 @@ Revision ID: 4be5e02bf74e
 Revises: e6a6eaec41cf
 Create Date: 2025-11-09 14:58:57.074850
 
-Creates sample_dismissals table to track user-dismissed samples
-for personalized mobile feed. Enables:
-- Tinder-style swipe dismiss functionality
-- Personalized feed excluding dismissed samples
-- Guest data sync after login
-
 """
 from alembic import op
 import sqlalchemy as sa

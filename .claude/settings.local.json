@@ -72,7 +72,8 @@
       "Bash(source:*)",
       "Bash(alembic merge:*)",
       "Bash(pip freeze:*)",
-      "Bash(requirements.txt)"
+      "Bash(requirements.txt)",
+      "Bash(git mv:*)"
     ],
     "deny": [],
     "ask": []
