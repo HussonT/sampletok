@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth, useClerk } from '@clerk/nextjs';
 import { Play, Pause, Download, Heart, Music2, Activity, Clock } from 'lucide-react';
 import { Sample, ProcessingStatus } from '@/types/api';
@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { useHapticFeedback } from '@/hooks/use-haptics';
+import { useMobileAudioPlayer } from '@/contexts/audio-player-context';
 
 interface MobileSampleTableProps {
   samples: Sample[];
@@ -33,6 +34,7 @@ export function MobileSampleTable({
 }: MobileSampleTableProps) {
   const { isSignedIn, getToken } = useAuth();
   const { openSignUp } = useClerk();
+  const { setPlaybackQueue } = useMobileAudioPlayer();
   const [downloadModalOpen, setDownloadModalOpen] = useState(false);
   const [selectedSample, setSelectedSample] = useState<Sample | null>(null);
   const [downloading, setDownloading] = useState(false);
@@ -40,6 +42,12 @@ export function MobileSampleTable({
 
   // Haptic feedback
   const { onMedium, onSuccess, onError } = useHapticFeedback();
+
+  // Update playback queue when samples change
+  useEffect(() => {
+    const completedSamples = samples.filter(s => s.status === ProcessingStatus.COMPLETED);
+    setPlaybackQueue(completedSamples);
+  }, [samples, setPlaybackQueue]);
 
   const formatDuration = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);

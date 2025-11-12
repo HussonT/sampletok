@@ -2,30 +2,12 @@
 
 import { usePathname } from 'next/navigation';
 import { AppSidebar } from '@/components/features/app-sidebar';
-import { useEffect, useState, useRef, useCallback, createContext, useContext } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { ProcessingContext } from '@/contexts/processing-context';
 import { BottomPlayer } from '@/components/features/bottom-player';
 import { Sample } from '@/types/api';
 import { QueryProvider } from '@/providers/query-provider';
-
-// Audio player context
-interface AudioPlayerContextType {
-  currentSample: Sample | null;
-  isPlaying: boolean;
-  setCurrentSample: (sample: Sample | null) => void;
-  setIsPlaying: (playing: boolean) => void;
-  playPreview: (sample: Sample) => void;
-}
-
-const AudioPlayerContext = createContext<AudioPlayerContextType | undefined>(undefined);
-
-export function useAudioPlayer() {
-  const context = useContext(AudioPlayerContext);
-  if (!context) {
-    throw new Error('useAudioPlayer must be used within AppLayout');
-  }
-  return context;
-}
+import { DesktopAudioPlayerContext, DesktopAudioPlayerContextType } from '@/contexts/desktop-audio-player-context';
 
 export default function AppLayout({
   children,
@@ -103,7 +85,7 @@ export default function AppLayout({
     // TODO: Implement download logic if needed
   }, []);
 
-  const audioPlayerValue: AudioPlayerContextType = {
+  const audioPlayerValue: DesktopAudioPlayerContextType = {
     currentSample,
     isPlaying,
     setCurrentSample,
@@ -114,7 +96,7 @@ export default function AppLayout({
   return (
     <QueryProvider>
       <ProcessingContext.Provider value={{ registerProcessingHandler, unregisterProcessingHandler }}>
-        <AudioPlayerContext.Provider value={audioPlayerValue}>
+        <DesktopAudioPlayerContext.Provider value={audioPlayerValue}>
           <div className="flex h-screen w-screen overflow-hidden">
             {/* Sidebar - Fixed width */}
             <div className="w-64 flex-shrink-0 border-r bg-sidebar">
@@ -141,7 +123,7 @@ export default function AppLayout({
               onFavoriteChange={handleFavoriteChange}
             />
           </div>
-        </AudioPlayerContext.Provider>
+        </DesktopAudioPlayerContext.Provider>
       </ProcessingContext.Provider>
     </QueryProvider>
   );

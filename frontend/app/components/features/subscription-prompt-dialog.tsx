@@ -1,6 +1,6 @@
 "use client";
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Dialog,
@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { TrendingUp, X } from 'lucide-react';
+import { analytics } from '@/lib/analytics';
 
 interface SubscriptionPromptDialogProps {
   open: boolean;
@@ -29,6 +30,13 @@ export function SubscriptionPromptDialog({
   feature = "download WAV files"
 }: SubscriptionPromptDialogProps) {
   const router = useRouter();
+
+  // Track when subscription paywall is viewed
+  useEffect(() => {
+    if (open) {
+      analytics.subscriptionViewed();
+    }
+  }, [open]);
 
   const handleSubscribe = () => {
     onOpenChange(false);

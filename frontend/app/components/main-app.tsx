@@ -91,7 +91,7 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
       if (musicalKey) {
         params.key = musicalKey;
       }
-      const data = await apiClient.get<PaginatedResponse<Sample>>('/samples/', params);
+      const data = await apiClient.get<PaginatedResponse<Sample>>('/samples', params);
       return data;
     },
     // Only use initialData when on page 1 AND no filters are active
@@ -132,7 +132,7 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
           if (bpmMax !== null && bpmMax !== undefined) params.bpm_max = bpmMax;
           if (musicalKey) params.key = musicalKey;
 
-          const data = await apiClient.get<PaginatedResponse<Sample>>('/samples/', params);
+          const data = await apiClient.get<PaginatedResponse<Sample>>('/samples', params);
           return data;
         },
         staleTime: 30 * 1000,

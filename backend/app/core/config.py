@@ -141,6 +141,10 @@ class Settings(BaseSettings):
     SUBSCRIPTION_CANCEL_URL: str = "http://localhost:3000/pricing"
     FRONTEND_URL: Optional[str] = "http://localhost:3000"  # For Stripe Customer Portal return URL
 
+    # PostHog Analytics
+    POSTHOG_PROJECT_KEY: Optional[str] = None  # Required for analytics tracking
+    POSTHOG_HOST: str = "https://eu.posthog.com"  # EU hosting for GDPR compliance
+
     class Config:
         env_file = ".env"
         case_sensitive = True

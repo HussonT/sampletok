@@ -6,7 +6,7 @@ import { Search, X, SlidersHorizontal, TrendingUp, Clock } from 'lucide-react';
 import { MobileSampleTable } from '@/components/mobile/mobile-sample-table';
 import { Sample } from '@/types/api';
 import { createAuthenticatedClient, publicApi } from '@/lib/api-client';
-import { useAudioPlayer } from '../layout';
+import { useMobileAudioPlayer } from '@/contexts/audio-player-context';
 import { useHapticFeedback } from '@/hooks/use-haptics';
 
 // Musical keys for filter
@@ -42,7 +42,7 @@ interface RecentSearch {
 
 export default function SearchPage() {
   const { isSignedIn, getToken, isLoaded } = useAuth();
-  const { currentSample, isPlaying, playPreview } = useAudioPlayer();
+  const { currentSample, isPlaying, playPreview } = useMobileAudioPlayer();
   const { onMedium, onLight } = useHapticFeedback();
 
   // Search state

@@ -6,12 +6,12 @@ import { SoundsTable } from '@/components/features/sounds-table';
 import { TableLoadingSkeleton } from '@/components/ui/loading-skeletons';
 import { Sample } from '@/types/api';
 import { useAuth } from '@clerk/nextjs';
-import { useAudioPlayer } from '../layout';
+import { useDesktopAudioPlayer } from '@/contexts/desktop-audio-player-context';
 import { createAuthenticatedClient } from '@/lib/api-client';
 
 export default function MyFavoritesPage() {
   const { getToken } = useAuth();
-  const { currentSample, isPlaying, playPreview } = useAudioPlayer();
+  const { currentSample, isPlaying, playPreview } = useDesktopAudioPlayer();
   const [favorites, setFavorites] = useState<Sample[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 

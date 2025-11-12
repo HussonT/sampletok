@@ -10,6 +10,7 @@ import { useAuth } from '@clerk/nextjs';
 import { useState, useEffect, useCallback } from 'react';
 import { createAuthenticatedClient, publicApi } from '@/lib/api-client';
 import { Loader2 } from 'lucide-react';
+import { analytics } from '@/lib/analytics';
 
 /**
  * Mobile Feed Page
@@ -150,7 +151,12 @@ export default function MobileFeedPage() {
   const handleVideoChange = useCallback((videoIndex: number) => {
     // Increment view count for auth prompt tracking (guests only)
     incrementViewCount();
-  }, [incrementViewCount]);
+
+    // Track mobile feed viewed every 5th video
+    if (videoIndex > 0 && videoIndex % 5 === 0) {
+      analytics.mobileFeedViewed();
+    }
+  }, [incrementViewCount, samples.length]);
 
   // Loading state (initial load) - Show skeleton feed item
   if (isLoading && samples.length === 0) {

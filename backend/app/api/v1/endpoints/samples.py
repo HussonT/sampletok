@@ -134,7 +134,7 @@ async def enrich_samples_with_user_data(
     return responses
 
 
-@router.get("/", response_model=PaginatedResponse)
+@router.get("", response_model=PaginatedResponse)
 async def get_samples(
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=20),
@@ -355,6 +355,7 @@ async def get_popular_tags(
             f"Popular tags query timeout after {query_time:.2f}s - Consider implementing caching or denormalization",
             extra={"duration": query_time, "limit": limit}
         )
+        await db.rollback()  # Rollback the invalid transaction
         return []  # Return empty on timeout
 
 

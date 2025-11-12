@@ -7,12 +7,12 @@ import { MobileSampleTable } from '@/components/mobile/mobile-sample-table';
 import { PullToRefreshIndicator } from '@/components/mobile/pull-to-refresh-indicator';
 import { Sample } from '@/types/api';
 import { createAuthenticatedClient } from '@/lib/api-client';
-import { useAudioPlayer } from '../layout';
+import { useMobileAudioPlayer } from '@/contexts/audio-player-context';
 import { usePullToRefresh } from '@/hooks/use-pull-to-refresh';
 
 export default function FavoritesPage() {
   const { isSignedIn, getToken, isLoaded } = useAuth();
-  const { currentSample, isPlaying, playPreview } = useAudioPlayer();
+  const { currentSample, isPlaying, playPreview } = useMobileAudioPlayer();
   const [favorites, setFavorites] = useState<Sample[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -75,19 +75,31 @@ export default function FavoritesPage() {
 
   if (!isSignedIn) {
     return (
-      <div className="flex flex-col items-center justify-center h-screen text-center p-8 bg-black">
-        <Heart className="w-16 h-16 text-gray-600 mb-4" />
-        <h2 className="text-xl font-bold mb-2 text-white">
-          Sign in to see your favorites
-        </h2>
-        <p className="text-gray-400 mb-6">
-          Save samples you love and access them anytime
-        </p>
-        <SignInButton mode="modal">
-          <button className="bg-green-600 hover:bg-green-700 px-6 py-3 rounded-lg text-white font-semibold">
-            Sign In
-          </button>
-        </SignInButton>
+      <div className="flex flex-col items-center justify-center h-screen text-center p-8 bg-black relative overflow-hidden">
+        {/* Gradient background effect */}
+        <div className="absolute inset-0 bg-gradient-to-br from-[hsl(338,82%,65%)]/5 via-transparent to-transparent" />
+
+        <div className="relative z-10 space-y-6">
+          {/* Icon with gradient background */}
+          <div className="mx-auto w-24 h-24 rounded-full bg-gradient-to-br from-[hsl(338,82%,65%)]/20 to-[hsl(338,82%,65%)]/5 flex items-center justify-center backdrop-blur-sm border border-[hsl(338,82%,65%)]/20">
+            <Heart className="w-12 h-12 text-[hsl(338,82%,65%)]" />
+          </div>
+
+          <div className="space-y-3">
+            <h2 className="text-2xl font-bold text-white">
+              Sign in to see your favorites
+            </h2>
+            <p className="text-gray-400 text-base max-w-sm mx-auto">
+              Save samples you love and access them anytime, anywhere
+            </p>
+          </div>
+
+          <SignInButton mode="modal">
+            <button className="bg-gradient-to-br from-[hsl(338,82%,65%)] to-[hsl(338,82%,55%)] hover:from-[hsl(338,82%,60%)] hover:to-[hsl(338,82%,50%)] px-8 py-4 rounded-full text-white font-semibold shadow-lg shadow-[hsl(338,82%,65%)]/25 transition-all duration-200 active:scale-95">
+              Sign In
+            </button>
+          </SignInButton>
+        </div>
       </div>
     );
   }
@@ -123,17 +135,35 @@ export default function FavoritesPage() {
 
   if (favorites.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-screen text-center p-8 bg-black">
-        <Heart className="w-16 h-16 text-gray-600 mb-4" />
-        <h2 className="text-xl font-bold mb-2 text-white">
-          No favorites yet
-        </h2>
-        <p className="text-gray-400 mb-2">
-          Favorites will appear here when you tap the heart button on samples
-        </p>
-        <p className="text-sm text-gray-500">
-          Go to the Feed tab and start discovering samples!
-        </p>
+      <div className="flex flex-col items-center justify-center h-screen text-center p-8 bg-black relative overflow-hidden">
+        {/* Gradient background effect */}
+        <div className="absolute inset-0 bg-gradient-to-br from-[hsl(338,82%,65%)]/5 via-transparent to-transparent" />
+
+        <div className="relative z-10 space-y-6 max-w-md">
+          {/* Animated heart icon */}
+          <div className="mx-auto w-24 h-24 rounded-full bg-gradient-to-br from-[hsl(338,82%,65%)]/20 to-[hsl(338,82%,65%)]/5 flex items-center justify-center backdrop-blur-sm border border-[hsl(338,82%,65%)]/20">
+            <Heart className="w-12 h-12 text-gray-500" />
+          </div>
+
+          <div className="space-y-3">
+            <h2 className="text-2xl font-bold text-white">
+              No favorites yet
+            </h2>
+            <p className="text-gray-400 text-base leading-relaxed">
+              Tap the <Heart className="inline w-4 h-4 mx-1 text-[hsl(338,82%,65%)]" /> button on samples to save them here
+            </p>
+            <p className="text-sm text-gray-500">
+              Go to the Feed tab and start discovering samples!
+            </p>
+          </div>
+
+          {/* Visual hint */}
+          <div className="flex items-center justify-center gap-2 text-xs text-gray-500">
+            <div className="w-8 h-0.5 bg-gradient-to-r from-transparent to-gray-700" />
+            <span>Swipe between tabs below</span>
+            <div className="w-8 h-0.5 bg-gradient-to-l from-transparent to-gray-700" />
+          </div>
+        </div>
       </div>
     );
   }

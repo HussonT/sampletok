@@ -10,7 +10,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { SoundsTable } from '@/components/features/sounds-table';
-import { useAudioPlayer } from '../../layout';
+import { useDesktopAudioPlayer } from '@/contexts/desktop-audio-player-context';
 import Link from 'next/link';
 import { TableLoadingSkeleton } from '@/components/ui/loading-skeletons';
 
@@ -20,7 +20,7 @@ export default function CollectionDetailPage() {
   const params = useParams();
   const router = useRouter();
   const collectionId = params.id as string;
-  const { currentSample, isPlaying, playPreview } = useAudioPlayer();
+  const { currentSample, isPlaying, playPreview } = useDesktopAudioPlayer();
 
   const [collection, setCollection] = useState<CollectionWithSamples | null>(null);
   const [loading, setLoading] = useState(true);

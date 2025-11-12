@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/card';
 import { CheckCircle, Loader2, Coins, Sparkles } from 'lucide-react';
 import { createAuthenticatedClient } from '@/lib/api-client';
 import confetti from 'canvas-confetti';
+import { analytics } from '@/lib/analytics';
 
 interface CreditBalanceData {
   credits: number;
@@ -87,6 +88,11 @@ export default function SubscriptionSuccessPage() {
         // Fetch current credit balance
         const balanceData = await api.get<CreditBalanceData>('/credits/balance');
         setCreditData(balanceData);
+
+        // Track subscription completion
+        if (balanceData.subscription_tier) {
+          analytics.subscriptionCompleted(balanceData.subscription_tier);
+        }
 
         // Optionally fetch transaction details if session_id is present
         if (sessionId) {

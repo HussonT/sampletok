@@ -16,6 +16,7 @@ import {
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Sample } from '@/types/api';
 import { HlsAudioPlayer } from './hls-audio-player';
+import { analytics } from '@/lib/analytics';
 
 interface AudioPlayerProps {
   sample: Sample | null;
@@ -46,7 +47,12 @@ export function AudioPlayer({
       audioRef.current.currentTime = 0;
       setCurrentTime(0);
     }
-  }, [sample]);
+
+    // Track audio play when new sample loads and starts playing
+    if (sample && isPlaying) {
+      analytics.samplePlayed(sample, 'player');
+    }
+  }, [sample, isPlaying]);
 
   // Handle play/pause state
   useEffect(() => {

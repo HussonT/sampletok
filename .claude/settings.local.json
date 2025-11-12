@@ -70,7 +70,9 @@
       "Bash(npm install:*)",
       "Bash(psql:*)",
       "Bash(source:*)",
-      "Bash(alembic merge:*)"
+      "Bash(alembic merge:*)",
+      "Bash(pip freeze:*)",
+      "Bash(requirements.txt)"
     ],
     "deny": [],
     "ask": []

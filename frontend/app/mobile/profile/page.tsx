@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useAuth, useClerk, SignInButton } from '@clerk/nextjs';
-import { User, Settings, LogOut, Monitor, TrendingUp, Heart, MoveRight, Calendar, Smartphone, Zap, Database, ExternalLink, Coins } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { User, Settings, LogOut, Monitor, Smartphone, Zap, Database, ExternalLink, Coins, Crown, Sparkles } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { useMobileSettings } from '@/hooks/use-mobile-settings';
@@ -13,6 +14,7 @@ import { toast } from 'sonner';
 export default function ProfilePage() {
   const { isSignedIn, isLoaded, getToken } = useAuth();
   const { signOut, user } = useClerk();
+  const router = useRouter();
   const { settings, updateSetting, isLoaded: settingsLoaded } = useMobileSettings();
   const [stats, setStats] = useState<UserStats | null>(null);
   const [isLoadingStats, setIsLoadingStats] = useState(true);
@@ -75,28 +77,34 @@ export default function ProfilePage() {
 
   if (!isSignedIn) {
     return (
-      <div className="flex flex-col items-center justify-center h-screen text-center p-8 bg-black">
-        <User className="w-16 h-16 text-gray-600 mb-4" />
-        <h2 className="text-xl font-bold mb-2 text-white">
-          Sign in to access your profile
-        </h2>
-        <p className="text-gray-400 mb-6">
-          View your stats, settings, and preferences
-        </p>
-        <SignInButton mode="modal">
-          <button className="bg-[hsl(338,82%,65%)] hover:bg-[hsl(338,82%,55%)] px-6 py-3 rounded-lg text-white font-semibold transition-colors">
-            Sign In
-          </button>
-        </SignInButton>
+      <div className="flex flex-col items-center justify-center h-screen text-center p-8 bg-black relative overflow-hidden">
+        {/* Gradient background effect */}
+        <div className="absolute inset-0 bg-gradient-to-br from-[hsl(338,82%,65%)]/5 via-transparent to-transparent" />
+
+        <div className="relative z-10 space-y-6">
+          {/* Icon with gradient background */}
+          <div className="mx-auto w-24 h-24 rounded-full bg-gradient-to-br from-[hsl(338,82%,65%)]/20 to-[hsl(338,82%,65%)]/5 flex items-center justify-center backdrop-blur-sm border border-[hsl(338,82%,65%)]/20">
+            <User className="w-12 h-12 text-[hsl(338,82%,65%)]" />
+          </div>
+
+          <div className="space-y-3">
+            <h2 className="text-2xl font-bold text-white">
+              Sign in to access your profile
+            </h2>
+            <p className="text-gray-400 text-base max-w-sm mx-auto">
+              View your stats, settings, and preferences
+            </p>
+          </div>
+
+          <SignInButton mode="modal">
+            <button className="bg-gradient-to-br from-[hsl(338,82%,65%)] to-[hsl(338,82%,55%)] hover:from-[hsl(338,82%,60%)] hover:to-[hsl(338,82%,50%)] px-8 py-4 rounded-full text-white font-semibold shadow-lg shadow-[hsl(338,82%,65%)]/25 transition-all duration-200 active:scale-95">
+              Sign In
+            </button>
+          </SignInButton>
+        </div>
       </div>
     );
   }
-
-  const formatNumber = (num: number) => {
-    if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
-    if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
-    return num.toString();
-  };
 
   return (
     <div className="min-h-screen bg-black pb-20">
@@ -155,44 +163,27 @@ export default function ProfilePage() {
                 </div>
               </div>
 
-              {/* Stats Grid */}
-              <div className="grid grid-cols-2 gap-3">
-                {/* Total Swipes */}
-                <div className="bg-white/5 backdrop-blur-sm rounded-xl p-3 border border-white/10">
-                  <div className="flex items-center gap-2 mb-2">
-                    <MoveRight className="w-4 h-4 text-[hsl(338,82%,65%)]" />
-                    <span className="text-xs text-gray-400 uppercase tracking-wide">Swipes</span>
+              {/* Upgrade Button - Prominent CTA */}
+              <button
+                onClick={() => router.push('/pricing')}
+                className="w-full bg-gradient-to-r from-yellow-500 to-yellow-400 hover:from-yellow-400 hover:to-yellow-300 rounded-xl p-4 mb-3 transition-all duration-200 active:scale-[0.98] shadow-lg shadow-yellow-500/25"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-white/30 backdrop-blur-sm flex items-center justify-center">
+                      <Crown className="w-5 h-5 text-white" />
+                    </div>
+                    <div className="text-left">
+                      <div className="flex items-center gap-2">
+                        <span className="text-white font-bold text-base">Upgrade to Pro</span>
+                        <Sparkles className="w-4 h-4 text-white/90" />
+                      </div>
+                      <p className="text-xs text-white/90">Get unlimited downloads & more</p>
+                    </div>
                   </div>
-                  <div className="text-2xl font-bold text-white">{formatNumber(stats.total_swipes)}</div>
+                  <ExternalLink className="w-5 h-5 text-white/80" />
                 </div>
-
-                {/* Total Likes/Favorites */}
-                <div className="bg-white/5 backdrop-blur-sm rounded-xl p-3 border border-white/10">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Heart className="w-4 h-4 text-[hsl(338,82%,65%)]" />
-                    <span className="text-xs text-gray-400 uppercase tracking-wide">Likes</span>
-                  </div>
-                  <div className="text-2xl font-bold text-white">{formatNumber(stats.total_favorites)}</div>
-                </div>
-
-                {/* Total Sessions */}
-                <div className="bg-white/5 backdrop-blur-sm rounded-xl p-3 border border-white/10">
-                  <div className="flex items-center gap-2 mb-2">
-                    <Calendar className="w-4 h-4 text-[hsl(338,82%,65%)]" />
-                    <span className="text-xs text-gray-400 uppercase tracking-wide">Sessions</span>
-                  </div>
-                  <div className="text-2xl font-bold text-white">{formatNumber(stats.total_sessions)}</div>
-                </div>
-
-                {/* Total Downloads */}
-                <div className="bg-white/5 backdrop-blur-sm rounded-xl p-3 border border-white/10">
-                  <div className="flex items-center gap-2 mb-2">
-                    <TrendingUp className="w-4 h-4 text-[hsl(338,82%,65%)]" />
-                    <span className="text-xs text-gray-400 uppercase tracking-wide">Downloads</span>
-                  </div>
-                  <div className="text-2xl font-bold text-white">{formatNumber(stats.total_downloads)}</div>
-                </div>
-              </div>
+              </button>
             </>
           ) : null}
         </div>

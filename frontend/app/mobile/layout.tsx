@@ -1,29 +1,11 @@
 'use client';
 
-import { useState, useCallback, createContext, useContext } from 'react';
+import { useState, useCallback } from 'react';
 import { MobileBottomNav } from '@/components/mobile/mobile-bottom-nav';
 import { MobileMiniPlayer } from '@/components/mobile/mobile-mini-player';
 import { QueryProvider } from '@/providers/query-provider';
 import { Sample } from '@/types/api';
-
-// Audio player context
-interface AudioPlayerContextType {
-  currentSample: Sample | null;
-  isPlaying: boolean;
-  setCurrentSample: (sample: Sample | null) => void;
-  setIsPlaying: (playing: boolean) => void;
-  playPreview: (sample: Sample) => void;
-}
-
-const AudioPlayerContext = createContext<AudioPlayerContextType | undefined>(undefined);
-
-export function useAudioPlayer() {
-  const context = useContext(AudioPlayerContext);
-  if (!context) {
-    throw new Error('useAudioPlayer must be used within MobileLayout');
-  }
-  return context;
-}
+import { AudioPlayerContext } from '@/contexts/audio-player-context';
 
 export default function MobileLayout({
   children,
@@ -33,6 +15,8 @@ export default function MobileLayout({
   // Audio player state
   const [currentSample, setCurrentSample] = useState<Sample | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [playbackQueue, setPlaybackQueue] = useState<Sample[]>([]);
+  const [autoPlayNext, setAutoPlayNext] = useState(true); // Default to auto-play next
 
   // Audio player functions
   const playPreview = useCallback((sample: Sample) => {
@@ -43,6 +27,28 @@ export default function MobileLayout({
       setIsPlaying(true);
     }
   }, [currentSample, isPlaying]);
+
+  const playNext = useCallback(() => {
+    if (!currentSample || playbackQueue.length === 0) return;
+
+    const currentIndex = playbackQueue.findIndex(s => s.id === currentSample.id);
+    if (currentIndex >= 0 && currentIndex < playbackQueue.length - 1) {
+      const nextSample = playbackQueue[currentIndex + 1];
+      setCurrentSample(nextSample);
+      setIsPlaying(true);
+    }
+  }, [currentSample, playbackQueue]);
+
+  const playPrevious = useCallback(() => {
+    if (!currentSample || playbackQueue.length === 0) return;
+
+    const currentIndex = playbackQueue.findIndex(s => s.id === currentSample.id);
+    if (currentIndex > 0) {
+      const previousSample = playbackQueue[currentIndex - 1];
+      setCurrentSample(previousSample);
+      setIsPlaying(true);
+    }
+  }, [currentSample, playbackQueue]);
 
   const handlePlayPause = useCallback(() => {
     setIsPlaying(!isPlaying);
@@ -59,9 +65,15 @@ export default function MobileLayout({
         value={{
           currentSample,
           isPlaying,
+          playbackQueue,
+          autoPlayNext,
           setCurrentSample,
           setIsPlaying,
+          setPlaybackQueue,
+          setAutoPlayNext,
           playPreview,
+          playNext,
+          playPrevious,
         }}
       >
         <div className="min-h-screen bg-background">
@@ -75,6 +87,9 @@ export default function MobileLayout({
               isPlaying={isPlaying}
               onPlayPause={handlePlayPause}
               onClose={handleClosePlayer}
+              onNext={playbackQueue.length > 0 ? playNext : undefined}
+              onPrevious={playbackQueue.length > 0 ? playPrevious : undefined}
+              autoPlayNext={autoPlayNext}
             />
           )}
 

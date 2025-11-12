@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useRef } from 'react';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -13,6 +13,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { AddSampleDialog } from '@/components/features/add-sample-dialog';
+import { analytics } from '@/lib/analytics';
 
 interface SearchFiltersProps {
   searchQuery: string;
@@ -51,6 +52,49 @@ export function SearchFilters({
     'viral', 'inspirational', 'funny', 'dance', 'trending'
   ];
 
+  const handleSearchChange = (query: string) => {
+    onSearchChange(query);
+
+    // Track search when user types (only track non-empty queries)
+    if (query.trim()) {
+      analytics.searchPerformed(query, resultCount);
+    }
+  };
+
+  const handleGenreChange = (genre: string) => {
+    onGenreChange(genre);
+
+    // Track filter application
+    if (genre !== 'all') {
+      analytics.filterApplied('genre', genre);
+    }
+  };
+
+  const handleBPMChange = (bpm: string) => {
+    onBPMChange(bpm);
+
+    // Track filter application
+    if (bpm !== 'all') {
+      analytics.filterApplied('bpm', bpm);
+    }
+  };
+
+  const handleVideoTypeChange = (videoType: string) => {
+    onVideoTypeChange(videoType);
+
+    // Track filter application
+    if (videoType !== 'all') {
+      analytics.filterApplied('video_type', videoType);
+    }
+  };
+
+  const handleSortChange = (sort: string) => {
+    onSortChange(sort);
+
+    // Track sort change
+    analytics.filterApplied('sort', sort);
+  };
+
   return (
     <div className="bg-background border-b border-border">
       <div className="px-6 py-4 space-y-4">
@@ -61,12 +105,12 @@ export function SearchFilters({
             <Input
               placeholder="Search samples..."
               value={searchQuery}
-              onChange={(e) => onSearchChange(e.target.value)}
+              onChange={(e) => handleSearchChange(e.target.value)}
               className="pl-10 bg-input-background"
             />
           </div>
-          
-          <Select value={selectedGenre} onValueChange={onGenreChange}>
+
+          <Select value={selectedGenre} onValueChange={handleGenreChange}>
             <SelectTrigger className="w-[140px] bg-input-background">
               <SelectValue placeholder="Genre" />
             </SelectTrigger>
@@ -82,7 +126,7 @@ export function SearchFilters({
             </SelectContent>
           </Select>
 
-          <Select value={selectedBPM} onValueChange={onBPMChange}>
+          <Select value={selectedBPM} onValueChange={handleBPMChange}>
             <SelectTrigger className="w-[120px] bg-input-background">
               <SelectValue placeholder="BPM" />
             </SelectTrigger>
@@ -95,7 +139,7 @@ export function SearchFilters({
             </SelectContent>
           </Select>
 
-          <Select value={selectedVideoType} onValueChange={onVideoTypeChange}>
+          <Select value={selectedVideoType} onValueChange={handleVideoTypeChange}>
             <SelectTrigger className="w-[140px] bg-input-background">
               <SelectValue placeholder="Video Type" />
             </SelectTrigger>
@@ -112,7 +156,7 @@ export function SearchFilters({
             </SelectContent>
           </Select>
 
-          <Select value={sortBy} onValueChange={onSortChange}>
+          <Select value={sortBy} onValueChange={handleSortChange}>
             <SelectTrigger className="w-[140px] bg-input-background">
               <SelectValue placeholder="Sort by" />
             </SelectTrigger>
@@ -134,11 +178,11 @@ export function SearchFilters({
               key={genre}
               variant={selectedGenre === genre ? "default" : "secondary"}
               className={`cursor-pointer text-xs px-2 py-1 ${
-                selectedGenre === genre 
-                  ? 'bg-primary text-primary-foreground' 
+                selectedGenre === genre
+                  ? 'bg-primary text-primary-foreground'
                   : 'bg-secondary/50 text-secondary-foreground hover:bg-secondary'
               }`}
-              onClick={() => onGenreChange(selectedGenre === genre ? 'all' : genre)}
+              onClick={() => handleGenreChange(selectedGenre === genre ? 'all' : genre)}
             >
               {genre}
             </Badge>
@@ -153,11 +197,11 @@ export function SearchFilters({
               key={videoType}
               variant={selectedVideoType === videoType ? "default" : "secondary"}
               className={`cursor-pointer text-xs px-2 py-1 ${
-                selectedVideoType === videoType 
-                  ? 'bg-primary text-primary-foreground' 
+                selectedVideoType === videoType
+                  ? 'bg-primary text-primary-foreground'
                   : 'bg-secondary/50 text-secondary-foreground hover:bg-secondary'
               }`}
-              onClick={() => onVideoTypeChange(selectedVideoType === videoType ? 'all' : videoType)}
+              onClick={() => handleVideoTypeChange(selectedVideoType === videoType ? 'all' : videoType)}
             >
               {videoType}
             </Badge>

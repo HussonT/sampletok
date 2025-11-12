@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.api.v1.router import api_router
 from app.inngest_functions import inngest_client, get_all_functions
 from app.core.rate_limit import limiter
+from app.services.analytics.posthog_service import posthog_service
 
 logger = logging.getLogger(__name__)
 
@@ -92,12 +93,16 @@ async def lifespan(app: FastAPI):
     # Shutdown
     print("Shutting down...")
 
+    # Flush PostHog events before shutdown
+    posthog_service.shutdown()
+
 
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
-    lifespan=lifespan
+    lifespan=lifespan,
+    redirect_slashes=False  # Disable automatic trailing slash redirects
 )
 
 # Add rate limiter state
@@ -120,6 +125,21 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
         },
         headers={"Retry-After": "60"}  # Suggest retry after 60 seconds
     )
+
+# PostHog flush middleware (MUST be before CORS)
+@app.middleware("http")
+async def posthog_flush_middleware(request: Request, call_next):
+    """
+    Ensure PostHog events are flushed after each request.
+    Critical for Cloud Run/serverless environments where processes may terminate.
+    """
+    response = await call_next(request)
+
+    # Flush events after response is ready
+    posthog_service.flush()
+
+    return response
+
 
 # Set up CORS
 if settings.BACKEND_CORS_ORIGINS:

@@ -9,6 +9,7 @@ import { Loader2, Layers } from 'lucide-react';
 import { Sample } from '@/types/api';
 import { toast } from 'sonner';
 import { useAuth } from '@clerk/nextjs';
+import { analytics } from '@/lib/analytics';
 
 interface StemSeparationModalProps {
   open: boolean;
@@ -103,6 +104,9 @@ export function StemSeparationModal({
       }
 
       const data = await response.json();
+
+      // Track stem separation started
+      analytics.stemSeparationRequested(sample.id, selectedStems, totalCredits);
 
       toast.success(`Stem separation started! ${data.message}`, {
         description: `Estimated time: ${Math.round(data.estimated_time_seconds / 60)} minutes`
