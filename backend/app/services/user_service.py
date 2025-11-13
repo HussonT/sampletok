@@ -11,7 +11,7 @@ from sqlalchemy import select, func, and_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
-from app.models.user import User, UserDownload, UserStemDownload, UserFavorite, UserStemFavorite
+from app.models.user import User, UserDownload, UserStemDownload, UserFavorite, UserStemFavorite, SampleDismissal
 from app.models.sample import Sample
 from app.models.stem import Stem
 from app.utils import utcnow_naive
@@ -407,11 +407,13 @@ class UserFavoriteService:
         """
         from app.models.sample import Sample
         from app.models.tiktok_creator import TikTokCreator
+        from app.models.instagram_creator import InstagramCreator
 
         stmt = (
             select(UserFavorite)
             .options(
-                selectinload(UserFavorite.sample).selectinload(Sample.tiktok_creator)
+                selectinload(UserFavorite.sample).selectinload(Sample.tiktok_creator),
+                selectinload(UserFavorite.sample).selectinload(Sample.instagram_creator)
             )
             .where(UserFavorite.user_id == user_id)
             .order_by(UserFavorite.favorited_at.desc())
@@ -743,3 +745,171 @@ class UserStemDownloadService:
             'wav_count': wav_count,
             'mp3_count': mp3_count
         }
+
+class SampleDismissalService:
+    """Service for managing sample dismissals for personalized mobile feed"""
+
+    @staticmethod
+    async def add_dismissal(
+        db: AsyncSession,
+        user_id: UUID,
+        sample_id: UUID
+    ) -> SampleDismissal:
+        """
+        Add a sample to user's dismissals (idempotent).
+
+        Args:
+            db: Database session
+            user_id: User's UUID
+            sample_id: Sample's UUID
+
+        Returns:
+            SampleDismissal record (existing or newly created)
+        """
+        # Check if already dismissed
+        stmt = select(SampleDismissal).where(
+            and_(
+                SampleDismissal.user_id == user_id,
+                SampleDismissal.sample_id == sample_id
+            )
+        )
+        result = await db.execute(stmt)
+        existing = result.scalar_one_or_none()
+
+        if existing:
+            return existing
+
+        # Create new dismissal
+        dismissal = SampleDismissal(
+            user_id=user_id,
+            sample_id=sample_id,
+            dismissed_at=utcnow_naive()
+        )
+        db.add(dismissal)
+
+        try:
+            await db.commit()
+            await db.refresh(dismissal)
+            return dismissal
+        except IntegrityError:
+            # Race condition: another request created it
+            await db.rollback()
+            stmt = select(SampleDismissal).where(
+                and_(
+                    SampleDismissal.user_id == user_id,
+                    SampleDismissal.sample_id == sample_id
+                )
+            )
+            result = await db.execute(stmt)
+            return result.scalar_one()
+
+    @staticmethod
+    async def remove_dismissal(
+        db: AsyncSession,
+        user_id: UUID,
+        sample_id: UUID
+    ) -> bool:
+        """
+        Remove a sample from user's dismissals.
+
+        Args:
+            db: Database session
+            user_id: User's UUID
+            sample_id: Sample's UUID
+
+        Returns:
+            True if dismissal was removed, False if it didn't exist
+        """
+        stmt = select(SampleDismissal).where(
+            and_(
+                SampleDismissal.user_id == user_id,
+                SampleDismissal.sample_id == sample_id
+            )
+        )
+        result = await db.execute(stmt)
+        dismissal = result.scalar_one_or_none()
+
+        if dismissal:
+            await db.delete(dismissal)
+            await db.commit()
+            return True
+
+        return False
+
+    @staticmethod
+    async def check_if_dismissed(
+        db: AsyncSession,
+        user_id: UUID,
+        sample_id: UUID
+    ) -> bool:
+        """
+        Check if a user has dismissed a specific sample.
+
+        Args:
+            db: Database session
+            user_id: User's UUID
+            sample_id: Sample's UUID
+
+        Returns:
+            True if user has dismissed this sample, False otherwise
+        """
+        stmt = select(SampleDismissal).where(
+            and_(
+                SampleDismissal.user_id == user_id,
+                SampleDismissal.sample_id == sample_id
+            )
+        ).limit(1)
+        result = await db.execute(stmt)
+        dismissal = result.scalar_one_or_none()
+
+        return dismissal is not None
+
+    @staticmethod
+    async def batch_add_dismissals(
+        db: AsyncSession,
+        user_id: UUID,
+        sample_ids: List[UUID]
+    ) -> int:
+        """
+        Batch add multiple dismissals for guest data sync.
+        Skips duplicates gracefully.
+
+        Args:
+            db: Database session
+            user_id: User's UUID
+            sample_ids: List of sample UUIDs to dismiss
+
+        Returns:
+            Number of dismissals actually created (excluding duplicates)
+        """
+        created_count = 0
+
+        for sample_id in sample_ids:
+            # Check if already dismissed
+            stmt = select(SampleDismissal).where(
+                and_(
+                    SampleDismissal.user_id == user_id,
+                    SampleDismissal.sample_id == sample_id
+                )
+            )
+            result = await db.execute(stmt)
+            existing = result.scalar_one_or_none()
+
+            if not existing:
+                dismissal = SampleDismissal(
+                    user_id=user_id,
+                    sample_id=sample_id,
+                    dismissed_at=utcnow_naive()
+                )
+                db.add(dismissal)
+                created_count += 1
+
+        try:
+            await db.commit()
+        except IntegrityError:
+            # Handle race conditions - some may have been created concurrently
+            await db.rollback()
+            # Don't fail, just return the count we attempted
+            pass
+
+        return created_count

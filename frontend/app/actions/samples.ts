@@ -15,7 +15,7 @@ export async function processTikTokUrl(url: string) {
 
     // Revalidate the samples list to show the new pending item
     revalidatePath('/');
-    revalidateTag('samples');
+    await revalidateTag('samples', '/');
 
     return { success: true, data: response };
   } catch (error) {
@@ -38,7 +38,7 @@ export async function processInstagramUrl(url: string) {
 
     // Revalidate the samples list to show the new pending item
     revalidatePath('/');
-    revalidateTag('samples');
+    await revalidateTag('samples', '/');
 
     return { success: true, data: response };
   } catch (error) {
@@ -60,8 +60,8 @@ export async function updateSample(id: string, updates: SampleUpdate) {
     // Revalidate both the list and individual sample
     revalidatePath('/');
     revalidatePath(`/samples/${id}`);
-    revalidateTag('samples');
-    revalidateTag(`sample-${id}`);
+    await revalidateTag('samples', '/');
+    await revalidateTag(`sample-${id}`, `/samples/${id}`);
 
     return { success: true, data: response };
   } catch (error) {
@@ -79,7 +79,7 @@ export async function deleteSample(id: string) {
 
     // Revalidate the samples list
     revalidatePath('/');
-    revalidateTag('samples');
+    await revalidateTag('samples', '/');
 
     return { success: true };
   } catch (error) {

@@ -75,6 +75,8 @@ class Settings(BaseSettings):
     COLLECTIONS_LIST_RATE_LIMIT_PER_MINUTE: int = 60  # Max collection list requests per minute per user
     STEM_SEPARATION_RATE_LIMIT_PER_MINUTE: int = 5  # Max stem separation requests per minute per user
     STEM_DOWNLOAD_RATE_LIMIT_PER_MINUTE: int = 30  # Max stem download requests per minute per user
+    MOBILE_FEED_RATE_LIMIT_PER_MINUTE: int = 120  # Max mobile feed requests per minute (allows smooth swipe experience)
+    MOBILE_SYNC_RATE_LIMIT_PER_MINUTE: int = 5  # Max mobile batch sync requests per minute
 
     # Audio Processing
     AUDIO_SAMPLE_RATE: int = 48000
@@ -140,6 +142,10 @@ class Settings(BaseSettings):
     SUBSCRIPTION_SUCCESS_URL: str = "http://localhost:3000/subscription/success"
     SUBSCRIPTION_CANCEL_URL: str = "http://localhost:3000/pricing"
     FRONTEND_URL: Optional[str] = "http://localhost:3000"  # For Stripe Customer Portal return URL
+
+    # PostHog Analytics
+    POSTHOG_PROJECT_KEY: Optional[str] = None  # Required for analytics tracking
+    POSTHOG_HOST: str = "https://eu.posthog.com"  # EU hosting for GDPR compliance
 
     class Config:
         env_file = ".env"

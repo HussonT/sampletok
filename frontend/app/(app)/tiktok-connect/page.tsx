@@ -18,6 +18,7 @@ import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { MAX_VIDEOS_PER_BATCH, getPollingInterval } from '@/lib/constants';
 import { CardSkeleton } from '@/components/ui/loading-skeletons';
+import { analytics } from '@/lib/analytics';
 
 export default function TikTokConnectPage() {
   const { getToken, isSignedIn } = useAuth();
@@ -157,6 +158,9 @@ export default function TikTokConnectPage() {
           cursor: cursor
         }
       );
+
+      // Track collection creation
+      analytics.collectionCreated(collection.id, collection.name, collection.video_count);
 
       toast.success(response.message);
 

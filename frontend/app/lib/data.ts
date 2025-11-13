@@ -19,7 +19,7 @@ export async function getSamples(filters?: SampleFilters, authToken?: string | n
     throw new Error('NEXT_PUBLIC_API_URL environment variable is not set');
   }
 
-  const url = `${baseUrl}/api/v1/samples/${params.toString() ? `?${params}` : ''}`;
+  const url = `${baseUrl}/api/v1/samples${params.toString() ? `?${params}` : ''}`;
   console.log('[getSamples] Fetching from:', url);
 
   const headers: HeadersInit = {
@@ -57,7 +57,7 @@ export async function getSamples(filters?: SampleFilters, authToken?: string | n
 export const getSampleById = unstable_cache(
   async (id: string): Promise<Sample> => {
     const response = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/api/v1/samples/${id}/`,
+      `${process.env.NEXT_PUBLIC_API_URL}/api/v1/samples/${id}`,
       {
         next: {
           revalidate: 60,
@@ -82,7 +82,7 @@ export const getSampleById = unstable_cache(
 // Get processing status (no cache, real-time)
 export async function getProcessingStatus(taskId: string) {
   const response = await fetch(
-    `${process.env.NEXT_PUBLIC_API_URL}/api/v1/process/status/${taskId}/`,
+    `${process.env.NEXT_PUBLIC_API_URL}/api/v1/process/status/${taskId}`,
     {
       cache: 'no-store' // Always fetch fresh
     }

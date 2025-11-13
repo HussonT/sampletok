@@ -13,6 +13,7 @@ import {
   ANNUAL_DISCOUNT_PERCENT,
 } from '@/lib/constants';
 import { Check, Loader2, AlertCircle } from 'lucide-react';
+import { analytics } from '@/lib/analytics';
 
 interface CurrentSubscription {
   tier: 'basic' | 'pro' | 'ultimate';
@@ -173,6 +174,9 @@ export default function PricingPage() {
             billing_interval: billingInterval,
           }
         );
+
+        // Track subscription checkout started
+        analytics.subscriptionStarted(tier);
 
         // Redirect to Stripe Checkout
         window.location.href = response.checkout_url;

@@ -14,6 +14,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { analytics } from '@/lib/analytics';
 
 interface FavoriteButtonProps {
   sample: Sample;
@@ -69,12 +70,20 @@ export function FavoriteButton({
       if (previousState) {
         // Remove from favorites
         await api.delete(`/samples/${sample.id}/favorite`);
+
+        // Track unfavorite
+        analytics.sampleFavorited(sample, false);
+
         toast.success('Removed from favorites', {
           description: 'Sample removed from your favorites',
         });
       } else {
         // Add to favorites
         await api.post(`/samples/${sample.id}/favorite`);
+
+        // Track favorite
+        analytics.sampleFavorited(sample, true);
+
         toast.success('Added to favorites', {
           description: 'Sample saved to your favorites',
         });

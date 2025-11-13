@@ -33,6 +33,7 @@ class User(Base):
     stem_downloads = relationship("UserStemDownload", back_populates="user", cascade="all, delete-orphan")
     favorites = relationship("UserFavorite", back_populates="user", cascade="all, delete-orphan")
     stem_favorites = relationship("UserStemFavorite", back_populates="user", cascade="all, delete-orphan")
+    dismissals = relationship("SampleDismissal", back_populates="user", cascade="all, delete-orphan")
     collections = relationship("Collection", back_populates="user", cascade="all, delete-orphan")
 
     # Subscription relationships (1:1)
@@ -131,4 +132,24 @@ class UserStemFavorite(Base):
     __table_args__ = (
         UniqueConstraint('user_id', 'stem_id', name='uix_user_stem_favorite'),
         Index('idx_user_stem_favorites_user_date', 'user_id', 'favorited_at'),
+    )
+
+
+class SampleDismissal(Base):
+    """Track user dismissed samples for personalized mobile feed"""
+    __tablename__ = "sample_dismissals"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    sample_id = Column(UUID(as_uuid=True), ForeignKey("samples.id", ondelete="CASCADE"), nullable=False)
+    dismissed_at = Column(DateTime, default=utcnow_naive, nullable=False)
+
+    # Relationships
+    user = relationship("User", back_populates="dismissals")
+    sample = relationship("Sample", back_populates="user_dismissals")
+
+    # Ensure one dismissal per user per sample
+    __table_args__ = (
+        UniqueConstraint('user_id', 'sample_id', name='uix_user_sample_dismissal'),
+        Index('idx_sample_dismissals_user_date', 'user_id', 'dismissed_at'),
     )

@@ -39,12 +39,13 @@ export function SampleCard({ sample, onPreview, onDownload, isPlaying }: SampleC
       <div className="aspect-[4/3] bg-muted/50 relative overflow-hidden">
         {/* Mock waveform visualization */}
         <div className="absolute inset-0 flex items-center justify-center p-4">
-          <svg 
-            viewBox="0 0 200 60" 
+          <svg
+            viewBox="0 0 200 60"
             className="w-full h-full opacity-60"
           >
             {Array.from({ length: 50 }, (_, i) => {
-              const height = Math.random() * 40 + 10;
+              // Use deterministic pattern instead of Math.random() to avoid hydration mismatch
+              const height = (Math.sin(i * 0.5) * 15 + 25);
               const y = (60 - height) / 2;
               return (
                 <rect

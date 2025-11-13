@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/tooltip';
 import { SubscriptionPromptDialog } from './subscription-prompt-dialog';
 import { createAuthenticatedClient } from '@/lib/api-client';
+import { analytics } from '@/lib/analytics';
 
 interface DownloadButtonProps {
   sample: Sample;
@@ -160,6 +161,9 @@ export function DownloadButton({
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
+
+      // Track successful download
+      analytics.sampleDownloaded(sample, format);
 
       toast.success('Download complete!', {
         id: 'download',

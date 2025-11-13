@@ -261,3 +261,12 @@ export interface StemSeparationResponse {
   estimated_time_seconds: number;
   message: string;
 }
+
+// User Stats for Mobile Profile
+export interface UserStats {
+  total_favorites: number;
+  total_downloads: number;
+  total_swipes: number;
+  total_sessions: number;
+  credits: number;
+}

@@ -16,6 +16,7 @@ import { Label } from '@/components/ui/label';
 import { processTikTokUrl } from '@/actions/samples';
 import { toast } from 'sonner';
 import { Loader2, Plus, Link2 } from 'lucide-react';
+import { analytics } from '@/lib/analytics';
 
 interface AddSampleDialogProps {
   onProcessingStarted?: (taskId: string, url: string) => void;
@@ -39,6 +40,10 @@ export function AddSampleDialog({ onProcessingStarted, variant = 'default' }: Ad
       const result = await processTikTokUrl(url);
 
       if (result.success && result.data) {
+        // Track URL submission
+        const source = url.includes('tiktok.com') ? 'tiktok' : 'instagram';
+        analytics.urlSubmitted(url, source);
+
         // Immediately add to processing tasks for optimistic UI
         if (onProcessingStarted && result.data.task_id) {
           onProcessingStarted(result.data.task_id, url);
@@ -50,6 +55,11 @@ export function AddSampleDialog({ onProcessingStarted, variant = 'default' }: Ad
         setUrl('');
         setOpen(false);
       } else {
+        // Track processing failure
+        analytics.errorOccurred('processing_failed', result.error || 'Unknown error', {
+          url: url,
+        });
+
         toast.error('Failed to process URL', {
           description: result.error,
         });

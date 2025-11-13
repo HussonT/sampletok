@@ -2,6 +2,8 @@
 
 import { useEffect } from 'react';
 import { Button } from '@/components/ui/button';
+import { analytics } from '@/lib/analytics';
+import posthog from 'posthog-js';
 
 export default function Error({
   error,
@@ -12,6 +14,17 @@ export default function Error({
 }) {
   useEffect(() => {
     console.error(error);
+
+    // Track error with analytics
+    analytics.errorOccurred('app_error', error.message, {
+      error_digest: error.digest,
+      error_stack: error.stack,
+    });
+
+    // Also capture exception for error tracking
+    if (posthog && posthog.__loaded) {
+      posthog.captureException(error);
+    }
   }, [error]);
 
   return (

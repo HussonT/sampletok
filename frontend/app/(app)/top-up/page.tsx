@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { createAuthenticatedClient } from '@/lib/api-client';
 import { TOPUP_PACKAGES, TOPUP_DISCOUNTS, SUBSCRIPTION_TIERS } from '@/lib/constants';
 import { Coins, Loader2, AlertCircle, ShoppingCart, ArrowRight, TrendingUp } from 'lucide-react';
+import { analytics } from '@/lib/analytics';
 
 interface CreditBalanceData {
   credits: number;
@@ -66,6 +67,13 @@ export default function TopUpPage() {
           package: packageType,
         }
       );
+
+      // Track credit purchase started
+      const pkg = [TOPUP_PACKAGES.SMALL, TOPUP_PACKAGES.MEDIUM, TOPUP_PACKAGES.LARGE].find(p => p.package === packageType);
+      if (pkg) {
+        const finalPrice = pkg.basePrice * (1 - (TOPUP_DISCOUNTS[creditData?.subscription_tier || 'basic'] / 100));
+        analytics.creditsPurchased(pkg.credits, finalPrice);
+      }
 
       // Redirect to Stripe Checkout
       window.location.href = response.checkout_url;

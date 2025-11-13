@@ -1,0 +1,233 @@
+// Custom Service Worker handlers for SampleTok PWA
+// This file contains custom logic that extends the auto-generated service worker
+
+// Cache names and limits
+const CACHE_VERSION = 'v1';
+const OFFLINE_CACHE = `offline-${CACHE_VERSION}`;
+const MAX_CACHE_SIZE = 50 * 1024 * 1024; // 50MB limit
+const MAX_CACHED_ITEMS = 100; // Maximum number of cached items
+
+// Helper function to manage cache size
+async function addToCache(cacheName, request, response) {
+  const cache = await caches.open(cacheName);
+
+  // Only cache specific resource types (not API responses or dynamic content)
+  const url = new URL(request.url);
+  const shouldCache =
+    request.destination === 'image' ||
+    request.destination === 'font' ||
+    request.destination === 'style' ||
+    request.destination === 'script' ||
+    url.pathname.match(/\.(png|jpg|jpeg|svg|gif|webp|woff2?|ttf|css|js)$/i);
+
+  if (!shouldCache) {
+    return; // Don't cache API responses, HTML, or other dynamic content
+  }
+
+  // Clone response to read size
+  const responseClone = response.clone();
+  const responseBlob = await responseClone.blob();
+  const responseSize = responseBlob.size;
+
+  // Calculate current cache size
+  let totalSize = responseSize;
+  const keys = await cache.keys();
+
+  for (const key of keys) {
+    const cachedResponse = await cache.match(key);
+    if (cachedResponse) {
+      const blob = await cachedResponse.blob();
+      totalSize += blob.size;
+    }
+  }
+
+  // Evict oldest items until we have room for new item
+  let index = 0;
+  while (totalSize > MAX_CACHE_SIZE && index < keys.length) {
+    const evictResponse = await cache.match(keys[index]);
+    if (evictResponse) {
+      const evictBlob = await evictResponse.blob();
+      totalSize -= evictBlob.size;
+      await cache.delete(keys[index]);
+      console.log('[SW] Evicted item to stay under size limit:', keys[index].url);
+    }
+    index++;
+  }
+
+  // Only cache if we're under the size limit after eviction
+  if (totalSize <= MAX_CACHE_SIZE) {
+    await cache.put(request, response);
+  } else {
+    console.warn('[SW] Skipping cache - item too large or cache full:', responseSize);
+  }
+
+  // Also enforce item count limit (backup safety check)
+  const updatedKeys = await cache.keys();
+  if (updatedKeys.length > MAX_CACHED_ITEMS) {
+    await cache.delete(updatedKeys[0]);
+    console.log('[SW] Cache item limit reached, removed oldest item');
+  }
+}
+
+// Install event - cache offline page
+self.addEventListener('install', (event) => {
+  console.log('[SW] Installing service worker...');
+
+  event.waitUntil(
+    caches.open(OFFLINE_CACHE).then((cache) => {
+      console.log('[SW] Caching offline page');
+      return cache.addAll([
+        '/offline.html',
+        '/icons/icon-192x192.png',
+        '/manifest.json',
+      ]);
+    })
+  );
+
+  // Activate immediately
+  self.skipWaiting();
+});
+
+// Activate event - cleanup old caches
+self.addEventListener('activate', (event) => {
+  console.log('[SW] Activating service worker...');
+
+  event.waitUntil(
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames.map((cacheName) => {
+          // Delete old caches that don't match current version
+          if (cacheName.startsWith('offline-') && cacheName !== OFFLINE_CACHE) {
+            console.log('[SW] Deleting old cache:', cacheName);
+            return caches.delete(cacheName);
+          }
+        })
+      );
+    })
+  );
+
+  // Take control of all pages immediately
+  return self.clients.claim();
+});
+
+// Fetch event - custom fallback logic
+self.addEventListener('fetch', (event) => {
+  const { request } = event;
+  const url = new URL(request.url);
+
+  // Skip non-GET requests
+  if (request.method !== 'GET') {
+    return;
+  }
+
+  // Skip chrome-extension and other non-http(s) requests
+  if (!url.protocol.startsWith('http')) {
+    return;
+  }
+
+  // Custom handling for API requests
+  if (url.pathname.startsWith('/api/')) {
+    event.respondWith(
+      fetch(request)
+        .catch(() => {
+          // Return offline JSON response for API failures
+          return new Response(
+            JSON.stringify({
+              error: 'offline',
+              message: 'You are currently offline. Please check your connection.',
+            }),
+            {
+              status: 503,
+              statusText: 'Service Unavailable',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+            }
+          );
+        })
+    );
+    return;
+  }
+
+  // For navigation requests, show offline page if network fails
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request).catch(() => {
+        return caches.match('/offline.html');
+      })
+    );
+    return;
+  }
+
+  // For all other requests, try network first, then cache, then offline fallback
+  event.respondWith(
+    fetch(request)
+      .then((response) => {
+        // Clone the response before caching
+        const responseToCache = response.clone();
+
+        // Cache successful responses with size limits
+        if (response.status === 200) {
+          addToCache(OFFLINE_CACHE, request, responseToCache).catch((err) => {
+            console.warn('[SW] Failed to cache response:', err);
+          });
+        }
+
+        return response;
+      })
+      .catch(() => {
+        // Try to return from cache
+        return caches.match(request).then((cachedResponse) => {
+          if (cachedResponse) {
+            return cachedResponse;
+          }
+
+          // If it's an image, return placeholder
+          if (request.destination === 'image') {
+            return new Response(
+              '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="200" height="200" fill="#2b2b2b"/><text x="50%" y="50%" text-anchor="middle" fill="#666" font-family="sans-serif" font-size="14">Offline</text></svg>',
+              {
+                headers: {
+                  'Content-Type': 'image/svg+xml',
+                  'Cache-Control': 'no-store',
+                },
+              }
+            );
+          }
+
+          // Return offline page for documents
+          return caches.match('/offline.html');
+        });
+      })
+  );
+});
+
+// Listen for messages from clients
+self.addEventListener('message', (event) => {
+  console.log('[SW] Received message:', event.data);
+
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+
+  if (event.data && event.data.type === 'CACHE_URLS') {
+    const urlsToCache = event.data.urls || [];
+    event.waitUntil(
+      caches.open(OFFLINE_CACHE).then((cache) => {
+        return cache.addAll(urlsToCache);
+      })
+    );
+  }
+
+  if (event.data && event.data.type === 'CLEAR_CACHE') {
+    event.waitUntil(
+      caches.keys().then((cacheNames) => {
+        return Promise.all(
+          cacheNames.map((cacheName) => caches.delete(cacheName))
+        );
+      })
+    );
+  }
+});
+
+console.log('[SW] Custom service worker loaded');

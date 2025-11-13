@@ -1,0 +1,77 @@
+[
+  {
+    "event_name": "sample_downloaded",
+    "description": "User successfully downloaded a sample (key conversion event - credit usage)",
+    "file_path": "/Users/tomhusson/sideprojects/sampletok/sampletok/frontend/app/components/features/download-button.tsx"
+  },
+  {
+    "event_name": "subscription_started",
+    "description": "User initiated subscription checkout flow (top of subscription funnel)",
+    "file_path": "/Users/tomhusson/sideprojects/sampletok/sampletok/frontend/app/pricing/page.tsx"
+  },
+  {
+    "event_name": "subscription_completed",
+    "description": "User successfully completed subscription payment (conversion event)",
+    "file_path": "/Users/tomhusson/sideprojects/sampletok/sampletok/frontend/app/(app)/subscription/success/page.tsx"
+  },
+  {
+    "event_name": "credits_purchased",
+    "description": "User initiated credit top-up purchase (monetization event)",
+    "file_path": "/Users/tomhusson/sideprojects/sampletok/sampletok/frontend/app/(app)/top-up/page.tsx"
+  },
+  {
+    "event_name": "sample_favorited",
+    "description": "User favorited a sample (engagement signal)",
+    "file_path": "/Users/tomhusson/sideprojects/sampletok/sampletok/frontend/app/components/features/favorite-button.tsx"
+  },
+  {
+    "event_name": "sample_unfavorited",
+    "description": "User removed sample from favorites (engagement signal)",
+    "file_path": "/Users/tomhusson/sideprojects/sampletok/sampletok/frontend/app/components/features/favorite-button.tsx"
+  },
+  {
+    "event_name": "tiktok_processing_started",
+    "description": "User submitted TikTok URL for processing (top of content funnel)",
+    "file_path": "/Users/tomhusson/sideprojects/sampletok/sampletok/frontend/app/components/features/add-sample-dialog.tsx"
+  },
+  {
+    "event_name": "tiktok_processing_failed",
+    "description": "TikTok URL processing failed (churn risk indicator)",
+    "file_path": "/Users/tomhusson/sideprojects/sampletok/sampletok/frontend/app/components/features/add-sample-dialog.tsx"
+  },
+  {
+    "event_name": "collection_imported",
+    "description": "User imported a TikTok collection (high-value action, batch credit usage)",
+    "file_path": "/Users/tomhusson/sideprojects/sampletok/sampletok/frontend/app/(app)/tiktok-connect/page.tsx"
+  },
+  {
+    "event_name": "stem_separation_started",
+    "description": "User started stem separation process (premium feature usage, credit spend)",
+    "file_path": "/Users/tomhusson/sideprojects/sampletok/sampletok/frontend/app/components/features/stem-separation-modal.tsx"
+  },
+  {
+    "event_name": "search_performed",
+    "description": "User performed a search or applied filters (discovery behavior)",
+    "file_path": "/Users/tomhusson/sideprojects/sampletok/sampletok/frontend/app/components/features/search-filters.tsx"
+  },
+  {
+    "event_name": "audio_played",
+    "description": "User played audio sample (engagement indicator)",
+    "file_path": "/Users/tomhusson/sideprojects/sampletok/sampletok/frontend/app/components/features/audio-player.tsx"
+  },
+  {
+    "event_name": "subscription_paywall_viewed",
+    "description": "User saw subscription prompt dialog (top of conversion funnel)",
+    "file_path": "/Users/tomhusson/sideprojects/sampletok/sampletok/frontend/app/components/features/subscription-prompt-dialog.tsx"
+  },
+  {
+    "event_name": "mobile_feed_engaged",
+    "description": "User engaged with mobile video feed (PWA engagement)",
+    "file_path": "/Users/tomhusson/sideprojects/sampletok/sampletok/frontend/app/mobile/page.tsx"
+  },
+  {
+    "event_name": "error_occurred",
+    "description": "Application error occurred (user experience issue)",
+    "file_path": "/Users/tomhusson/sideprojects/sampletok/sampletok/frontend/app/error.tsx"
+  }
+]

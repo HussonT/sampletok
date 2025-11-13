@@ -608,3 +608,15 @@ class TopUpResponse(BaseModel):
     credits: int
     price_cents: int
     discount_percent: float
+
+
+class UserStatsResponse(BaseModel):
+    """User statistics for mobile profile page"""
+    total_favorites: int = Field(..., description="Total number of favorited samples")
+    total_downloads: int = Field(..., description="Total number of sample downloads")
+    total_swipes: int = Field(..., description="Total number of swipes (favorites + dismissals)")
+    total_sessions: int = Field(..., description="Total number of unique session days")
+    credits: int = Field(..., description="Current credit balance")
+
+    class Config:
+        from_attributes = True
