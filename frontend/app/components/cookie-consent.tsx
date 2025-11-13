@@ -36,6 +36,9 @@ export function CookieConsent() {
     posthog.capture('cookie_consent_given', {
       consent_type: 'all',
     });
+
+    // Trigger custom event for TikTok Pixel to reload
+    window.dispatchEvent(new CustomEvent('cookieConsentChanged', { detail: 'accepted' }));
   };
 
   const declineCookies = () => {
