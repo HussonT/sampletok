@@ -1,13 +1,70 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Script from "next/script";
 
+declare global {
+  interface Window {
+    ttq?: any;
+  }
+}
+
 export function TikTokPixel() {
+  const [hasConsent, setHasConsent] = useState(false);
+  const [pixelLoaded, setPixelLoaded] = useState(false);
+
+  useEffect(() => {
+    // Check for cookie consent
+    const consent = localStorage.getItem('cookie_consent');
+
+    if (consent === 'accepted') {
+      setHasConsent(true);
+    } else if (consent === 'declined') {
+      setHasConsent(false);
+      // Revoke consent if pixel already loaded
+      if (window.ttq) {
+        window.ttq.revokeConsent();
+      }
+    }
+
+    // Listen for consent changes
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'cookie_consent') {
+        if (e.newValue === 'accepted') {
+          setHasConsent(true);
+          if (window.ttq && pixelLoaded) {
+            window.ttq.grantConsent();
+            window.ttq.page();
+          }
+        } else if (e.newValue === 'declined') {
+          setHasConsent(false);
+          if (window.ttq) {
+            window.ttq.revokeConsent();
+          }
+        }
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, [pixelLoaded]);
+
+  // Only load the pixel if consent is given
+  if (!hasConsent) {
+    return null;
+  }
+
   return (
     <>
       <Script
         id="tiktok-pixel"
         strategy="afterInteractive"
+        onLoad={() => {
+          setPixelLoaded(true);
+          if (window.ttq) {
+            window.ttq.grantConsent();
+          }
+        }}
         dangerouslySetInnerHTML={{
           __html: `
 !function (w, d, t) {

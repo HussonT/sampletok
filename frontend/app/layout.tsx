@@ -49,13 +49,15 @@ export default function RootLayout({
   return (
     <ClerkProvider>
       <html lang="en" className="dark" suppressHydrationWarning>
+        <head>
+          <TikTokPixel />
+        </head>
         <body className={inter.className}>
           <PostHogProvider>
             {children}
             <Toaster />
             <CookieConsent />
           </PostHogProvider>
-          <TikTokPixel />
         </body>
       </html>
     </ClerkProvider>
