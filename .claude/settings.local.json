@@ -74,7 +74,8 @@
       "Bash(pip freeze:*)",
       "Bash(requirements.txt)",
       "Bash(git mv:*)",
-      "Bash(gh repo view:*)"
+      "Bash(gh repo view:*)",
+      "Bash(npx tsc:*)"
     ],
     "deny": [],
     "ask": []

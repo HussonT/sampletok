@@ -66,7 +66,10 @@ export function VideoFeedItem({
     if (isActive && autoPlayEnabled) {
       // Auto-play when scrolled into view (muted by default for autoplay policy)
       videoRef.current.play().catch((err) => {
-        console.error('Autoplay failed:', err);
+        // Ignore AbortError - happens in dev due to React Strict Mode double-mount
+        if (err.name !== 'AbortError') {
+          console.error('Autoplay failed:', err);
+        }
         setIsPlaying(false);
       });
       setIsPlaying(true);
@@ -75,16 +78,20 @@ export function VideoFeedItem({
       videoRef.current.pause();
       setIsPlaying(false);
     }
+  }, [isActive, autoPlayEnabled]);
 
-    // Cleanup: Pause and clear video on unmount to prevent memory leaks
+  // Cleanup video on unmount to prevent memory leaks
+  useEffect(() => {
+    const video = videoRef.current;
     return () => {
-      if (videoRef.current) {
-        videoRef.current.pause();
-        videoRef.current.src = '';
-        videoRef.current.load(); // Release video memory
+      if (video) {
+        // Pause any ongoing playback to prevent memory leaks
+        // Note: We don't clear src because React manages it via props
+        // The browser will release video memory when the DOM element is removed
+        video.pause();
       }
     };
-  }, [isActive, autoPlayEnabled]);
+  }, []); // Empty deps = only runs on mount/unmount
 
   const togglePlayPause = () => {
     if (!videoRef.current) return;
