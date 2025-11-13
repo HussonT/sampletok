@@ -4,6 +4,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { Toaster } from "@/components/ui/sonner";
 import { PostHogProvider } from "@/providers/posthog-provider";
 import { CookieConsent } from "@/components/cookie-consent";
+import { TikTokPixel } from "@/components/tiktok-pixel";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -54,6 +55,7 @@ export default function RootLayout({
             <Toaster />
             <CookieConsent />
           </PostHogProvider>
+          <TikTokPixel />
         </body>
       </html>
     </ClerkProvider>

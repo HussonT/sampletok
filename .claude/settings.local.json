@@ -75,7 +75,9 @@
       "Bash(requirements.txt)",
       "Bash(git mv:*)",
       "Bash(gh repo view:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(./deploy-image.sh:*)",
+      "Bash(./deploy.sh:*)"
     ],
     "deny": [],
     "ask": []

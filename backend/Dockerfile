@@ -14,6 +14,11 @@ WORKDIR /app
 
 # Install Python dependencies (essentia has prebuilt manylinux wheels)
 COPY requirements.txt .
+# Install build dependencies first (madmom requires Cython and numpy at build time)
+RUN pip install --no-cache-dir setuptools wheel Cython==3.1.4 numpy==2.2.6
+# Install madmom separately with --no-build-isolation to use the Cython we just installed
+RUN pip install --no-cache-dir --no-build-isolation madmom==0.16.1
+# Install remaining dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
