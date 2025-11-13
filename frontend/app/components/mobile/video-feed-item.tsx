@@ -75,6 +75,15 @@ export function VideoFeedItem({
       videoRef.current.pause();
       setIsPlaying(false);
     }
+
+    // Cleanup: Pause and clear video on unmount to prevent memory leaks
+    return () => {
+      if (videoRef.current) {
+        videoRef.current.pause();
+        videoRef.current.src = '';
+        videoRef.current.load(); // Release video memory
+      }
+    };
   }, [isActive, autoPlayEnabled]);
 
   const togglePlayPause = () => {

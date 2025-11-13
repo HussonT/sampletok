@@ -1,6 +1,7 @@
 'use client';
 
 import { VideoFeed } from '@/components/mobile/video-feed';
+import { VideoFeedErrorBoundary } from '@/components/mobile/video-feed-error-boundary';
 import { AuthPromptModal } from '@/components/mobile/auth-prompt-modal';
 import { PullToRefreshIndicator } from '@/components/mobile/pull-to-refresh-indicator';
 import { useSampleQueue } from '@/hooks/use-sample-queue';
@@ -208,15 +209,17 @@ export default function MobileFeedPage() {
       />
 
       {/* Main video feed with infinite scroll */}
-      <VideoFeed
-        samples={enrichedSamples}
-        onLoadMore={loadMore}
-        hasMore={hasMore}
-        isLoading={isLoading}
-        onFavoriteChange={handleFavoriteChange}
-        onVideoChange={handleVideoChange} // Tracks views for auth prompt (auto-trigger at 10 views)
-        onAuthRequired={triggerAuthPrompt} // Triggers auth prompt on save/download attempts
-      />
+      <VideoFeedErrorBoundary>
+        <VideoFeed
+          samples={enrichedSamples}
+          onLoadMore={loadMore}
+          hasMore={hasMore}
+          isLoading={isLoading}
+          onFavoriteChange={handleFavoriteChange}
+          onVideoChange={handleVideoChange} // Tracks views for auth prompt (auto-trigger at 10 views)
+          onAuthRequired={triggerAuthPrompt} // Triggers auth prompt on save/download attempts
+        />
+      </VideoFeedErrorBoundary>
 
       {/*
         Auth Prompt Modal - Value First Approach

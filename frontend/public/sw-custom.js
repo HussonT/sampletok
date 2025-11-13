@@ -24,15 +24,48 @@ async function addToCache(cacheName, request, response) {
     return; // Don't cache API responses, HTML, or other dynamic content
   }
 
-  // Add to cache
-  await cache.put(request, response);
+  // Clone response to read size
+  const responseClone = response.clone();
+  const responseBlob = await responseClone.blob();
+  const responseSize = responseBlob.size;
 
-  // Check cache size and cleanup if needed
+  // Calculate current cache size
+  let totalSize = responseSize;
   const keys = await cache.keys();
-  if (keys.length > MAX_CACHED_ITEMS) {
-    // Remove oldest items (first in cache) - FIFO eviction policy
-    await cache.delete(keys[0]);
-    console.log('[SW] Cache limit reached, removed oldest item');
+
+  for (const key of keys) {
+    const cachedResponse = await cache.match(key);
+    if (cachedResponse) {
+      const blob = await cachedResponse.blob();
+      totalSize += blob.size;
+    }
+  }
+
+  // Evict oldest items until we have room for new item
+  let index = 0;
+  while (totalSize > MAX_CACHE_SIZE && index < keys.length) {
+    const evictResponse = await cache.match(keys[index]);
+    if (evictResponse) {
+      const evictBlob = await evictResponse.blob();
+      totalSize -= evictBlob.size;
+      await cache.delete(keys[index]);
+      console.log('[SW] Evicted item to stay under size limit:', keys[index].url);
+    }
+    index++;
+  }
+
+  // Only cache if we're under the size limit after eviction
+  if (totalSize <= MAX_CACHE_SIZE) {
+    await cache.put(request, response);
+  } else {
+    console.warn('[SW] Skipping cache - item too large or cache full:', responseSize);
+  }
+
+  // Also enforce item count limit (backup safety check)
+  const updatedKeys = await cache.keys();
+  if (updatedKeys.length > MAX_CACHED_ITEMS) {
+    await cache.delete(updatedKeys[0]);
+    console.log('[SW] Cache item limit reached, removed oldest item');
   }
 }
 
