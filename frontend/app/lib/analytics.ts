@@ -37,6 +37,33 @@ function safeCapture(eventName: string, properties?: Record<string, any>) {
   }
 }
 
+/**
+ * Helper to safely track TikTok Pixel events
+ * Only fires if TikTok Pixel is loaded
+ */
+function trackTikTokEvent(eventName: string, properties?: Record<string, any>) {
+  try {
+    if (typeof window === 'undefined') return;
+    if (!(window as any).ttq) {
+      if (process.env.NODE_ENV === 'development') {
+        console.warn(`[TikTok Pixel] Not loaded yet, skipping event: ${eventName}`);
+      }
+      return;
+    }
+
+    (window as any).ttq.track(eventName, properties);
+
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[TikTok Pixel] Event tracked: ${eventName}`, properties);
+    }
+  } catch (error) {
+    // Never throw - analytics should never break the app
+    if (process.env.NODE_ENV === 'development') {
+      console.error(`[TikTok Pixel] Error tracking event ${eventName}:`, error);
+    }
+  }
+}
+
 export const analytics = {
   // ============================================
   // Sample Events
@@ -236,12 +263,30 @@ export const analytics = {
     safeCapture('subscription_started', {
       tier,
     });
+
+    // Track InitiateCheckout on TikTok Pixel
+    trackTikTokEvent('InitiateCheckout', {
+      content_type: 'product',
+      content_name: `${tier.charAt(0).toUpperCase() + tier.slice(1)} Plan`,
+    });
   },
 
-  subscriptionCompleted(tier: string) {
+  subscriptionCompleted(tier: string, price?: number, currency?: string) {
     safeCapture('subscription_completed', {
       tier,
+      price,
+      currency,
     });
+
+    // Track Subscribe event on TikTok Pixel
+    if (price && currency) {
+      trackTikTokEvent('Subscribe', {
+        content_type: 'product',
+        content_name: `${tier.charAt(0).toUpperCase() + tier.slice(1)} Plan`,
+        currency: currency.toUpperCase(),
+        value: price,
+      });
+    }
   },
 
   // ============================================

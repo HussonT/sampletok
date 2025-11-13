@@ -8,6 +8,7 @@ import { CheckCircle, Loader2, Coins, Sparkles } from 'lucide-react';
 import { createAuthenticatedClient } from '@/lib/api-client';
 import confetti from 'canvas-confetti';
 import { analytics } from '@/lib/analytics';
+import { SUBSCRIPTION_TIERS } from '@/lib/constants';
 
 interface CreditBalanceData {
   credits: number;
@@ -89,9 +90,24 @@ export default function SubscriptionSuccessPage() {
         const balanceData = await api.get<CreditBalanceData>('/credits/balance');
         setCreditData(balanceData);
 
-        // Track subscription completion
+        // Track subscription completion with pricing data for TikTok Pixel
         if (balanceData.subscription_tier) {
-          analytics.subscriptionCompleted(balanceData.subscription_tier);
+          // Get the pricing based on tier
+          const tierKey = balanceData.subscription_tier.toUpperCase() as 'BASIC' | 'PRO' | 'ULTIMATE';
+          const tierConfig = SUBSCRIPTION_TIERS[tierKey];
+
+          // Determine if it's monthly or annual based on monthly_credits
+          // This is an approximation - ideally this should come from the backend
+          const isAnnual = false; // Default to monthly, can be updated if backend provides this info
+          const price = tierConfig ?
+            (isAnnual ? tierConfig.price.annual : tierConfig.price.monthly) :
+            undefined;
+
+          analytics.subscriptionCompleted(
+            balanceData.subscription_tier,
+            price,
+            'USD'
+          );
         }
 
         // Optionally fetch transaction details if session_id is present

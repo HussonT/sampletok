@@ -541,7 +541,7 @@ export function SoundsTable({
                         <TooltipProvider>
                           <Tooltip>
                             <TooltipTrigger asChild>
-                              <div className="text-sm font-medium text-foreground cursor-help">
+                              <div className="text-sm font-medium text-foreground cursor-help" suppressHydrationWarning>
                                 {sample.title
                                   ? `${sample.title.slice(0, 30)}...`
                                   : sample.description
@@ -550,7 +550,7 @@ export function SoundsTable({
                               </div>
                             </TooltipTrigger>
                             <TooltipContent side="top" className="max-w-md">
-                              <p>{sample.title || sample.description || 'No title'}</p>
+                              <p suppressHydrationWarning>{sample.title || sample.description || 'No title'}</p>
                             </TooltipContent>
                           </Tooltip>
                         </TooltipProvider>
