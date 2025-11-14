@@ -99,6 +99,9 @@ export default function PricingPage() {
     };
 
     fetchSubscription();
+
+    // Track that user viewed the pricing page
+    analytics.subscriptionViewed();
   }, [getToken]);
 
   const confirmUpgrade = async () => {

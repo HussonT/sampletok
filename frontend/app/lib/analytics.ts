@@ -81,6 +81,13 @@ export const analytics = {
       view_count: sample.view_count,
       like_count: sample.like_count,
     });
+
+    // Track ViewContent on TikTok Pixel
+    trackTikTokEvent('ViewContent', {
+      content_type: 'product',
+      content_id: sample.id,
+      content_name: sample.tiktok_creator?.username || sample.creator_username || 'Unknown Creator',
+    });
   },
 
   samplePlayed(sample: Sample, source: 'table' | 'player' | 'mobile_feed') {
@@ -198,6 +205,12 @@ export const analytics = {
       result_count: resultCount,
       has_results: resultCount > 0,
     });
+
+    // Track Search on TikTok Pixel
+    trackTikTokEvent('Search', {
+      query: query,
+      content_type: 'product',
+    });
   },
 
   filterApplied(filterType: string, filterValue: string | number) {
@@ -257,6 +270,13 @@ export const analytics = {
     safeCapture('subscription_viewed', {
       tier,
     });
+
+    // Track Lead on TikTok Pixel (user viewing pricing = lead interest)
+    trackTikTokEvent('Lead', {
+      content_type: 'product',
+      content_id: tier || 'pricing_page',
+      content_name: tier ? `${tier.charAt(0).toUpperCase() + tier.slice(1)} Plan` : 'Pricing Page',
+    });
   },
 
   subscriptionStarted(tier: string) {
@@ -267,7 +287,14 @@ export const analytics = {
     // Track InitiateCheckout on TikTok Pixel
     trackTikTokEvent('InitiateCheckout', {
       content_type: 'product',
+      content_id: tier,
       content_name: `${tier.charAt(0).toUpperCase() + tier.slice(1)} Plan`,
+      contents: [
+        {
+          content_type: 'product',
+          content_name: `${tier.charAt(0).toUpperCase() + tier.slice(1)} Plan`,
+        }
+      ],
     });
   },
 
@@ -350,6 +377,19 @@ export const analytics = {
     safeCapture('navigation_clicked', {
       destination,
       source,
+    });
+  },
+
+  buttonClicked(buttonName: string, context?: string) {
+    safeCapture('button_clicked', {
+      button_name: buttonName,
+      context,
+    });
+
+    // Track ClickButton on TikTok Pixel
+    trackTikTokEvent('ClickButton', {
+      content_type: 'product',
+      content_name: buttonName,
     });
   },
 
