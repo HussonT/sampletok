@@ -124,12 +124,24 @@ export function createAuthenticatedClient(
 }
 
 // Unauthenticated client for public endpoints (for use in React components)
+// Lazy initialization to ensure environment variables are loaded
+let publicApiInstance: ApiClient | null = null;
+
 const getPublicApiUrl = () => {
   const baseUrl = process.env.NEXT_PUBLIC_API_URL;
   if (!baseUrl) {
-    throw new Error('NEXT_PUBLIC_API_URL environment variable is not set. Please configure it in your .env.local file.');
+    console.error('[ApiClient] NEXT_PUBLIC_API_URL is not set. Please restart the dev server after setting it in .env.local');
+    throw new Error('NEXT_PUBLIC_API_URL environment variable is not set. Please configure it in your .env.local file and restart the dev server.');
   }
   return `${baseUrl}/api/v1`;
 };
 
-export const publicApi = new ApiClient(getPublicApiUrl());
+export const publicApi = new Proxy({} as ApiClient, {
+  get(target, prop) {
+    // Lazy initialize on first access
+    if (!publicApiInstance) {
+      publicApiInstance = new ApiClient(getPublicApiUrl());
+    }
+    return (publicApiInstance as any)[prop];
+  }
+});

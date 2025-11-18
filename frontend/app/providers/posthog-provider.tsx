@@ -180,7 +180,7 @@ export function PostHogProvider({ children }: { children: React.ReactNode }) {
         autocapture: true,
         capture_performance: true,
         capture_exceptions: false, // Disable to avoid recursive errors
-        opt_in_site_apps: true, // Enable PostHog site apps
+        opt_in_site_apps: false, // Disabled - causing console errors
         loaded: (ph) => {
           if (process.env.NODE_ENV === 'development') {
             ph.debug();

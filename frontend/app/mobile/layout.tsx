@@ -6,6 +6,8 @@ import { MobileMiniPlayer } from '@/components/mobile/mobile-mini-player';
 import { QueryProvider } from '@/providers/query-provider';
 import { Sample } from '@/types/api';
 import { AudioPlayerContext } from '@/contexts/audio-player-context';
+import { Toaster } from '@/components/ui/sonner';
+import { OpenInBrowserBanner } from '@/components/mobile/open-in-browser-banner';
 
 export default function MobileLayout({
   children,
@@ -77,6 +79,9 @@ export default function MobileLayout({
         }}
       >
         <div className="min-h-screen bg-background">
+          {/* TikTok browser banner - shows at top when in TikTok app */}
+          <OpenInBrowserBanner />
+
           {/* Full-screen mobile content */}
           <main className={currentSample ? 'pb-32' : 'pb-20'}>{children}</main>
 
@@ -95,6 +100,9 @@ export default function MobileLayout({
 
           {/* Fixed bottom navigation */}
           <MobileBottomNav />
+
+          {/* Mobile toast notifications - positioned at top */}
+          <Toaster position="top-center" />
         </div>
       </AudioPlayerContext.Provider>
     </QueryProvider>

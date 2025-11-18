@@ -122,6 +122,11 @@ export function HlsAudioPlayer({
       crossOrigin={crossOrigin}
       onTimeUpdate={onTimeUpdate}
       onEnded={onEnded}
+      playsInline
+      // @ts-ignore - webkit-playsinline is not in TS types but needed for iOS Safari
+      webkit-playsinline="true"
+      // @ts-ignore - x5-playsinline is not in TS types but needed for TikTok/WeChat webview
+      x5-playsinline="true"
     />
   );
 }

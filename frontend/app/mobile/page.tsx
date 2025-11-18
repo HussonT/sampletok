@@ -38,24 +38,22 @@ export default function MobileFeedPage() {
   const [apiClient, setApiClient] = useState(publicApi);
 
   /**
-   * Auth Prompt Management - Value First Approach
+   * Auth Prompt Management - Action-Based Approach
    *
-   * No modals on page load - let users explore and see value first!
-   * Auth prompt only shows when:
+   * No modals on page load or video viewing - let users browse freely!
+   * Auth prompt ONLY shows when:
    * 1. User clicks save/favorite button (needs account to save)
    * 2. User tries to download (needs account)
-   * 3. User has viewed exactly 10 distinct samples (seen enough value)
    *
-   * Once dismissed, won't show again this session.
+   * Modal is dismissed, won't show again this session.
    */
   const {
     shouldShowModal,
     triggerAuthPrompt,
-    incrementViewCount,
     dismissModal,
     closeModal,
   } = useAuthPrompt({
-    triggerCount: 10, // Show auth after 10 distinct samples viewed
+    triggerCount: 999999, // Effectively disabled - only show on explicit actions
     enabled: !isSignedIn, // Only track guest users
   });
 
@@ -144,20 +142,17 @@ export default function MobileFeedPage() {
 
   /**
    * Tracks when user scrolls to a new video in the feed.
-   * Increments view count for auth prompt timing.
+   * Used for analytics tracking only (no auth prompts on scroll).
    *
    * This is called by VideoFeed component via IntersectionObserver when
    * a video becomes 70% visible (threshold for "in view").
    */
   const handleVideoChange = useCallback((videoIndex: number) => {
-    // Increment view count for auth prompt tracking (guests only)
-    incrementViewCount();
-
     // Track mobile feed viewed every 5th video
     if (videoIndex > 0 && videoIndex % 5 === 0) {
       analytics.mobileFeedViewed();
     }
-  }, [incrementViewCount, samples.length]);
+  }, [samples.length]);
 
   // Loading state (initial load) - Show skeleton feed item
   if (isLoading && samples.length === 0) {
@@ -222,16 +217,14 @@ export default function MobileFeedPage() {
       </VideoFeedErrorBoundary>
 
       {/*
-        Auth Prompt Modal - Value First Approach
+        Auth Prompt Modal - Action-Based Approach
 
-        No modals on page load! Users start browsing immediately.
+        Only shows when user tries to:
+        1. Save/favorite a sample (needs account)
+        2. Download a sample (needs account)
 
-        Shows strategically when:
-        1. User clicks save/favorite (needs account to persist favorites)
-        2. User tries to download (needs account for downloads)
-        3. User has viewed exactly 10 samples (crossed threshold, seen enough value)
-
-        Once dismissed, won't show again this session - respects user choice.
+        Never shows automatically - only on explicit user actions.
+        Once dismissed, won't show again this session.
       */}
       <AuthPromptModal
         isOpen={shouldShowModal}
