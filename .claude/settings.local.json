@@ -77,7 +77,10 @@
       "Bash(gh repo view:*)",
       "Bash(npx tsc:*)",
       "Bash(./deploy-image.sh:*)",
-      "Bash(./deploy.sh:*)"
+      "Bash(./deploy.sh:*)",
+      "Bash(\"/Users/tomhusson/sideprojects/sampletok/sampletok/frontend/public/icons/sampletok no bg.png\")",
+      "Bash(\"/Users/tomhusson/sideprojects/sampletok/sampletok/frontend/public/icons/sampletok samller.png\")",
+      "Bash(convert:*)"
     ],
     "deny": [],
     "ask": []

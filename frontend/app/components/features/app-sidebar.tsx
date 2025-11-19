@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import {
   Music,
@@ -46,8 +47,14 @@ export function AppSidebar({ activeSection, onSectionChange, onProcessingStarted
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="flex items-center gap-3 px-6 h-16 border-b flex-shrink-0">
-        <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-          <Music className="w-5 h-5 text-white" />
+        <div className="w-14 h-14 flex items-center justify-center">
+          <Image
+            src="/icons/favicon.png"
+            alt="Sampletok"
+            width={56}
+            height={56}
+            className="w-full h-full object-contain"
+          />
         </div>
         <h2 className="font-bold text-sidebar-foreground">Sampletok</h2>
       </div>

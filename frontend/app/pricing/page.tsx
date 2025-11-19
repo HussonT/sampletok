@@ -376,6 +376,23 @@ export default function PricingPage() {
         </div>
       </div>
 
+      {/* Footer */}
+      <footer className="border-t bg-card mt-12">
+        <div className="container mx-auto px-4 py-8">
+          <div className="flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-muted-foreground">
+            <p>&copy; {new Date().getFullYear()} Sampletok. All rights reserved.</p>
+            <div className="flex gap-6">
+              <a href="/privacy" className="hover:text-foreground transition-colors">
+                Privacy Policy
+              </a>
+              <a href="/pricing" className="hover:text-foreground transition-colors">
+                Pricing
+              </a>
+            </div>
+          </div>
+        </div>
+      </footer>
+
       {/* Upgrade Confirmation Dialog */}
       {showUpgradeDialog && upgradePreview && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
