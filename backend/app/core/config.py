@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     SECRET_KEY: str
     ADMIN_API_KEY: Optional[str] = None  # Separate key for admin endpoints (required in production)
     ENVIRONMENT: str = "development"
+    PUBLIC_APP_URL: str = "https://app.sampletheinternet.com"  # Public-facing URL for shareable links
 
     # API
     API_V1_STR: str = "/api/v1"

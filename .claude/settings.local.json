@@ -77,7 +77,9 @@
       "Bash(gh repo view:*)",
       "Bash(npx tsc:*)",
       "Bash(./deploy-image.sh:*)",
-      "Bash(./deploy.sh:*)"
+      "Bash(./deploy.sh:*)",
+      "mcp__linear-server__list_comments",
+      "Bash(NODE_ENV=development node:*)"
     ],
     "deny": [],
     "ask": []

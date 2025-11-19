@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks, Body
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks, Body, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, or_, text, cast, String
@@ -14,6 +14,7 @@ import logging
 import time
 
 from app.core.database import get_db, AsyncSessionLocal
+from app.core.rate_limit import limiter
 from app.models import Sample, ProcessingStatus
 from app.models.user import User, UserDownload, UserFavorite, SampleDismissal
 from app.models.schemas import (
@@ -37,7 +38,7 @@ router = APIRouter()
 
 
 def escape_like_pattern(pattern: str) -> str:
-    """
+    r"""
     Escape special LIKE/ILIKE pattern characters to prevent SQL injection.
 
     PostgreSQL LIKE patterns use:
@@ -383,6 +384,38 @@ async def get_sample(
     enriched_samples = await enrich_samples_with_user_data([sample], current_user, db)
 
     return enriched_samples[0]
+
+
+@router.get("/{sample_id}/public", response_model=SampleResponse)
+@limiter.limit("100/minute")
+async def get_sample_public(
+    request: Request,
+    sample_id: UUID,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get a specific sample by ID for public sharing (no authentication required).
+    Only returns completed samples.
+    User-specific fields (is_favorited, is_downloaded) will be null.
+    Rate limit: 100 requests per minute per IP address.
+    """
+    query = select(Sample).options(
+        selectinload(Sample.tiktok_creator),
+        selectinload(Sample.instagram_creator)
+    ).where(
+        and_(
+            Sample.id == sample_id,
+            Sample.status == ProcessingStatus.COMPLETED
+        )
+    )
+    result = await db.execute(query)
+    sample = result.scalar_one_or_none()
+
+    if not sample:
+        raise HTTPException(status_code=404, detail="Sample not found or not yet completed")
+
+    # Return sample without user-specific data (no authentication)
+    return SampleResponse.model_validate(sample)
 
 
 @router.patch("/{sample_id}", response_model=SampleResponse)
