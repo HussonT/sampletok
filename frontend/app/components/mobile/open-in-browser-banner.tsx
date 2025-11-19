@@ -48,6 +48,30 @@ export function OpenInBrowserBanner() {
 
   return (
     <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex items-center justify-center p-6 animate-in fade-in duration-500">
+      {/* Arrow pointing to top-right menu */}
+      <div className="absolute top-20 right-20 pointer-events-none">
+        <svg width="120" height="120" viewBox="0 0 120 120" className="text-[hsl(338,82%,65%)]">
+          {/* Curved arrow path */}
+          <path
+            d="M 10 110 Q 60 60 100 20"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="3"
+            strokeLinecap="round"
+            className="drop-shadow-lg"
+          />
+          {/* Arrowhead */}
+          <path
+            d="M 100 20 L 85 25 L 95 35 Z"
+            fill="currentColor"
+            className="drop-shadow-lg"
+          />
+        </svg>
+        <div className="text-[hsl(338,82%,65%)] text-sm font-semibold -mt-2 text-center drop-shadow-lg">
+          Tap here
+        </div>
+      </div>
+
       {/* Close button */}
       <button
         onClick={handleDismiss}
