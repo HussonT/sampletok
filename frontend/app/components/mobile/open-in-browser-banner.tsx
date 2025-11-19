@@ -72,26 +72,8 @@ export function OpenInBrowserBanner() {
         </div>
       </div>
 
-      {/* Close button */}
-      <button
-        onClick={handleDismiss}
-        className="absolute top-4 right-4 p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
-        aria-label="Continue anyway"
-      >
-        <X className="w-6 h-6 text-white" />
-      </button>
-
       {/* Content */}
       <div className="max-w-md text-center space-y-6">
-        {/* Icon */}
-        <div className="flex justify-center mb-6">
-          <div className="relative">
-            <div className="absolute inset-0 bg-[hsl(338,82%,65%)] blur-3xl opacity-50 animate-pulse" />
-            <div className="relative bg-gradient-to-br from-[hsl(338,82%,65%)] to-[hsl(338,82%,55%)] p-6 rounded-3xl">
-              <Music2 className="w-16 h-16 text-white" />
-            </div>
-          </div>
-        </div>
 
         {/* Title */}
         <h2 className="text-3xl font-bold text-white mb-3">
