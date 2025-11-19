@@ -223,8 +223,8 @@ export default function PrivacyPage() {
               If you have any questions, concerns, or requests regarding this Privacy Policy or our privacy practices, please contact us:
             </p>
             <div className="bg-muted p-4 rounded-lg">
-              <p className="mb-2"><strong>Email:</strong> privacy@sampletok.com</p>
-              <p className="mb-2"><strong>Website:</strong> https://sampletok.com</p>
+              <p className="mb-2"><strong>Email:</strong> privacy@sampletok.co</p>
+              <p className="mb-2"><strong>Website:</strong> https://sampletok.co</p>
             </div>
             <p className="mt-4">
               We will respond to your inquiry within 30 days.
