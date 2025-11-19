@@ -1,22 +1,24 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
-import { Toaster } from "@/components/ui/sonner";
 import { PostHogProvider } from "@/providers/posthog-provider";
 import { CookieConsent } from "@/components/cookie-consent";
 import Script from "next/script";
 import "./globals.css";
 
+// Note: Toaster is intentionally NOT included here to avoid duplicate toasts.
+// Each layout (desktop and mobile) includes its own Toaster with appropriate positioning.
+
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Sampletok - Make music at the speed of culture",
-  description: "Discover TikTok audio samples with swipeable cards - browse and download premium samples for your next viral song",
-  applicationName: "SampleTok",
+  title: "Sample the Internet - Make music at the speed of culture",
+  description: "Discover audio samples from across the internet - browse and download premium samples for your next viral song",
+  applicationName: "Sample the Internet",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "SampleTok",
+    title: "Sample the Internet",
   },
   formatDetection: {
     telephone: false,
@@ -52,7 +54,6 @@ export default function RootLayout({
         <body className={inter.className}>
           <PostHogProvider>
             {children}
-            <Toaster />
             <CookieConsent />
           </PostHogProvider>
           <Script

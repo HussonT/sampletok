@@ -7,7 +7,7 @@ export default function PrivacyPage() {
       <div className="border-b bg-card">
         <div className="container mx-auto px-4 py-6">
           <Link href="/" className="text-3xl font-bold hover:opacity-80 transition-opacity">
-            Sampletok
+            Sample the Internet
           </Link>
         </div>
       </div>
@@ -23,7 +23,7 @@ export default function PrivacyPage() {
           <section className="mb-8">
             <h2 className="text-2xl font-semibold mb-4">1. Introduction</h2>
             <p className="mb-4">
-              Welcome to Sampletok ("we," "our," or "us"). We are committed to protecting your privacy and ensuring you have a positive experience on our platform. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our service at sampletok.co (the "Service").
+              Welcome to Sample the Internet ("we," "our," or "us"). We are committed to protecting your privacy and ensuring you have a positive experience on our platform. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our service (the "Service").
             </p>
             <p className="mb-4">
               By using our Service, you agree to the collection and use of information in accordance with this policy. If you do not agree with our policies and practices, please do not use our Service.
@@ -309,7 +309,7 @@ export default function PrivacyPage() {
 
           <div className="mt-12 pt-8 border-t border-border">
             <p className="text-sm text-muted-foreground">
-              This Privacy Policy is designed to comply with GDPR (Europe), CCPA (California), and privacy requirements from Meta, Google, and other major platforms. By using Sampletok, you acknowledge that you have read and understood this Privacy Policy.
+              This Privacy Policy is designed to comply with GDPR (Europe), CCPA (California), and privacy requirements from Meta, Google, and other major platforms. By using Sample the Internet, you acknowledge that you have read and understood this Privacy Policy.
             </p>
           </div>
         </div>
@@ -319,10 +319,13 @@ export default function PrivacyPage() {
       <footer className="border-t bg-card mt-12">
         <div className="container mx-auto px-4 py-8">
           <div className="flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-muted-foreground">
-            <p>&copy; {new Date().getFullYear()} Sampletok. All rights reserved.</p>
+            <p>&copy; {new Date().getFullYear()} Sample the Internet. All rights reserved.</p>
             <div className="flex gap-6">
               <Link href="/privacy" className="hover:text-foreground transition-colors">
                 Privacy Policy
+              </Link>
+              <Link href="/data-deletion" className="hover:text-foreground transition-colors">
+                Data Deletion
               </Link>
               <Link href="/pricing" className="hover:text-foreground transition-colors">
                 Pricing

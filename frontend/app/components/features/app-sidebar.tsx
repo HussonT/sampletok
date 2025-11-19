@@ -50,13 +50,13 @@ export function AppSidebar({ activeSection, onSectionChange, onProcessingStarted
         <div className="w-14 h-14 flex items-center justify-center">
           <Image
             src="/icons/favicon.png"
-            alt="Sampletok"
+            alt="Sample the Internet"
             width={56}
             height={56}
             className="w-full h-full object-contain"
           />
         </div>
-        <h2 className="font-bold text-sidebar-foreground">Sampletok</h2>
+        <h2 className="font-bold text-sidebar-foreground text-sm whitespace-nowrap">Sample the Internet</h2>
       </div>
 
       {/* Content */}

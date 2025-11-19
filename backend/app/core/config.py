@@ -6,7 +6,7 @@ from pydantic import AnyHttpUrl, validator
 
 class Settings(BaseSettings):
     # Application
-    APP_NAME: str = "SampleTok"
+    APP_NAME: str = "Sample the Internet"
     APP_VERSION: str = "0.1.0"
     DEBUG: bool = True
     SECRET_KEY: str

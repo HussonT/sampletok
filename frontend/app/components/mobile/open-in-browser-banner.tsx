@@ -82,7 +82,7 @@ export function OpenInBrowserBanner() {
 
         {/* Description */}
         <p className="text-lg text-gray-300 mb-6">
-          For the best audio playback and full features, open SampleTok in your default browser
+          For the best audio playback and full features, open Sample the Internet in your default browser
         </p>
 
         {/* Instructions */}

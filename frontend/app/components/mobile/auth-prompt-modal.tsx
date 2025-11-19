@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button';
  * maximize conversion while respecting user experience.
  *
  * Key Features:
- * - SampleTok pink branding with gradient design for visual appeal
+ * - Sample the Internet branding with gradient design for visual appeal
  * - Smooth Framer Motion animations (spring physics for natural feel)
  * - Three clear benefit cards explaining value proposition
  * - Multiple CTAs: Sign Up (primary), Sign In (secondary), Continue as Guest (tertiary)

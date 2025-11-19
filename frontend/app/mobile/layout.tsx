@@ -101,8 +101,8 @@ export default function MobileLayout({
           {/* Fixed bottom navigation */}
           <MobileBottomNav />
 
-          {/* Mobile toast notifications - positioned at top */}
-          <Toaster position="top-center" />
+          {/* Mobile toast notifications - positioned at top with safe area support */}
+          <Toaster position="top-center" offset="16px" />
         </div>
       </AudioPlayerContext.Provider>
     </QueryProvider>

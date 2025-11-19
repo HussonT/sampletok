@@ -1,7 +1,7 @@
 {
-  "name": "SampleTok - Audio Sample Discovery",
-  "short_name": "SampleTok",
-  "description": "Discover TikTok audio samples with swipeable cards - make music at the speed of culture",
+  "name": "Sample the Internet - Audio Sample Discovery",
+  "short_name": "Sample the Internet",
+  "description": "Discover audio samples from across the internet - make music at the speed of culture",
   "start_url": "/mobile",
   "display": "standalone",
   "background_color": "#000000",

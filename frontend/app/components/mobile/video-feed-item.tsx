@@ -321,7 +321,7 @@ export function VideoFeedItem({
         <div className="absolute inset-0 bg-black/30 pointer-events-none z-10" />
 
         {/* Loading content */}
-        <div className="relative z-20 w-full h-full flex flex-col p-4 pt-16 pb-28">
+        <div className="relative z-20 w-full h-full flex flex-col p-4 pt-12 pb-28">
           {/* TOP: Audio Metadata Cards - Skeleton */}
           <div className="flex gap-3 mb-4">
             {[1, 2, 3].map((i) => (
@@ -445,7 +445,7 @@ export function VideoFeedItem({
         <div className="absolute inset-0 bg-black/30 pointer-events-none z-10" />
 
         {/* MAIN AUDIO-FOCUSED LAYOUT */}
-        <div className="relative z-20 w-full h-full flex flex-col p-4 pt-16 pb-28">
+        <div className="relative z-20 w-full h-full flex flex-col p-4 pt-12 pb-28">
 
           {/* TOP: Large Audio Metadata Cards */}
           <div className="flex gap-3 mb-4">
