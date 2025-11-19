@@ -90,9 +90,16 @@ class Settings(BaseSettings):
     RAPIDAPI_KEY: str  # Required - no default for security
     RAPIDAPI_HOST: str = "tiktok-video-no-watermark2.p.rapidapi.com"
 
-    # Instagram RapidAPI Settings
+    # Instagram RapidAPI Settings (for video downloading)
     RAPIDAPI_INSTAGRAM_KEY: Optional[str] = None  # Required for Instagram feature
     RAPIDAPI_INSTAGRAM_HOST: str = "instagram-best-experience.p.rapidapi.com"
+
+    # Instagram Graph API Settings (for auto-engagement)
+    INSTAGRAM_APP_ID: Optional[str] = None  # Facebook App ID
+    INSTAGRAM_APP_SECRET: Optional[str] = None  # Facebook App Secret
+    INSTAGRAM_ACCESS_TOKEN: Optional[str] = None  # Long-lived Instagram access token
+    INSTAGRAM_BUSINESS_ACCOUNT_ID: Optional[str] = None  # Instagram Business Account ID
+    INSTAGRAM_WEBHOOK_VERIFY_TOKEN: Optional[str] = None  # Webhook verification token (set this to any random string)
 
     # La La AI Settings
     LALAL_API_KEY: Optional[str] = None  # Required for stem separation
