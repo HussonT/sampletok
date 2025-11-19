@@ -1,20 +1,21 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, MoveUpRight } from 'lucide-react';
+import { X, ExternalLink, Music2 } from 'lucide-react';
 import { isTikTokBrowser } from '@/lib/browser-detection';
+import { Button } from '@/components/ui/button';
 
 /**
- * Open In Browser Banner
+ * Open In Browser Overlay
  *
- * Shows a dismissible banner when user is browsing in TikTok's in-app browser.
- * Points to the top-right menu (where TikTok's "Open in Browser" option is located).
+ * Shows a full-screen overlay when user is browsing in TikTok's in-app browser.
+ * Encourages them to open in their default browser for full functionality.
  *
  * Features:
  * - Auto-detects TikTok browser
- * - Dismissible (stores preference in localStorage)
- * - Positioned at top of screen with arrow pointing to top-right
- * - Mimics TikTok's native UI pattern
+ * - Full-screen overlay (impossible to miss)
+ * - Temporarily dismissible for this session
+ * - Clear instructions on how to open in browser
  */
 export function OpenInBrowserBanner() {
   const [isVisible, setIsVisible] = useState(false);
@@ -26,12 +27,12 @@ export function OpenInBrowserBanner() {
     // Check if we're in TikTok browser
     if (!isTikTokBrowser()) return;
 
-    // Always show banner in TikTok browser - don't check localStorage
+    // Always show overlay in TikTok browser - don't check localStorage
     // This is intentional: TikTok's webview has playback limitations
     // and users should be encouraged to use their default browser
     const timer = setTimeout(() => {
       setIsVisible(true);
-    }, 1500);
+    }, 800);
 
     return () => clearTimeout(timer);
   }, []);
@@ -46,27 +47,68 @@ export function OpenInBrowserBanner() {
   if (!isMounted || !isVisible) return null;
 
   return (
-    <div className="fixed top-0 left-0 right-0 z-50 animate-in slide-in-from-top duration-300">
-      <div className="bg-gradient-to-r from-[hsl(338,82%,65%)] to-[hsl(338,82%,55%)] text-white px-4 py-2.5 shadow-lg">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            <p className="text-sm font-medium">
-              Tap the menu
-            </p>
-            <MoveUpRight className="w-4 h-4 animate-pulse" />
-            <p className="text-sm font-medium truncate">
-              to open in browser for full experience
-            </p>
-          </div>
+    <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-md flex items-center justify-center p-6 animate-in fade-in duration-500">
+      {/* Close button */}
+      <button
+        onClick={handleDismiss}
+        className="absolute top-4 right-4 p-2 rounded-full bg-white/10 hover:bg-white/20 transition-colors"
+        aria-label="Continue anyway"
+      >
+        <X className="w-6 h-6 text-white" />
+      </button>
 
-          <button
-            onClick={handleDismiss}
-            className="p-1 rounded hover:bg-white/20 transition-colors flex-shrink-0"
-            aria-label="Dismiss"
-          >
-            <X className="w-4 h-4" />
-          </button>
+      {/* Content */}
+      <div className="max-w-md text-center space-y-6">
+        {/* Icon */}
+        <div className="flex justify-center mb-6">
+          <div className="relative">
+            <div className="absolute inset-0 bg-[hsl(338,82%,65%)] blur-3xl opacity-50 animate-pulse" />
+            <div className="relative bg-gradient-to-br from-[hsl(338,82%,65%)] to-[hsl(338,82%,55%)] p-6 rounded-3xl">
+              <Music2 className="w-16 h-16 text-white" />
+            </div>
+          </div>
         </div>
+
+        {/* Title */}
+        <h2 className="text-3xl font-bold text-white mb-3">
+          Better Experience Ahead
+        </h2>
+
+        {/* Description */}
+        <p className="text-lg text-gray-300 mb-6">
+          For the best audio playback and full features, open SampleTok in your default browser
+        </p>
+
+        {/* Instructions */}
+        <div className="bg-white/5 rounded-xl p-6 mb-6 text-left border border-white/10">
+          <p className="text-white font-semibold mb-3 flex items-center gap-2">
+            <ExternalLink className="w-5 h-5 text-[hsl(338,82%,65%)]" />
+            How to open in browser:
+          </p>
+          <ol className="space-y-2 text-gray-300 text-sm">
+            <li className="flex gap-3">
+              <span className="font-bold text-[hsl(338,82%,65%)]">1.</span>
+              <span>Tap the <strong className="text-white">⋯ menu</strong> in the top-right corner</span>
+            </li>
+            <li className="flex gap-3">
+              <span className="font-bold text-[hsl(338,82%,65%)]">2.</span>
+              <span>Select <strong className="text-white">"Open in Browser"</strong></span>
+            </li>
+            <li className="flex gap-3">
+              <span className="font-bold text-[hsl(338,82%,65%)]">3.</span>
+              <span>Enjoy full audio playback!</span>
+            </li>
+          </ol>
+        </div>
+
+        {/* Continue anyway button */}
+        <Button
+          onClick={handleDismiss}
+          variant="ghost"
+          className="text-gray-400 hover:text-white hover:bg-white/10"
+        >
+          Continue in TikTok anyway
+        </Button>
       </div>
     </div>
   );
