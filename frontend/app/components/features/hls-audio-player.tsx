@@ -123,10 +123,18 @@ export function HlsAudioPlayer({
       onTimeUpdate={onTimeUpdate}
       onEnded={onEnded}
       playsInline
+      controls={false}
       // @ts-ignore - webkit-playsinline is not in TS types but needed for iOS Safari
       webkit-playsinline="true"
       // @ts-ignore - x5-playsinline is not in TS types but needed for TikTok/WeChat webview
       x5-playsinline="true"
+      // @ts-ignore - x-webkit-airplay needed for iOS
+      x-webkit-airplay="allow"
+      // @ts-ignore - disablePictureInPicture for video elements
+      disablePictureInPicture={true}
+      // @ts-ignore - controlsList for additional control
+      controlsList="nodownload nofullscreen noremoteplayback"
+      style={{ display: 'none' }}
     />
   );
 }

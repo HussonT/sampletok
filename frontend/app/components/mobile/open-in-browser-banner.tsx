@@ -26,11 +26,9 @@ export function OpenInBrowserBanner() {
     // Check if we're in TikTok browser
     if (!isTikTokBrowser()) return;
 
-    // Check if user has dismissed this banner before
-    const dismissed = localStorage.getItem('open-in-browser-dismissed');
-    if (dismissed === 'true') return;
-
-    // Show banner after a brief delay for better UX
+    // Always show banner in TikTok browser - don't check localStorage
+    // This is intentional: TikTok's webview has playback limitations
+    // and users should be encouraged to use their default browser
     const timer = setTimeout(() => {
       setIsVisible(true);
     }, 1500);
@@ -39,8 +37,9 @@ export function OpenInBrowserBanner() {
   }, []);
 
   const handleDismiss = () => {
+    // Temporarily hide for this session only
+    // Will reappear on next page load
     setIsVisible(false);
-    localStorage.setItem('open-in-browser-dismissed', 'true');
   };
 
   // Don't render on server or if not visible
