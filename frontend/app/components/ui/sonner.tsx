@@ -6,11 +6,14 @@ import { Toaster as Sonner, ToasterProps } from "sonner";
 const Toaster = ({ ...props }: ToasterProps) => {
   const { theme = "system" } = useTheme();
 
+  // Get default position based on props or fallback to bottom-right
+  const defaultPosition = props.position || "bottom-right";
+
   return (
     <Sonner
       theme={theme as ToasterProps["theme"]}
       className="toaster group"
-      position="bottom-right"
+      position={defaultPosition}
       expand={false}
       visibleToasts={5}
       gap={12}
