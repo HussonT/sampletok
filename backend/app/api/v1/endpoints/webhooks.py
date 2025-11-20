@@ -367,13 +367,78 @@ async def instagram_webhook_handler(
 
                     logger.info(f"Created Instagram engagement record: {engagement.id}")
 
-                    # Trigger Inngest job to process this mention
-                    # (Will be implemented in next step)
-                    # For now, just log it
-                    logger.info(f"TODO: Trigger Inngest job for engagement {engagement.id}")
+                    # Trigger Instagram video processing via mention processor
+                    from app.services.instagram.mention_processor import process_instagram_mention
+                    try:
+                        sample_id = await process_instagram_mention(media_id)
+                        if sample_id:
+                            logger.info(f"Successfully triggered Instagram processing for sample {sample_id}")
+                        else:
+                            logger.warning(f"Instagram processing skipped for media_id={media_id}")
+                    except Exception as e:
+                        logger.error(f"Error triggering Instagram processing: {e}", exc_info=True)
 
                 except Exception as e:
                     logger.error(f"Error processing Instagram mention: {e}", exc_info=True)
+                    await db.rollback()
+                    # Continue processing other entries - don't fail entire webhook
+
+            elif field == "comments":
+                # Someone mentioned us in a comment!
+                comment_id = value.get("id")
+                media_id = value.get("media_id")
+                text = value.get("text", "")
+
+                logger.info(f"Received comment webhook: comment_id={comment_id}, media_id={media_id}, text={text[:100]}")
+
+                # Check if comment mentions our account
+                if "@sampletheinternet" not in text.lower():
+                    logger.info("Comment doesn't mention our account, ignoring")
+                    continue
+
+                if not media_id:
+                    logger.warning("Comment webhook missing media_id")
+                    continue
+
+                try:
+                    # Check if we've already processed this media (idempotency)
+                    stmt = select(InstagramEngagement).where(
+                        InstagramEngagement.instagram_media_id == media_id
+                    )
+                    result = await db.execute(stmt)
+                    existing = result.scalar_one_or_none()
+
+                    if existing:
+                        logger.info(f"Media already processed (via comment mention): {media_id}")
+                        continue
+
+                    # Create engagement record
+                    engagement = InstagramEngagement(
+                        instagram_media_id=media_id,
+                        engagement_type=EngagementType.COMMENT,
+                        status=EngagementStatus.PENDING,
+                        webhook_payload=payload,
+                        comment_text=text
+                    )
+                    db.add(engagement)
+                    await db.commit()
+                    await db.refresh(engagement)
+
+                    logger.info(f"Created Instagram engagement record from comment: {engagement.id}")
+
+                    # Trigger Instagram video processing via mention processor
+                    from app.services.instagram.mention_processor import process_instagram_mention
+                    try:
+                        sample_id = await process_instagram_mention(media_id)
+                        if sample_id:
+                            logger.info(f"Successfully triggered Instagram processing for sample {sample_id}")
+                        else:
+                            logger.warning(f"Instagram processing skipped for media_id={media_id}")
+                    except Exception as e:
+                        logger.error(f"Error triggering Instagram processing: {e}", exc_info=True)
+
+                except Exception as e:
+                    logger.error(f"Error processing Instagram comment mention: {e}", exc_info=True)
                     await db.rollback()
                     # Continue processing other entries - don't fail entire webhook
 

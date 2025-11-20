@@ -155,6 +155,31 @@ class Settings(BaseSettings):
     POSTHOG_PROJECT_KEY: Optional[str] = None  # Required for analytics tracking
     POSTHOG_HOST: str = "https://eu.posthog.com"  # EU hosting for GDPR compliance
 
+    # Postmark Email Service
+    POSTMARK_API_KEY: Optional[str] = None  # Required for sending emails
+    POSTMARK_FROM_EMAIL: str = "noreply@sampletheinternet.com"  # Verified sender email
+
+    # Property aliases for Instagram Graph API (META_* naming convention)
+    @property
+    def META_APP_ID(self) -> Optional[str]:
+        """Alias for INSTAGRAM_APP_ID"""
+        return self.INSTAGRAM_APP_ID
+
+    @property
+    def META_APP_SECRET(self) -> Optional[str]:
+        """Alias for INSTAGRAM_APP_SECRET"""
+        return self.INSTAGRAM_APP_SECRET
+
+    @property
+    def META_ACCESS_TOKEN(self) -> Optional[str]:
+        """Alias for INSTAGRAM_ACCESS_TOKEN"""
+        return self.INSTAGRAM_ACCESS_TOKEN
+
+    @property
+    def META_WEBHOOK_VERIFY_TOKEN(self) -> Optional[str]:
+        """Alias for INSTAGRAM_WEBHOOK_VERIFY_TOKEN"""
+        return self.INSTAGRAM_WEBHOOK_VERIFY_TOKEN
+
     class Config:
         env_file = ".env"
         case_sensitive = True

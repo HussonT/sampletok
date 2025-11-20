@@ -60,6 +60,9 @@ class InstagramEngagement(Base):
     # Creator information
     instagram_user_id = Column(String, index=True)  # Instagram user ID who mentioned us
     instagram_username = Column(String, index=True)  # Username who mentioned us
+    email = Column(String)  # Email address (from Graph API or manually provided via DM)
+    email_sent = Column(Boolean, default=False)  # Whether we sent the sample email
+    email_sent_at = Column(DateTime)  # When email was sent
 
     # Media information from webhook
     media_type = Column(String)  # "IMAGE", "VIDEO", "CAROUSEL_ALBUM"

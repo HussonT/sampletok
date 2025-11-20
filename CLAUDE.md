@@ -309,30 +309,39 @@ Uses RapidAPI's "TikTok Video No Watermark" service. Returns:
 **Two-part integration for Instagram support:**
 
 **Part 1: Video Processing** (via RapidAPI)
+
 - Uses RapidAPI's "Instagram Best Experience" service for video downloads
 - Similar to TikTok processing: download video, extract audio, analyze, upload
-- Creator info cached in `instagram_creators` table with smart caching (<7 days TTL)
+- Creator info cached in `instagram_creators` table with smart caching (<7 days
+  TTL)
 
 **Part 2: Auto-Engagement** (via Instagram Graph API)
+
 - **Service**: `InstagramGraphAPIClient` (`app/services/instagram/graph_api.py`)
-- **Database**: `instagram_engagements` table tracks mentions, comments, and processing status
+- **Database**: `instagram_engagements` table tracks mentions, comments, and
+  processing status
 - **Webhooks**: Receives mention notifications at `/api/v1/webhooks/instagram`
 
 **Architecture Flow:**
+
 1. User tags `@sampletheinternet` in Instagram post
 2. Instagram Graph API sends webhook to our backend
 3. Webhook creates `InstagramEngagement` record (status: PENDING)
 4. Inngest job triggered to process video and extract audio (future: TPERS-473)
 5. Sample created and auto-comment posted with sample link (status: COMPLETED)
 
-**Required Credentials** (see `backend/docs/INSTAGRAM_GRAPH_API_SETUP.md` for full setup):
+**Required Credentials** (see `backend/docs/INSTAGRAM_GRAPH_API_SETUP.md` for
+full setup):
+
 - `INSTAGRAM_APP_ID` - Facebook App ID
 - `INSTAGRAM_APP_SECRET` - Facebook App Secret
-- `INSTAGRAM_ACCESS_TOKEN` - Long-lived access token (60-day expiry, must refresh)
+- `INSTAGRAM_ACCESS_TOKEN` - Long-lived access token (60-day expiry, must
+  refresh)
 - `INSTAGRAM_BUSINESS_ACCOUNT_ID` - Instagram Business Account ID
 - `INSTAGRAM_WEBHOOK_VERIFY_TOKEN` - Random token for webhook verification
 
 **Key Features:**
+
 - Get media info and metadata from Graph API
 - Post comments on Instagram media
 - Receive mention notifications via webhooks
@@ -341,21 +350,26 @@ Uses RapidAPI's "TikTok Video No Watermark" service. Returns:
 - Error handling for expired tokens, disabled comments, rate limits
 
 **Rate Limits:**
+
 - Development Mode: 200 calls/hour per user, 25 test users max
-- Production Mode (verified business): 4,800 calls/hour per user, unlimited users
+- Production Mode (verified business): 4,800 calls/hour per user, unlimited
+  users
 
 **Security:**
+
 - Webhook signature verification (verify token)
 - Long-lived tokens stored securely (environment variables)
 - Separate credentials for dev/staging/production
 - Token refresh strategy (monthly cron job)
 
 **Testing:**
+
 - Health check: `GET /api/v1/webhooks/instagram/health`
 - Manual comment test: `InstagramGraphAPIClient().post_comment()`
 - Webhook test: Tag `@sampletheinternet` in test post
 
 **Documentation:**
+
 - Full setup guide: `backend/docs/INSTAGRAM_GRAPH_API_SETUP.md`
 - API reference: https://developers.facebook.com/docs/instagram-api
 
@@ -628,7 +642,8 @@ See `DEPLOYMENT.md` for detailed deployment guides:
 
 ### Quick GCP Deployment
 
-**Manual deployment** via `deploy.sh`:
+DO NOT DEPLOY YOURSELF - I WILL ALWAYS DEPLOY BY HAND! ASK ME TO DO IT. **Manual
+deployment** via `deploy.sh`:
 
 ```bash
 cd backend
@@ -657,3 +672,4 @@ Key deployment considerations:
 - Backend connects to Cloud SQL PostgreSQL via Unix socket
 - No backwards compatibility or fallbacks in future implementations. Just
   implement the new solution cleanly and move forward.
+- do NOT run ./deploy.sh - i will always run this by hand

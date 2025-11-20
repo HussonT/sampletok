@@ -83,7 +83,8 @@
       "Bash(test:*)",
       "Bash(pgrep:*)",
       "WebFetch(domain:developers.facebook.com)",
-      "Bash(chmod:*)"
+      "Bash(chmod:*)",
+      "Bash(alembic check:*)"
     ],
     "deny": [],
     "ask": []

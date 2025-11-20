@@ -60,7 +60,7 @@ const pwaConfig = withPWA({
   runtimeCaching: [
     // API Routes - Network First with timeout
     {
-      urlPattern: /^https:\/\/.*\.sampletok\.com\/api\/.*/i,
+      urlPattern: /^https:\/\/.*\.sampletheinternet\.com\/api\/.*/i,
       handler: 'NetworkFirst',
       options: {
         cacheName: 'api-cache',
