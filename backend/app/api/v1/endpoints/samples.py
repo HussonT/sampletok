@@ -253,9 +253,9 @@ async def get_samples(
             query = query.join(TikTokCreator, Sample.tiktok_creator_id == TikTokCreator.id, isouter=True)
             query = query.order_by(nullslast(TikTokCreator.follower_count.desc()))
         elif sort_by == "followers_asc":
-            # Join TikTok creator table and sort by follower count (nulls first)
+            # Join TikTok creator table and sort by follower count (nulls last)
             query = query.join(TikTokCreator, Sample.tiktok_creator_id == TikTokCreator.id, isouter=True)
-            query = query.order_by(nullsfirst(TikTokCreator.follower_count.asc()))
+            query = query.order_by(nullslast(TikTokCreator.follower_count.asc()))
         elif sort_by == "bpm_asc":
             query = query.order_by(Sample.bpm.asc())
         elif sort_by == "bpm_desc":
