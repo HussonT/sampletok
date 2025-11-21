@@ -80,8 +80,8 @@ export function OpenInBrowserBanner() {
         </h2>
 
         {/* Description */}
-        <p className="text-base sm:text-lg text-gray-300">
-          For the best audio playback and full features, open SampleTok in your default browser
+        <p className="text-lg text-gray-300 mb-6">
+          For the best audio playback and full features, open Sample the Internet in your default browser
         </p>
 
         {/* Instructions */}

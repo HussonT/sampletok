@@ -6,7 +6,7 @@ from pydantic import AnyHttpUrl, validator
 
 class Settings(BaseSettings):
     # Application
-    APP_NAME: str = "SampleTok"
+    APP_NAME: str = "Sample the Internet"
     APP_VERSION: str = "0.1.0"
     DEBUG: bool = True
     SECRET_KEY: str
@@ -146,39 +146,35 @@ class Settings(BaseSettings):
     TOPUP_CREDITS_LARGE: int = 500  # Large package credits
     TOPUP_PRICE_LARGE_CENTS: int = 4999  # Large package price ($49.99)
 
-    # Subscription URLs
-    SUBSCRIPTION_SUCCESS_URL: str = "http://localhost:3000/subscription/success"
-    SUBSCRIPTION_CANCEL_URL: str = "http://localhost:3000/pricing"
-    FRONTEND_URL: Optional[str] = "http://localhost:3000"  # For Stripe Customer Portal return URL
+    # Frontend URL - base URL for all frontend redirects
+    FRONTEND_URL: str = "http://localhost:3000"
+
+    # Computed properties for Stripe redirect URLs (no need to set these in .env)
+    @property
+    def SUBSCRIPTION_SUCCESS_URL(self) -> str:
+        return f"{self.FRONTEND_URL}/subscription/success"
+
+    @property
+    def SUBSCRIPTION_CANCEL_URL(self) -> str:
+        return f"{self.FRONTEND_URL}/pricing"
 
     # PostHog Analytics
     POSTHOG_PROJECT_KEY: Optional[str] = None  # Required for analytics tracking
     POSTHOG_HOST: str = "https://eu.posthog.com"  # EU hosting for GDPR compliance
 
-    # Postmark Email Service
-    POSTMARK_API_KEY: Optional[str] = None  # Required for sending emails
-    POSTMARK_FROM_EMAIL: str = "noreply@sampletheinternet.com"  # Verified sender email
+    # Instagram Integration
+    INSTAGRAM_APP_ID: Optional[str] = None  # Instagram App ID from Facebook Developer
+    INSTAGRAM_APP_SECRET: Optional[str] = None  # Instagram App Secret
+    INSTAGRAM_ACCESS_TOKEN: Optional[str] = None  # Instagram Access Token
+    INSTAGRAM_BUSINESS_ACCOUNT_ID: Optional[str] = None  # Instagram Business Account ID
+    INSTAGRAM_WEBHOOK_VERIFY_TOKEN: Optional[str] = None  # Webhook verification token
 
-    # Property aliases for Instagram Graph API (META_* naming convention)
-    @property
-    def META_APP_ID(self) -> Optional[str]:
-        """Alias for INSTAGRAM_APP_ID"""
-        return self.INSTAGRAM_APP_ID
+    # Public URLs
+    PUBLIC_APP_URL: Optional[str] = None  # Public URL of the application
 
-    @property
-    def META_APP_SECRET(self) -> Optional[str]:
-        """Alias for INSTAGRAM_APP_SECRET"""
-        return self.INSTAGRAM_APP_SECRET
-
-    @property
-    def META_ACCESS_TOKEN(self) -> Optional[str]:
-        """Alias for INSTAGRAM_ACCESS_TOKEN"""
-        return self.INSTAGRAM_ACCESS_TOKEN
-
-    @property
-    def META_WEBHOOK_VERIFY_TOKEN(self) -> Optional[str]:
-        """Alias for INSTAGRAM_WEBHOOK_VERIFY_TOKEN"""
-        return self.INSTAGRAM_WEBHOOK_VERIFY_TOKEN
+    # Email (Postmark)
+    POSTMARK_API_KEY: Optional[str] = None  # Postmark API key for transactional emails
+    POSTMARK_FROM_EMAIL: Optional[str] = None  # From email address for Postmark
 
     class Config:
         env_file = ".env"

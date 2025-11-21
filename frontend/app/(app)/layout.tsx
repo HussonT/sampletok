@@ -8,6 +8,7 @@ import { BottomPlayer } from '@/components/features/bottom-player';
 import { Sample } from '@/types/api';
 import { QueryProvider } from '@/providers/query-provider';
 import { DesktopAudioPlayerContext, DesktopAudioPlayerContextType } from '@/contexts/desktop-audio-player-context';
+import { Toaster } from '@/components/ui/sonner';
 
 export default function AppLayout({
   children,
@@ -123,6 +124,9 @@ export default function AppLayout({
               onFavoriteChange={handleFavoriteChange}
             />
           </div>
+
+          {/* Desktop toast notifications - positioned at bottom-right */}
+          <Toaster position="bottom-right" />
         </DesktopAudioPlayerContext.Provider>
       </ProcessingContext.Provider>
     </QueryProvider>

@@ -205,7 +205,7 @@ export default function PricingPage() {
       {/* Header */}
       <div className="border-b bg-card">
         <div className="container mx-auto px-4 py-6">
-          <h1 className="text-3xl font-bold">Sampletok</h1>
+          <h1 className="text-3xl font-bold">Sample the Internet</h1>
         </div>
       </div>
 
@@ -375,6 +375,23 @@ export default function PricingPage() {
           </p>
         </div>
       </div>
+
+      {/* Footer */}
+      <footer className="border-t bg-card mt-12">
+        <div className="container mx-auto px-4 py-8">
+          <div className="flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-muted-foreground">
+            <p>&copy; {new Date().getFullYear()} Sample the Internet. All rights reserved.</p>
+            <div className="flex gap-6">
+              <a href="/privacy" className="hover:text-foreground transition-colors">
+                Privacy Policy
+              </a>
+              <a href="/pricing" className="hover:text-foreground transition-colors">
+                Pricing
+              </a>
+            </div>
+          </div>
+        </div>
+      </footer>
 
       {/* Upgrade Confirmation Dialog */}
       {showUpgradeDialog && upgradePreview && (
