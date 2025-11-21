@@ -10,6 +10,7 @@ import { Sample } from '@/types/api';
 import { toast } from 'sonner';
 import { useAuth } from '@clerk/nextjs';
 import { analytics } from '@/lib/analytics';
+import { useRefreshCredits } from '@/hooks/use-credits';
 
 interface StemSeparationModalProps {
   open: boolean;
@@ -42,6 +43,7 @@ export function StemSeparationModal({
   onSuccess
 }: StemSeparationModalProps) {
   const { getToken } = useAuth();
+  const refreshCredits = useRefreshCredits();
   const [selectedStems, setSelectedStems] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -107,6 +109,9 @@ export function StemSeparationModal({
 
       // Track stem separation started
       analytics.stemSeparationRequested(sample.id, selectedStems, totalCredits);
+
+      // Refresh credits after deduction
+      refreshCredits();
 
       toast.success(`Stem separation started! ${data.message}`, {
         description: `Estimated time: ${Math.round(data.estimated_time_seconds / 60)} minutes`

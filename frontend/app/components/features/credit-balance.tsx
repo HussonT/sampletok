@@ -1,65 +1,21 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import { useAuth } from '@clerk/nextjs';
-import { createAuthenticatedClient } from '@/lib/api-client';
 import { Coins, TrendingUp } from 'lucide-react';
 import Link from 'next/link';
-
-interface CreditBalanceData {
-  credits: number;
-  has_subscription: boolean;
-  subscription_tier: string | null;
-  monthly_credits: number | null;
-  next_renewal: string | null;
-}
+import { useCredits } from '@/hooks/use-credits';
 
 export function CreditBalance() {
-  const { getToken, isSignedIn } = useAuth();
-  const [creditData, setCreditData] = useState<CreditBalanceData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-
-  useEffect(() => {
-    if (!isSignedIn) {
-      setLoading(false);
-      return;
-    }
-
-    const fetchCredits = async () => {
-      try {
-        const token = await getToken();
-        if (!token) {
-          setLoading(false);
-          return;
-        }
-
-        const api = createAuthenticatedClient(async () => token);
-        const data = await api.get<CreditBalanceData>('/credits/balance');
-        setCreditData(data);
-        setError(false);
-      } catch (err) {
-        console.error('Failed to fetch credit balance:', err);
-        setError(true);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchCredits();
-
-    // Refresh every 30 seconds
-    const interval = setInterval(fetchCredits, 30000);
-    return () => clearInterval(interval);
-  }, [getToken, isSignedIn]);
+  const { isSignedIn } = useAuth();
+  const { creditData, isLoading } = useCredits();
 
   // Don't show anything if not signed in
-  if (!isSignedIn || loading) {
+  if (!isSignedIn || isLoading) {
     return null;
   }
 
   // Show error state but don't block UI
-  if (error || !creditData) {
+  if (!creditData) {
     return null;
   }
 

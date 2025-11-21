@@ -5,6 +5,7 @@ import { X, Link as LinkIcon, Loader2, CheckCircle, AlertCircle, Sparkles, Coins
 import { useAuth } from '@clerk/nextjs';
 import { createAuthenticatedClient } from '@/lib/api-client';
 import { useHapticFeedback } from '@/hooks/use-haptics';
+import { useCredits, useRefreshCredits } from '@/hooks/use-credits';
 
 interface AddSampleModalProps {
   isOpen: boolean;
@@ -13,51 +14,16 @@ interface AddSampleModalProps {
 
 type ProcessingState = 'idle' | 'submitting' | 'processing' | 'success' | 'error';
 
-interface CreditBalanceData {
-  credits: number;
-  has_subscription: boolean;
-  subscription_tier: string | null;
-  monthly_credits: number | null;
-  next_renewal: string | null;
-}
-
 export function AddSampleModal({ isOpen, onClose }: AddSampleModalProps) {
   const { isSignedIn, getToken } = useAuth();
   const { onMedium, onSuccess, onError } = useHapticFeedback();
+  const { credits: creditBalance, isLoading: loadingCredits } = useCredits();
+  const refreshCredits = useRefreshCredits();
 
   const [url, setUrl] = useState('');
   const [state, setState] = useState<ProcessingState>('idle');
   const [errorMessage, setErrorMessage] = useState('');
   const [sampleId, setSampleId] = useState<string | null>(null);
-  const [creditBalance, setCreditBalance] = useState<number | null>(null);
-  const [loadingCredits, setLoadingCredits] = useState(true);
-
-  // Fetch credit balance when modal opens
-  useEffect(() => {
-    if (isOpen && isSignedIn) {
-      setLoadingCredits(true);
-      const fetchCredits = async () => {
-        try {
-          const token = await getToken();
-          if (!token) {
-            setLoadingCredits(false);
-            return;
-          }
-
-          const apiClient = createAuthenticatedClient(async () => token);
-          const data = await apiClient.get<CreditBalanceData>('/credits/balance');
-          setCreditBalance(data.credits);
-        } catch (err) {
-          console.error('Failed to fetch credit balance:', err);
-          setCreditBalance(null);
-        } finally {
-          setLoadingCredits(false);
-        }
-      };
-
-      fetchCredits();
-    }
-  }, [isOpen, isSignedIn, getToken]);
 
   // Auto-read clipboard when modal opens
   useEffect(() => {
@@ -125,12 +91,7 @@ export function AddSampleModal({ isOpen, onClose }: AddSampleModalProps) {
       }
 
       // Refresh credit balance after deduction
-      try {
-        const refreshedData = await apiClient.get<CreditBalanceData>('/credits/balance');
-        setCreditBalance(refreshedData.credits);
-      } catch (err) {
-        console.error('Failed to refresh credit balance:', err);
-      }
+      refreshCredits();
 
       // Show success immediately
       setTimeout(() => {
