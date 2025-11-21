@@ -266,7 +266,7 @@ async def instagram_webhook_verify(
 
     if challenge:
         logger.info("Instagram webhook verification successful")
-        return int(challenge)  # Instagram expects integer response
+        return challenge  # Return the challenge string as-is
     else:
         logger.error("Instagram webhook verification failed")
         raise HTTPException(status_code=403, detail="Verification failed")
