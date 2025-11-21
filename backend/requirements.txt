@@ -136,3 +136,4 @@ websockets==15.0.1
 wheel==0.45.1
 wrapt==1.17.3
 yt-dlp==2025.9.5
+postmarker==1.0

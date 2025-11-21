@@ -15,6 +15,7 @@ import {
 import { SubscriptionPromptDialog } from './subscription-prompt-dialog';
 import { createAuthenticatedClient } from '@/lib/api-client';
 import { analytics } from '@/lib/analytics';
+import { useRefreshCredits } from '@/hooks/use-credits';
 
 interface DownloadButtonProps {
   sample: Sample;
@@ -42,6 +43,7 @@ export function DownloadButton({
 }: DownloadButtonProps) {
   const { isSignedIn, getToken } = useAuth();
   const { openSignUp } = useClerk();
+  const refreshCredits = useRefreshCredits();
   const [isDownloading, setIsDownloading] = useState(false);
   const [showSubscriptionDialog, setShowSubscriptionDialog] = useState(false);
   const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionStatus | null>(null);
@@ -164,6 +166,11 @@ export function DownloadButton({
 
       // Track successful download
       analytics.sampleDownloaded(sample, format);
+
+      // Refresh credits after download (only if first download)
+      if (!sample.is_downloaded) {
+        refreshCredits();
+      }
 
       toast.success('Download complete!', {
         id: 'download',

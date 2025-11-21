@@ -197,13 +197,18 @@ export function SoundsHeader({
               <Download className="w-4 h-4" />
             </Button>
             <Select>
-              <SelectTrigger className="w-[140px] bg-input-background">
-                <SelectValue placeholder="Most recent" />
+              <SelectTrigger className="w-[240px] bg-input-background">
+                <SelectValue placeholder="Newest" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="recent">Most recent</SelectItem>
-                <SelectItem value="popular">Most popular</SelectItem>
-                <SelectItem value="name">Name</SelectItem>
+                <SelectItem value="created_at_desc">Newest</SelectItem>
+                <SelectItem value="created_at_asc">Oldest</SelectItem>
+                <SelectItem value="views_desc">Views (High to Low)</SelectItem>
+                <SelectItem value="views_asc">Views (Low to High)</SelectItem>
+                <SelectItem value="followers_desc">Artist Followers (High to Low)</SelectItem>
+                <SelectItem value="followers_asc">Artist Followers (Low to High)</SelectItem>
+                <SelectItem value="bpm_asc">BPM (Low to High)</SelectItem>
+                <SelectItem value="bpm_desc">BPM (High to Low)</SelectItem>
               </SelectContent>
             </Select>
           </div>

@@ -18,7 +18,7 @@ from app.services.audio.processor import AudioProcessor
 from app.services.audio.analyzer import AudioAnalyzer
 from app.services.audio.lalal_service import LalalAIService
 from app.services.storage.s3 import S3Storage
-from app.models import Sample, ProcessingStatus, TikTokCreator, Collection, CollectionSample, CollectionStatus, Stem, StemType, StemProcessingStatus
+from app.models import Sample, ProcessingStatus, TikTokCreator, Collection, CollectionSample, CollectionStatus, Stem, StemType, StemProcessingStatus, InstagramEngagement
 from app.models.instagram_creator import InstagramCreator
 from app.models.user import UserDownload
 from app.core.database import AsyncSessionLocal
@@ -26,8 +26,10 @@ from sqlalchemy import select, or_
 from sqlalchemy.exc import IntegrityError
 from app.services.tiktok.creator_service import CreatorService
 from app.services.instagram.creator_service import CreatorService as InstagramCreatorService
+from app.services.instagram.graph_api_service import InstagramGraphAPIService
 from app.services.tiktok.collection_service import TikTokCollectionService
 from app.services.credit_service import refund_credits_atomic, CreditService
+from app.services.email_service import email_service
 from app.utils import extract_hashtags, remove_hashtags, utcnow_naive
 from datetime import datetime
 from typing import List, Tuple
@@ -297,7 +299,33 @@ async def process_instagram_video(ctx: inngest.Context) -> Dict[str, Any]:
         }
     )
 
-    # Step 10: Clean up temp files
+    # Step 10: Attempt to send email if available
+    email_result = await ctx.step.run(
+        "send-sample-email",
+        send_instagram_sample_email,
+        sample_id,
+        event_data.get("engagement_id"),
+        {
+            "bpm": audio_analysis.get("bpm"),
+            "key": audio_analysis.get("key"),
+            "creator_username": video_metadata.get("creator", {}).get("username")
+        }
+    )
+
+    # Step 11: Post Instagram comment with teaser
+    await ctx.step.run(
+        "post-instagram-comment",
+        post_instagram_comment,
+        event_data.get("engagement_id"),
+        event_data.get("media_id"),
+        {
+            "bpm": audio_analysis.get("bpm"),
+            "key": audio_analysis.get("key"),
+            "email_sent": email_result.get("email_sent", False)
+        }
+    )
+
+    # Step 12: Clean up temp files
     await ctx.step.run(
         "cleanup-temp-files",
         cleanup_temp_files,
@@ -309,7 +337,8 @@ async def process_instagram_video(ctx: inngest.Context) -> Dict[str, Any]:
         "status": "completed",
         "video_url": video_url,
         "audio_url": audio_files["mp3_url"],
-        "waveform_url": waveform_url
+        "waveform_url": waveform_url,
+        "email_sent": email_result.get("email_sent", False)
     }
 
 
@@ -634,6 +663,181 @@ def cleanup_temp_files(temp_dir: str) -> None:
     except Exception as e:
         logger.warning(f"Failed to clean up temp files: {e}")
         # Don't fail the whole process if cleanup fails
+
+
+async def send_instagram_sample_email(
+    sample_id: str,
+    engagement_id: Optional[str],
+    metadata: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    Attempt to send sample ready email to Instagram creator.
+
+    Flow:
+    1. Get engagement record
+    2. Get sample record
+    3. Check if email is available
+    4. Send email via Postmark
+    5. Update engagement record with email_sent status
+
+    Args:
+        sample_id: Sample UUID
+        engagement_id: InstagramEngagement UUID
+        metadata: Dict with bpm, key, creator_username
+
+    Returns:
+        Dict with email_sent status and reason
+    """
+    logger.info(f"Attempting to send email for sample_id={sample_id}, engagement_id={engagement_id}")
+
+    if not engagement_id:
+        logger.warning("No engagement_id provided, cannot send email")
+        return {"email_sent": False, "reason": "no_engagement_id"}
+
+    try:
+        async with AsyncSessionLocal() as db:
+            # Get engagement record
+            engagement_uuid = uuid.UUID(engagement_id) if isinstance(engagement_id, str) else engagement_id
+            query = select(InstagramEngagement).where(InstagramEngagement.id == engagement_uuid)
+            result = await db.execute(query)
+            engagement = result.scalars().first()
+
+            if not engagement:
+                logger.error(f"Engagement {engagement_id} not found")
+                return {"email_sent": False, "reason": "engagement_not_found"}
+
+            # Check if email is available
+            if not engagement.email:
+                logger.info(f"No email available for engagement {engagement_id} (user: @{engagement.instagram_username})")
+                return {"email_sent": False, "reason": "no_email"}
+
+            # Get sample to build public URL
+            sample_uuid = uuid.UUID(sample_id) if isinstance(sample_id, str) else sample_id
+            query = select(Sample).where(Sample.id == sample_uuid)
+            result = await db.execute(query)
+            sample = result.scalars().first()
+
+            if not sample:
+                logger.error(f"Sample {sample_id} not found")
+                return {"email_sent": False, "reason": "sample_not_found"}
+
+            # Build public sample URL
+            sample_url = f"{settings.PUBLIC_APP_URL}/samples/{sample_id}"
+
+            # Send email
+            email_sent = email_service.send_sample_ready_email(
+                to_email=engagement.email,
+                creator_username=engagement.instagram_username,
+                sample_url=sample_url,
+                bpm=metadata.get("bpm"),
+                key=metadata.get("key"),
+                original_creator_username=metadata.get("creator_username")
+            )
+
+            # Update engagement record
+            if email_sent:
+                engagement.email_sent = True
+                engagement.email_sent_at = utcnow_naive()
+                await db.commit()
+                logger.info(f"Successfully sent email to {engagement.email} (@{engagement.instagram_username})")
+                return {"email_sent": True, "email": engagement.email}
+            else:
+                logger.error(f"Failed to send email to {engagement.email}")
+                return {"email_sent": False, "reason": "send_failed"}
+
+    except Exception as e:
+        logger.error(f"Error sending email for sample {sample_id}: {str(e)}", exc_info=True)
+        return {"email_sent": False, "reason": f"error: {str(e)}"}
+
+
+async def post_instagram_comment(
+    engagement_id: Optional[str],
+    media_id: str,
+    metadata: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    Post teaser comment on Instagram media.
+
+    Message format:
+    - If email sent: "✅ BPM: X | Key: Y | Check your email! 📧"
+    - If no email: "✅ BPM: X | Key: Y | Get this sample with upgraded audio - DM us your email!"
+
+    Plus: "Want to remix? Comment @sampletheinternet and get stem splitter + upgraded audio!"
+
+    Args:
+        engagement_id: InstagramEngagement UUID
+        media_id: Instagram media ID
+        metadata: Dict with bpm, key, email_sent
+
+    Returns:
+        Dict with comment_posted status
+    """
+    logger.info(f"Posting Instagram comment for media_id={media_id}, engagement_id={engagement_id}")
+
+    if not engagement_id:
+        logger.warning("No engagement_id provided, cannot post comment")
+        return {"comment_posted": False, "reason": "no_engagement_id"}
+
+    try:
+        # Build comment message
+        bpm = metadata.get("bpm")
+        key = metadata.get("key")
+        email_sent = metadata.get("email_sent", False)
+
+        # Build metadata line
+        metadata_parts = []
+        if bpm:
+            metadata_parts.append(f"BPM: {bpm}")
+        if key:
+            metadata_parts.append(f"Key: {key}")
+
+        metadata_line = " | ".join(metadata_parts) if metadata_parts else "Sample ready"
+
+        # Build email line
+        if email_sent:
+            email_line = "Check your email! 📧"
+        else:
+            email_line = "Get this sample with upgraded audio - DM us your email!"
+
+        # Build full message
+        message = f"✅ {metadata_line} | {email_line}\n\n"
+        message += "Want to remix? Comment @sampletheinternet and get stem splitter + upgraded audio!"
+
+        # Post comment via Instagram Graph API
+        graph_api = InstagramGraphAPIService()
+
+        if not graph_api.is_configured():
+            logger.error("Instagram Graph API not configured")
+            return {"comment_posted": False, "reason": "api_not_configured"}
+
+        result = await graph_api.post_comment(media_id, message)
+        comment_id = result.get('id')
+
+        if not comment_id:
+            logger.error(f"Failed to post comment - no ID returned: {result}")
+            return {"comment_posted": False, "reason": "no_comment_id"}
+
+        # Update engagement record with comment details
+        async with AsyncSessionLocal() as db:
+            engagement_uuid = uuid.UUID(engagement_id) if isinstance(engagement_id, str) else engagement_id
+            query = select(InstagramEngagement).where(InstagramEngagement.id == engagement_uuid)
+            result_query = await db.execute(query)
+            engagement = result_query.scalars().first()
+
+            if engagement:
+                engagement.comment_id = comment_id
+                engagement.comment_text = message
+                engagement.comment_posted_at = utcnow_naive()
+                await db.commit()
+                logger.info(f"Successfully posted comment {comment_id} on media {media_id}")
+            else:
+                logger.warning(f"Engagement {engagement_id} not found for comment update")
+
+        return {"comment_posted": True, "comment_id": comment_id}
+
+    except Exception as e:
+        logger.error(f"Error posting Instagram comment: {str(e)}", exc_info=True)
+        return {"comment_posted": False, "reason": f"error: {str(e)}"}
 
 
 async def update_sample_complete(data: Dict[str, Any]) -> None:

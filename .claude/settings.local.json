@@ -78,9 +78,13 @@
       "Bash(npx tsc:*)",
       "Bash(./deploy-image.sh:*)",
       "Bash(./deploy.sh:*)",
-      "Bash(\"/Users/tomhusson/sideprojects/sampletok/sampletok/frontend/public/icons/sampletok no bg.png\")",
-      "Bash(\"/Users/tomhusson/sideprojects/sampletok/sampletok/frontend/public/icons/sampletok samller.png\")",
-      "Bash(convert:*)"
+      "mcp__linear-server__list_comments",
+      "Bash(NODE_ENV=development node:*)",
+      "Bash(test:*)",
+      "Bash(pgrep:*)",
+      "WebFetch(domain:developers.facebook.com)",
+      "Bash(chmod:*)",
+      "Bash(alembic check:*)"
     ],
     "deny": [],
     "ask": []

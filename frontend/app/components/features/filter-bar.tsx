@@ -95,7 +95,7 @@ export function FilterBar({
       {/* Sort */}
       <div className="ml-auto">
         <Select value={hasSearch ? "relevance" : sortBy} onValueChange={onSortChange} disabled={hasSearch}>
-          <SelectTrigger className="w-[180px]">
+          <SelectTrigger className="w-[260px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -105,7 +105,10 @@ export function FilterBar({
               <>
                 <SelectItem value="created_at_desc">Newest</SelectItem>
                 <SelectItem value="created_at_asc">Oldest</SelectItem>
-                <SelectItem value="views_desc">Most Popular</SelectItem>
+                <SelectItem value="views_desc">Views (High to Low)</SelectItem>
+                <SelectItem value="views_asc">Views (Low to High)</SelectItem>
+                <SelectItem value="followers_desc">Artist Followers (High to Low)</SelectItem>
+                <SelectItem value="followers_asc">Artist Followers (Low to High)</SelectItem>
                 <SelectItem value="bpm_asc">BPM (Low to High)</SelectItem>
                 <SelectItem value="bpm_desc">BPM (High to Low)</SelectItem>
               </>

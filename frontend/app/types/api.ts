@@ -132,7 +132,7 @@ export interface SampleFilters {
   genre?: string;
   status?: string;
   search?: string;
-  sort_by?: 'recent' | 'popular' | 'duration';
+  sort_by?: 'created_at_desc' | 'created_at_asc' | 'views_desc' | 'views_asc' | 'followers_desc' | 'followers_asc' | 'bpm_asc' | 'bpm_desc';
 }
 
 export interface ApiError {

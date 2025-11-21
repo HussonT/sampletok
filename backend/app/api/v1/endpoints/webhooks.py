@@ -1,25 +1,27 @@
 """
-Stripe webhook endpoint with signature verification.
-
-This endpoint receives webhooks from Stripe and processes them directly (async).
-No Inngest needed - FastAPI's async handlers + Stripe's retry logic is sufficient.
+Webhook endpoints for Stripe and Instagram.
 
 CRITICAL SECURITY:
 - ALL webhooks MUST be signature-verified
-- Return 200 quickly (< 30 seconds to prevent Stripe timeout)
+- Return 200 quickly (< 30 seconds to prevent timeout)
 - Idempotency built into handlers (safe to retry)
 """
 
-from fastapi import APIRouter, Request, HTTPException, Header, Depends
+from fastapi import APIRouter, Request, HTTPException, Header, Depends, Query
 import stripe
 import logging
 from sqlalchemy.exc import OperationalError, DatabaseError, IntegrityError
+from typing import Optional
+import inngest
 
 from app.core.config import settings
 from app.core.database import get_db
 from app.services.subscription_service import SubscriptionService
+from app.services.instagram.graph_api import InstagramGraphAPIClient
 from app.exceptions import BusinessLogicError, TransientError, ConfigurationError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from app.models import InstagramEngagement, EngagementType, EngagementStatus
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -228,4 +230,232 @@ async def webhook_health_check():
     return {
         "status": "healthy",
         "webhook_secret_configured": has_secret
+    }
+
+
+# ============================================================================
+# Instagram Graph API Webhooks
+# ============================================================================
+
+
+@router.get("/instagram")
+async def instagram_webhook_verify(
+    hub_mode: str = Query(None, alias="hub.mode"),
+    hub_challenge: str = Query(None, alias="hub.challenge"),
+    hub_verify_token: str = Query(None, alias="hub.verify_token")
+):
+    """
+    Instagram webhook verification endpoint.
+
+    When you configure the webhook in Meta's dashboard, Instagram will send a GET request
+    to verify the endpoint. We must respond with the challenge string.
+
+    Query params:
+        hub.mode: Should be "subscribe"
+        hub.challenge: Random string to echo back
+        hub.verify_token: Must match INSTAGRAM_WEBHOOK_VERIFY_TOKEN
+
+    Docs: https://developers.facebook.com/docs/graph-api/webhooks/getting-started#verification-requests
+    """
+    logger.info(f"Instagram webhook verification request: mode={hub_mode}")
+
+    instagram_client = InstagramGraphAPIClient()
+
+    # Verify the webhook
+    challenge = instagram_client.verify_webhook(hub_mode, hub_verify_token, hub_challenge)
+
+    if challenge:
+        logger.info("Instagram webhook verification successful")
+        return challenge  # Return the challenge string as-is
+    else:
+        logger.error("Instagram webhook verification failed")
+        raise HTTPException(status_code=403, detail="Verification failed")
+
+
+@router.post("/instagram")
+async def instagram_webhook_handler(
+    request: Request,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Instagram webhook event receiver.
+
+    Receives mention notifications when someone tags @sampletheinternet in a post.
+
+    Webhook events we care about:
+    - mentions: User tagged our account in a post
+    - media: New media was posted (if subscribed)
+
+    Flow:
+    1. Receive webhook with media_id
+    2. Create InstagramEngagement record (PENDING)
+    3. Trigger Inngest job to process video and post comment
+    4. Return 200 quickly (Instagram expects < 30s response)
+
+    Docs: https://developers.facebook.com/docs/instagram-api/guides/webhooks
+    """
+    # Read webhook payload
+    try:
+        payload = await request.json()
+    except Exception as e:
+        logger.error(f"Failed to parse Instagram webhook payload: {e}")
+        raise HTTPException(status_code=400, detail="Invalid JSON payload")
+
+    logger.info(f"Received Instagram webhook: {payload}")
+
+    # Instagram webhook structure:
+    # {
+    #   "object": "instagram",
+    #   "entry": [
+    #     {
+    #       "id": "instagram_business_account_id",
+    #       "time": 1234567890,
+    #       "changes": [
+    #         {
+    #           "field": "mentions",
+    #           "value": {
+    #             "media_id": "123456789",
+    #             "comment_id": "987654321"  # If mentioned in comment
+    #           }
+    #         }
+    #       ]
+    #     }
+    #   ]
+    # }
+
+    # Validate payload structure
+    if payload.get("object") != "instagram":
+        logger.warning(f"Unexpected webhook object type: {payload.get('object')}")
+        return {"status": "ignored"}
+
+    # Process each entry
+    for entry in payload.get("entry", []):
+        for change in entry.get("changes", []):
+            field = change.get("field")
+            value = change.get("value", {})
+
+            if field == "mentions":
+                # Someone tagged us in a post!
+                media_id = value.get("media_id")
+
+                if not media_id:
+                    logger.warning("Mention webhook missing media_id")
+                    continue
+
+                try:
+                    # Check if we've already processed this mention (idempotency)
+                    stmt = select(InstagramEngagement).where(
+                        InstagramEngagement.instagram_media_id == media_id
+                    )
+                    result = await db.execute(stmt)
+                    existing = result.scalar_one_or_none()
+
+                    if existing:
+                        logger.info(f"Mention already processed: {media_id}")
+                        continue
+
+                    # Create engagement record
+                    engagement = InstagramEngagement(
+                        instagram_media_id=media_id,
+                        engagement_type=EngagementType.MENTION,
+                        status=EngagementStatus.PENDING,
+                        webhook_payload=payload
+                    )
+                    db.add(engagement)
+                    await db.commit()
+                    await db.refresh(engagement)
+
+                    logger.info(f"Created Instagram engagement record: {engagement.id}")
+
+                    # Trigger Instagram video processing via mention processor
+                    from app.services.instagram.mention_processor import process_instagram_mention
+                    try:
+                        sample_id = await process_instagram_mention(media_id)
+                        if sample_id:
+                            logger.info(f"Successfully triggered Instagram processing for sample {sample_id}")
+                        else:
+                            logger.warning(f"Instagram processing skipped for media_id={media_id}")
+                    except Exception as e:
+                        logger.error(f"Error triggering Instagram processing: {e}", exc_info=True)
+
+                except Exception as e:
+                    logger.error(f"Error processing Instagram mention: {e}", exc_info=True)
+                    await db.rollback()
+                    # Continue processing other entries - don't fail entire webhook
+
+            elif field == "comments":
+                # Someone mentioned us in a comment!
+                comment_id = value.get("id")
+                media_id = value.get("media", {}).get("id")
+                text = value.get("text", "")
+
+                logger.info(f"Received comment webhook: comment_id={comment_id}, media_id={media_id}, text={text[:100]}")
+
+                # Check if comment mentions our account
+                if "@sampletheinternet" not in text.lower():
+                    logger.info("Comment doesn't mention our account, ignoring")
+                    continue
+
+                if not media_id:
+                    logger.warning("Comment webhook missing media_id")
+                    continue
+
+                try:
+                    # Check if we've already processed this media (idempotency)
+                    stmt = select(InstagramEngagement).where(
+                        InstagramEngagement.instagram_media_id == media_id
+                    )
+                    result = await db.execute(stmt)
+                    existing = result.scalar_one_or_none()
+
+                    if existing:
+                        logger.info(f"Media already processed (via comment mention): {media_id}")
+                        continue
+
+                    # Create engagement record
+                    engagement = InstagramEngagement(
+                        instagram_media_id=media_id,
+                        engagement_type=EngagementType.COMMENT,
+                        status=EngagementStatus.PENDING,
+                        webhook_payload=payload,
+                        comment_text=text
+                    )
+                    db.add(engagement)
+                    await db.commit()
+                    await db.refresh(engagement)
+
+                    logger.info(f"Created Instagram engagement record from comment: {engagement.id}")
+
+                    # Trigger Instagram video processing via mention processor
+                    from app.services.instagram.mention_processor import process_instagram_mention
+                    try:
+                        sample_id = await process_instagram_mention(media_id)
+                        if sample_id:
+                            logger.info(f"Successfully triggered Instagram processing for sample {sample_id}")
+                        else:
+                            logger.warning(f"Instagram processing skipped for media_id={media_id}")
+                    except Exception as e:
+                        logger.error(f"Error triggering Instagram processing: {e}", exc_info=True)
+
+                except Exception as e:
+                    logger.error(f"Error processing Instagram comment mention: {e}", exc_info=True)
+                    await db.rollback()
+                    # Continue processing other entries - don't fail entire webhook
+
+            else:
+                logger.info(f"Unhandled Instagram webhook field: {field}")
+
+    # Always return 200 - Instagram expects quick response
+    return {"status": "received"}
+
+
+@router.get("/instagram/health")
+async def instagram_webhook_health():
+    """Health check for Instagram webhook endpoint"""
+    instagram_client = InstagramGraphAPIClient()
+    return {
+        "status": "healthy",
+        "instagram_configured": instagram_client.is_configured(),
+        "has_access_token": bool(settings.INSTAGRAM_ACCESS_TOKEN),
+        "has_verify_token": bool(settings.INSTAGRAM_WEBHOOK_VERIFY_TOKEN)
     }

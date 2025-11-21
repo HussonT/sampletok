@@ -11,9 +11,11 @@ import logging
 
 from app.core.database import get_db
 from app.core.config import settings
-from app.models import Collection, CollectionStatus, User, Stem, StemProcessingStatus, Sample, CollectionSample
+from app.models import Collection, CollectionStatus, User, Stem, StemProcessingStatus, Sample, CollectionSample, InstagramEngagement, ProcessingStatus
 from app.services.credit_service import CreditService
+from app.services.email_service import email_service
 from app.inngest_functions import inngest_client
+from app.utils import utcnow_naive
 import inngest
 from collections import defaultdict
 from app.services.audio.processor import AudioProcessor
@@ -67,6 +69,32 @@ class BackfillHLSRequest(BaseModel):
             "example": {
                 "limit": 10,
                 "dry_run": False
+            }
+        }
+
+
+class SendInstagramEmailRequest(BaseModel):
+    engagement_id: str
+    email: str
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "engagement_id": "2a3960d1-f762-4947-8f50-f2a736dd1bf6",
+                "email": "creator@example.com"
+            }
+        }
+
+
+class SendInstagramEmailByUsernameRequest(BaseModel):
+    instagram_username: str
+    email: str
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "instagram_username": "creator_username",
+                "email": "creator@example.com"
             }
         }
 
@@ -746,3 +774,281 @@ async def backfill_hls_streams(
         "dry_run": False,
         "details": sample_details
     }
+
+
+@router.post("/send-instagram-email")
+async def send_instagram_email(
+    request: SendInstagramEmailRequest,
+    x_admin_key: str = Header(..., description="Admin API key"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Manually send sample ready email to Instagram creator.
+
+    Use this when a user DMs their email address and we need to send them the sample link.
+
+    Requires X-Admin-Key header matching ADMIN_API_KEY for security.
+
+    Args:
+        engagement_id: InstagramEngagement UUID
+        email: Email address provided by user via DM
+
+    Example:
+        POST /api/v1/admin/send-instagram-email
+        X-Admin-Key: your-admin-api-key
+        {
+            "engagement_id": "2a3960d1-f762-4947-8f50-f2a736dd1bf6",
+            "email": "creator@example.com"
+        }
+    """
+    # Verify admin key
+    if not settings.ADMIN_API_KEY:
+        raise HTTPException(status_code=503, detail="Admin API not configured")
+    if x_admin_key != settings.ADMIN_API_KEY:
+        raise HTTPException(status_code=403, detail="Invalid admin key")
+
+    # Verify email service is configured
+    if not email_service.is_configured():
+        raise HTTPException(status_code=503, detail="Email service not configured")
+
+    logger.info(f"Admin: Sending Instagram sample email to {request.email} for engagement {request.engagement_id}")
+
+    try:
+        # Get engagement record
+        engagement_uuid = UUID(request.engagement_id)
+        query = select(InstagramEngagement).where(InstagramEngagement.id == engagement_uuid)
+        result = await db.execute(query)
+        engagement = result.scalars().first()
+
+        if not engagement:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Engagement {request.engagement_id} not found"
+            )
+
+        # Check if engagement has a sample
+        if not engagement.sample_id:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Engagement {request.engagement_id} has no associated sample"
+            )
+
+        # Get sample
+        sample_query = select(Sample).where(Sample.id == engagement.sample_id)
+        sample_result = await db.execute(sample_query)
+        sample = sample_result.scalars().first()
+
+        if not sample:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Sample {engagement.sample_id} not found"
+            )
+
+        # Check if sample is completed
+        if sample.status != ProcessingStatus.COMPLETED:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Sample is not completed yet (status: {sample.status.value})"
+            )
+
+        # Build sample URL
+        sample_url = f"{settings.PUBLIC_APP_URL}/samples/{sample.id}"
+
+        # Get original creator username (from Instagram creator if available)
+        original_creator_username = None
+        if sample.instagram_creator_id:
+            from app.models.instagram_creator import InstagramCreator
+            creator_query = select(InstagramCreator).where(InstagramCreator.id == sample.instagram_creator_id)
+            creator_result = await db.execute(creator_query)
+            creator = creator_result.scalars().first()
+            if creator:
+                original_creator_username = creator.username
+
+        # Send email
+        email_sent = email_service.send_sample_ready_email(
+            to_email=request.email,
+            creator_username=engagement.instagram_username,
+            sample_url=sample_url,
+            bpm=sample.bpm,
+            key=sample.key,
+            original_creator_username=original_creator_username
+        )
+
+        if not email_sent:
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to send email - check Postmark configuration"
+            )
+
+        # Update engagement record
+        engagement.email = request.email
+        engagement.email_sent = True
+        engagement.email_sent_at = utcnow_naive()
+        await db.commit()
+
+        logger.info(
+            f"Admin: Successfully sent email to {request.email} "
+            f"(@{engagement.instagram_username}) for sample {sample.id}"
+        )
+
+        return {
+            "message": "Email sent successfully",
+            "engagement_id": str(engagement.id),
+            "sample_id": str(sample.id),
+            "email": request.email,
+            "instagram_username": engagement.instagram_username,
+            "sample_url": sample_url,
+            "metadata": {
+                "bpm": sample.bpm,
+                "key": sample.key,
+                "original_creator": original_creator_username
+            }
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Admin: Error sending Instagram email: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to send email: {str(e)}"
+        )
+
+
+@router.post("/send-instagram-email-by-username")
+async def send_instagram_email_by_username(
+    request: SendInstagramEmailByUsernameRequest,
+    x_admin_key: str = Header(..., description="Admin API key"),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Manually send sample ready email to Instagram creator using their username.
+
+    This is the easier endpoint to use when a user DMs their email - just provide
+    their Instagram username and email address.
+
+    Automatically finds the most recent engagement for that username and sends the email.
+
+    Requires X-Admin-Key header matching ADMIN_API_KEY for security.
+
+    Args:
+        instagram_username: Instagram username (without @)
+        email: Email address provided by user via DM
+
+    Example:
+        POST /api/v1/admin/send-instagram-email-by-username
+        X-Admin-Key: your-admin-api-key
+        {
+            "instagram_username": "cool_creator",
+            "email": "creator@example.com"
+        }
+    """
+    # Verify admin key
+    if not settings.ADMIN_API_KEY:
+        raise HTTPException(status_code=503, detail="Admin API not configured")
+    if x_admin_key != settings.ADMIN_API_KEY:
+        raise HTTPException(status_code=403, detail="Invalid admin key")
+
+    # Verify email service is configured
+    if not email_service.is_configured():
+        raise HTTPException(status_code=503, detail="Email service not configured")
+
+    logger.info(f"Admin: Sending Instagram sample email to {request.email} for username @{request.instagram_username}")
+
+    try:
+        # Find most recent engagement for this username where email hasn't been sent yet
+        query = select(InstagramEngagement).where(
+            InstagramEngagement.instagram_username == request.instagram_username,
+            InstagramEngagement.email_sent == False,
+            InstagramEngagement.sample_id.isnot(None)
+        ).order_by(InstagramEngagement.created_at.desc())
+
+        result = await db.execute(query)
+        engagement = result.scalars().first()
+
+        if not engagement:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No pending engagement found for @{request.instagram_username}. Either already sent email or no mentions found."
+            )
+
+        # Get sample
+        sample_query = select(Sample).where(Sample.id == engagement.sample_id)
+        sample_result = await db.execute(sample_query)
+        sample = sample_result.scalars().first()
+
+        if not sample:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Sample {engagement.sample_id} not found"
+            )
+
+        # Check if sample is completed
+        if sample.status != ProcessingStatus.COMPLETED:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Sample is not completed yet (status: {sample.status.value}). Please wait for processing to finish."
+            )
+
+        # Build sample URL
+        sample_url = f"{settings.PUBLIC_APP_URL}/samples/{sample.id}"
+
+        # Get original creator username (from Instagram creator if available)
+        original_creator_username = None
+        if sample.instagram_creator_id:
+            from app.models.instagram_creator import InstagramCreator
+            creator_query = select(InstagramCreator).where(InstagramCreator.id == sample.instagram_creator_id)
+            creator_result = await db.execute(creator_query)
+            creator = creator_result.scalars().first()
+            if creator:
+                original_creator_username = creator.username
+
+        # Send email
+        email_sent = email_service.send_sample_ready_email(
+            to_email=request.email,
+            creator_username=engagement.instagram_username,
+            sample_url=sample_url,
+            bpm=sample.bpm,
+            key=sample.key,
+            original_creator_username=original_creator_username
+        )
+
+        if not email_sent:
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to send email - check Postmark configuration"
+            )
+
+        # Update engagement record
+        engagement.email = request.email
+        engagement.email_sent = True
+        engagement.email_sent_at = utcnow_naive()
+        await db.commit()
+
+        logger.info(
+            f"Admin: Successfully sent email to {request.email} "
+            f"(@{engagement.instagram_username}) for sample {sample.id}"
+        )
+
+        return {
+            "message": "Email sent successfully",
+            "engagement_id": str(engagement.id),
+            "sample_id": str(sample.id),
+            "instagram_username": engagement.instagram_username,
+            "email": request.email,
+            "sample_url": sample_url,
+            "metadata": {
+                "bpm": sample.bpm,
+                "key": sample.key,
+                "original_creator": original_creator_username
+            }
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Admin: Error sending Instagram email by username: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to send email: {str(e)}"
+        )
