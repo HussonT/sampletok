@@ -75,7 +75,18 @@ export async function processInstagramUrl(url: string) {
 
 export async function updateSample(id: string, updates: SampleUpdate) {
   try {
-    const response = await backendApi.patch<Sample>(
+    const { getToken } = await auth();
+    const token = await getToken();
+
+    if (!token) {
+      return {
+        success: false,
+        error: 'Authentication required'
+      };
+    }
+
+    const apiClient = createAuthenticatedClient(async () => token);
+    const response = await apiClient.patch<Sample>(
       `/samples/${id}`,
       updates
     );
@@ -83,8 +94,8 @@ export async function updateSample(id: string, updates: SampleUpdate) {
     // Revalidate both the list and individual sample
     revalidatePath('/');
     revalidatePath(`/samples/${id}`);
-    await revalidateTag('samples', '/');
-    await revalidateTag(`sample-${id}`, `/samples/${id}`);
+    revalidateTag('samples');
+    revalidateTag(`sample-${id}`);
 
     return { success: true, data: response };
   } catch (error) {
@@ -98,11 +109,22 @@ export async function updateSample(id: string, updates: SampleUpdate) {
 
 export async function deleteSample(id: string) {
   try {
-    await backendApi.delete(`/samples/${id}`);
+    const { getToken } = await auth();
+    const token = await getToken();
+
+    if (!token) {
+      return {
+        success: false,
+        error: 'Authentication required'
+      };
+    }
+
+    const apiClient = createAuthenticatedClient(async () => token);
+    await apiClient.delete(`/samples/${id}`);
 
     // Revalidate the samples list
     revalidatePath('/');
-    await revalidateTag('samples', '/');
+    revalidateTag('samples');
 
     return { success: true };
   } catch (error) {
@@ -116,9 +138,15 @@ export async function deleteSample(id: string) {
 
 export async function getProcessingStatus(taskId: string): Promise<ProcessingStatusResponse | null> {
   try {
-    // Note: backendApi doesn't support Next.js cache options, but this is
-    // called frequently so we want fresh data anyway
-    return await backendApi.get<ProcessingStatusResponse>(`/process/status/${taskId}`);
+    const { getToken } = await auth();
+    const token = await getToken();
+
+    if (!token) {
+      return null;
+    }
+
+    const apiClient = createAuthenticatedClient(async () => token);
+    return await apiClient.get<ProcessingStatusResponse>(`/process/status/${taskId}`);
   } catch (error) {
     console.error('Failed to get processing status:', error);
     return null;
