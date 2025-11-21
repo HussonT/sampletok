@@ -34,10 +34,7 @@ export async function getSamples(filters?: SampleFilters, authToken?: string | n
   try {
     const response = await fetch(url, {
       headers,
-      next: {
-        revalidate: 5, // Revalidate every 5 seconds for fresh data
-        tags: ['samples']
-      }
+      cache: 'no-store' // Disable server-side cache for dynamic data
     });
 
     if (!response.ok) {

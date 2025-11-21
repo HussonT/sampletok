@@ -94,15 +94,15 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
       const data = await apiClient.get<PaginatedResponse<Sample>>('/samples', params);
       return data;
     },
-    // Only use initialData when on page 1 AND no filters are active
-    initialData: (currentPage === 1 && !searchQuery && tags.length === 0 && !bpmMin && !bpmMax && !musicalKey) ? {
+    // Only use initialData when on page 1 AND no filters are active AND sort matches server default
+    initialData: (currentPage === 1 && !searchQuery && tags.length === 0 && !bpmMin && !bpmMax && !musicalKey && sortBy === 'created_at_desc') ? {
       items: initialSamples,
       total: totalSamples,
       skip: 0,
       limit: itemsPerPage,
       has_more: totalSamples > itemsPerPage,
     } : undefined,
-    staleTime: 30 * 1000, // Consider data fresh for 30 seconds
+    staleTime: 0, // Always refetch when query key changes
   });
 
   // Only fall back to initialSamples if no filters are active
@@ -172,12 +172,9 @@ export default function MainApp({ initialSamples, totalSamples, currentFilters }
   // We now use smart prefetching: only next/previous when a sample is playing
   // This reduces bandwidth from ~24MB to ~2.4MB on page load
 
-  // Compute filtered samples (sorted by most recent)
-  const filteredSamples = useMemo(() => {
-    return [...samples].sort((a, b) =>
-      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    );
-  }, [samples]);
+  // Backend returns pre-sorted samples based on sortBy parameter
+  // No need to sort on frontend - just use the samples as-is
+  const filteredSamples = samples;
 
   // Smart preload: High-priority preload of next/previous samples when a sample is selected
   // Changed from 'prefetch' to 'preload' for higher browser priority

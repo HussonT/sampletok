@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks, Body, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, or_, text, cast, String
+from sqlalchemy import select, func, and_, or_, text, cast, String, nullslast, nullsfirst
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import selectinload
 from typing import List, Optional
@@ -17,6 +17,7 @@ from app.core.database import get_db, AsyncSessionLocal
 from app.core.rate_limit import limiter
 from app.models import Sample, ProcessingStatus
 from app.models.user import User, UserDownload, UserFavorite, SampleDismissal
+from app.models.tiktok_creator import TikTokCreator
 from app.models.schemas import (
     SampleResponse,
     SampleUpdate,
@@ -146,7 +147,7 @@ async def get_samples(
     bpm_max: Optional[int] = Query(None, ge=0, le=300),
     key: Optional[str] = Query(None, max_length=20),
     tags: Optional[str] = Query(None, max_length=500),
-    sort_by: Optional[str] = Query("created_at_desc", description="Sort order: created_at_desc, created_at_asc, views_desc, bpm_asc, bpm_desc"),
+    sort_by: Optional[str] = Query("created_at_desc", description="Sort order: created_at_desc, created_at_asc, views_desc, views_asc, followers_desc, followers_asc, bpm_asc, bpm_desc"),
     current_user: Optional[User] = Depends(get_current_user_optional),
     db: AsyncSession = Depends(get_db)
 ):
@@ -245,6 +246,16 @@ async def get_samples(
             query = query.order_by(Sample.created_at.asc())
         elif sort_by == "views_desc":
             query = query.order_by(Sample.view_count.desc())
+        elif sort_by == "views_asc":
+            query = query.order_by(Sample.view_count.asc())
+        elif sort_by == "followers_desc":
+            # Join TikTok creator table and sort by follower count (nulls last)
+            query = query.join(TikTokCreator, Sample.tiktok_creator_id == TikTokCreator.id, isouter=True)
+            query = query.order_by(nullslast(TikTokCreator.follower_count.desc()))
+        elif sort_by == "followers_asc":
+            # Join TikTok creator table and sort by follower count (nulls first)
+            query = query.join(TikTokCreator, Sample.tiktok_creator_id == TikTokCreator.id, isouter=True)
+            query = query.order_by(nullsfirst(TikTokCreator.follower_count.asc()))
         elif sort_by == "bpm_asc":
             query = query.order_by(Sample.bpm.asc())
         elif sort_by == "bpm_desc":

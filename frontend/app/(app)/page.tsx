@@ -28,7 +28,7 @@ export default async function Home({ searchParams }: HomeProps) {
     status: params.status,
     skip: params.page ? (parseInt(params.page) - 1) * 20 : 0,
     limit: 20,
-    sort_by: 'recent' // Sort by newest first
+    sort_by: 'created_at_desc' // Sort by newest first
   };
 
   // Fetch data on the server with error handling (with auth token)
