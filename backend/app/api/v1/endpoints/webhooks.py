@@ -386,7 +386,7 @@ async def instagram_webhook_handler(
             elif field == "comments":
                 # Someone mentioned us in a comment!
                 comment_id = value.get("id")
-                media_id = value.get("media_id")
+                media_id = value.get("media", {}).get("id")
                 text = value.get("text", "")
 
                 logger.info(f"Received comment webhook: comment_id={comment_id}, media_id={media_id}, text={text[:100]}")
