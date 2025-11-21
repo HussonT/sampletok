@@ -1,14 +1,26 @@
 'use server';
 
 import { revalidatePath, revalidateTag } from 'next/cache';
-import { backendApi } from '@/lib/api-client';
+import { auth } from '@clerk/nextjs/server';
+import { createAuthenticatedClient } from '@/lib/api-client';
 import { Sample, SampleUpdate, ProcessingTaskResponse, ProcessingStatusResponse, TikTokURLInput, InstagramURLInput } from '@/types/api';
 
 export async function processTikTokUrl(url: string) {
   try {
+    const { getToken } = await auth();
+    const token = await getToken();
+
+    if (!token) {
+      return {
+        success: false,
+        error: 'Authentication required'
+      };
+    }
+
+    const apiClient = createAuthenticatedClient(async () => token);
     const input: TikTokURLInput = { url };
 
-    const response = await backendApi.post<ProcessingTaskResponse>(
+    const response = await apiClient.post<ProcessingTaskResponse>(
       '/process/tiktok',
       input
     );
@@ -29,9 +41,20 @@ export async function processTikTokUrl(url: string) {
 
 export async function processInstagramUrl(url: string) {
   try {
+    const { getToken } = await auth();
+    const token = await getToken();
+
+    if (!token) {
+      return {
+        success: false,
+        error: 'Authentication required'
+      };
+    }
+
+    const apiClient = createAuthenticatedClient(async () => token);
     const input: InstagramURLInput = { url };
 
-    const response = await backendApi.post<ProcessingTaskResponse>(
+    const response = await apiClient.post<ProcessingTaskResponse>(
       '/process/instagram',
       input
     );
